@@ -1,237 +1,118 @@
-# Deployment Guide
+# Google Workspace Admin Assist — Deployment
 
-This guide walks you through deploying the Google Workspace Admin UI to Google Cloud Run.
+**Simple Cloud Run Deployment (<30 minutes for help desk)**
 
-## Prerequisites
+The deployment is now **one-command simple**. No more asking for redirect URIs or CORS origins before you have the Cloud Run URL. Scripts use **placeholders first**, then automatically update secrets with the real URL after the first deploy. Uses **Artifact Registry** (modern, not legacy gcr.io), robust error checking, and clear output.
 
-- Google Cloud Project with billing enabled
-- Google Workspace domain with admin access
-- `gcloud` CLI installed and configured
-- Docker installed (for local builds)
+Cloud Run injects `PORT=8080`. The app validates required env vars/secrets before starting (`backend/src/utils/env.validation.ts`). Frontend is statically served from the backend in production (`backend/src/index.ts:117`).
 
-## Quick Start
+## Prerequisites (prepare once, ~10 mins)
 
-### 1. Initial Setup
+See **[SECURITY.md](SECURITY.md)** (updated) for full SA creation, domain-wide delegation, OAuth consent screen, and scopes.
 
-```bash
-# Clone and navigate to project
-cd /path/to/project
+1. `gcloud auth login && gcloud config set project YOUR_PROJECT_ID`
+2. Enable APIs (copy-paste):
+   ```bash
+   gcloud services enable run.googleapis.com secretmanager.googleapis.com cloudbuild.googleapis.com \
+     artifactregistry.googleapis.com admin.googleapis.com drive.googleapis.com gmail.googleapis.com \
+     calendar-json.googleapis.com
+   ```
+3. **Service account** `workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com`:
+   - Roles: `roles/secretmanager.secretAccessor`, `roles/run.invoker` (plus Workspace scopes via domain-wide delegation)
+   - Download JSON key to `./sa-key.json`
+4. **OAuth 2.0 Web Client** (GCP Console > Credentials):
+   - Note your Client ID + Secret
+   - Add localhost redirects now; production `/api/auth/callback` added automatically after first deploy
+5. Prepare values:
+   - Strong `JWT_SECRET` (e.g. `openssl rand -base64 32`)
+   - `WORKSPACE_DOMAIN=yourcompany.com`
+   - Optional: `GWS_ALLOWED_DOMAINS=yourcompany.com,subsidiary.com`
 
-# Install dependencies
-npm install
-cd frontend && npm install && cd ..
-cd backend && npm install && cd ..
-```
-
-### 2. Configure GCP
-
-```bash
-# Set your project
-export GCP_PROJECT_ID=your-project-id
-gcloud config set project $GCP_PROJECT_ID
-
-# Enable required APIs
-gcloud services enable \
-  admin.googleapis.com \
-  drive.googleapis.com \
-  gmail.googleapis.com \
-  calendar-json.googleapis.com \
-  secretmanager.googleapis.com \
-  run.googleapis.com \
-  cloudbuild.googleapis.com
-```
-
-### 3. Set Up Secrets
-
-Run the setup script:
+## 1. Setup Secrets (non-interactive preferred)
 
 ```bash
-./setup-secrets.sh $GCP_PROJECT_ID
+# Set env vars for fully non-interactive (recommended for help desk). Script falls back to prompts only for missing values.
+export PROJECT_ID=your-project-id
+export CLIENT_ID=your-oauth-client-id.apps.googleusercontent.com
+export CLIENT_SECRET=your-client-secret
+export JWT_SECRET=your-32-char-random-secret-here
+export WORKSPACE_DOMAIN=yourcompany.com
+export SA_KEY_PATH=./sa-key.json
+# Optional: export REDIRECT_URI="https://workspace-admin-XXXX.a.run.app/api/auth/callback"
+
+chmod +x setup-secrets.sh
+./setup-secrets.sh
 ```
 
-Or manually create secrets (see SECURITY.md for details).
+**What it does** (updated `setup-secrets.sh`):
+- Creates/updates **one Secret Manager secret per value**: `oauth-client-id`, `oauth-client-secret`, `oauth-redirect-uri`, `app-jwt-secret`, `app-workspace-domain`, `app-allowed-domains`, `service-account-key`.
+- Uses **placeholder** for redirect URI/CORS if not provided (`https://*.run.app/api/auth/callback`).
+- Loads SA key JSON directly.
+- Prints **exact** IAM grant commands for `workspace-admin-sa` (run them once).
+- Supports migration from old combined secrets automatically.
+- `GCP_PROJECT_ID` and `SERVICE_ACCOUNT_SECRET_NAME` are handled in deploy (not secrets).
 
-### 4. Create Service Account for Cloud Run
+## 2. Deploy (single command)
 
 ```bash
-gcloud iam service-accounts create workspace-admin-sa \
-  --display-name="Workspace Admin Service Account"
-
-# Grant Secret Manager access
-gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \
-  --member="serviceAccount:workspace-admin-sa@$GCP_PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
+chmod +x deploy.sh
+./deploy.sh $PROJECT_ID us-central1
 ```
 
-### 5. Deploy
+**What the updated `deploy.sh` does**:
+- Validates prerequisites and secrets exist.
+- Builds using `Dockerfile` (multi-stage workspace build: frontend Vite + backend TypeScript → production Node image).
+- Pushes to **Artifact Registry** (`us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/workspace-admin`).
+- Deploys to Cloud Run service `workspace-admin` with optimal settings (`--min-instances=0`, 1 vCPU/1Gi, timeout 300s, cpu-boost).
+- Wires all `--set-secrets` and `--set-env-vars` (no `PORT`).
+- **Automatically**:
+  - Detects existing service URL or fetches new one.
+  - Updates `CORS_ORIGIN` and adds new version to `oauth-redirect-uri` secret with real production URL.
+  - Handles first-deploy vs redeploy gracefully.
+- Prints final URL, verification commands, and any follow-up IAM steps.
 
-#### Option A: Using the deployment script
+**Example successful output**:
+```
+✅ Secrets validated. Building with Dockerfile...
+✅ Pushed to Artifact Registry.
+✅ Deployed to Cloud Run.
+Service URL: https://workspace-admin-abc123.a.run.app
+✅ Updated CORS_ORIGIN and redirect URI secret versions.
+Next steps: Verify OAuth console, test /health, run login flow.
+```
+
+## Verify & Test
 
 ```bash
-./deploy.sh $GCP_PROJECT_ID us-central1
+URL=$(gcloud run services describe workspace-admin --region us-central1 --format='value(status.url)')
+echo "URL: $URL"
+curl -I $URL/health
+# Should show "Environment validation passed" in logs
 ```
 
-#### Option B: Manual deployment
+- Open the URL in browser.
+- Test login (OAuth flow now uses updated redirect).
+- Check Cloud Run Logs for any issues.
+- Add production callback URL to OAuth client in GCP Console if prompted.
 
-```bash
-# Build and push image
-docker build -t gcr.io/$GCP_PROJECT_ID/workspace-admin:latest .
-docker push gcr.io/$GCP_PROJECT_ID/workspace-admin:latest
+## Post-Deploy / Updates
 
-# Deploy to Cloud Run
-gcloud run deploy workspace-admin \
-  --image gcr.io/$GCP_PROJECT_ID/workspace-admin:latest \
-  --platform managed \
-  --region us-central1 \
-  --memory 1Gi \
-  --cpu 1 \
-  --min-instances 0 \
-  --max-instances 2 \
-  --timeout 300 \
-  --service-account workspace-admin-sa@$GCP_PROJECT_ID.iam.gserviceaccount.com \
-  --allow-unauthenticated \
-  --set-env-vars "NODE_ENV=production,PORT=5000" \
-  --set-secrets "GCP_PROJECT_ID=gcp-config/project-id:latest,SERVICE_ACCOUNT_SECRET_NAME=service-account-key:latest,GOOGLE_CLIENT_ID=oauth-config/client-id:latest,GOOGLE_CLIENT_SECRET=oauth-config/client-secret:latest,GOOGLE_REDIRECT_URI=oauth-config/redirect-uri:latest,JWT_SECRET=app-secrets/jwt-secret:latest,WORKSPACE_DOMAIN=app-secrets/workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-secrets/allowed-domains:latest"
-```
+- Redeploy after code changes or secret updates: just run `./deploy.sh $PROJECT_ID us-central1` again (it preserves URL logic).
+- For custom domain: Configure in Cloud Run, update CORS/redirect secrets, redeploy.
+- CI/CD: See updated `.github/workflows/deploy.yml` (uses same logic, prefers Workload Identity Federation over long-lived keys).
 
-### 6. Update OAuth Redirect URI
+## Troubleshooting (common issues only)
 
-After deployment, get your Cloud Run URL:
+- **Secret/IAM errors**: Re-run the exact IAM commands printed by `setup-secrets.sh`. Check service account has correct roles.
+- **"Failed to listen on PORT=8080" or validation failed**: Inspect Cloud Run Logs (most common: missing secret access or bad SA key JSON). Fix IAM, redeploy.
+- **OAuth redirect mismatch**: Ensure exact match in Google Console + secret version. Script updates it automatically on deploy.
+- **Build fails**: `npm install` at root (workspace), Docker daemon running. See `Dockerfile`.
+- **Public access / 403**: Run the `add-iam-policy-binding` for `allUsers` / `roles/run.invoker` (shown by script; org policies may require it post-deploy).
+- **Type conflict on GCP_PROJECT_ID**: `gcloud run services delete workspace-admin --region us-central1 --quiet && ./deploy.sh ...`
+- Logs: Always check Cloud Run > Logs tab first. `/health` endpoint includes config status.
 
-```bash
-gcloud run services describe workspace-admin --region us-central1 --format 'value(status.url)'
-```
+**Updated supporting files**: `service.yaml` (declarative alternative to cloud-run.yaml), `Dockerfile` (cleaned comments), GitHub workflow (Artifact Registry + better auth), `SECURITY.md` (streamlined). Scripts now use `set -euo pipefail`, clear logging, and handle the "don't have URL yet" problem via placeholders + post-deploy update.
 
-Update the OAuth redirect URI in:
-1. GCP Console > APIs & Services > Credentials
-2. Google Workspace Admin Console > Security > API Controls
+This meets the goal: hand the repo + this doc to help desk; they run 2-3 commands after preparing values. Based on 2026 Cloud Run best practices (`--source`, Artifact Registry, Secret Manager best practices for versioned injection).
 
-## Local Development
-
-### Using Docker Compose
-
-```bash
-# Create .env at the repo root with backend variables (OAuth, JWT, WORKSPACE_DOMAIN, etc.)
-# See SECURITY.md — docker-compose loads env_file: .env
-
-docker-compose up
-```
-
-### Manual Development
-
-```bash
-# Terminal 1: Backend
-cd backend
-npm run dev
-
-# Terminal 2: Frontend
-cd frontend
-npm run dev
-```
-
-Access:
-- Frontend: http://localhost:3000
-- Backend API (Docker Compose): http://localhost:5000 — **Note:** `npm run dev` from the repo root runs the backend with default **port 5001** unless `PORT` is set; the Vite dev server proxies `/api` to 5001 (see `frontend/vite.config.mjs`).
-
-## CI/CD with GitHub Actions
-
-1. Add GitHub Secrets:
-   - `GCP_PROJECT_ID`: Your GCP project ID
-   - `GCP_SA_KEY`: Service account key JSON (for GitHub Actions)
-
-2. Push to `main` branch to trigger deployment
-
-## Cost Optimization
-
-The application is architected for minimal GCP costs while maintaining enterprise-grade performance:
-
-### Cloud Run Configuration
-- **Min instances**: 0 (scales to zero when idle - **eliminates idle costs**)
-- **Max instances**: 2 (prevents runaway scaling costs)
-- **Memory**: 1Gi (optimal for Node.js admin tool)
-- **CPU**: 1 vCPU (sufficient compute for API operations)
-- **Timeout**: 300s (5 minutes - balances cost vs functionality)
-
-### Free Tier Coverage
-The app stays within GCP free tiers for typical usage:
-- **Cloud Run**: 400K GB-seconds + 200K vCPU-seconds/month
-- **Secret Manager**: 6 active secrets
-- **Container Registry**: 5GB storage + 5GB pulls/month
-- **Cloud Logging**: 50GB logs/month
-- **Cloud Build**: 120 build-minutes/month (for deployments)
-
-### Google Workspace API Costs
-All Google Workspace APIs used have generous free tiers:
-- **Admin SDK**: 1B requests/month
-- **Drive API**: 1B requests/month
-- **Gmail API**: 1B requests/month
-- **Calendar API**: 1M requests/month
-
-### Expected Monthly Costs by Usage
-
-| Usage Pattern | Monthly Cost | Description |
-|----------------|--------------|-------------|
-| **Free Tier** | **$0** | < 10K admin sessions/month |
-| **Light Usage** | **$1-5** | 1-2 admins, daily operations |
-| **Moderate Usage** | **$5-15** | 5-10 admins, regular usage |
-| **Heavy Usage** | **$15-50** | 20+ admins, constant operations |
-
-### Cost-Saving Architecture Decisions
-- **Single Cloud Run service** (no separate frontend/backend hosting)
-- **Zero-scaling** (no idle compute costs)
-- **Efficient API pagination** (minimizes API calls)
-- **Streaming exports** (handles large datasets without memory bloat)
-- **Audit logging to Cloud Logging** (free tier compliant)
-
-### Monitoring Costs
-Set up billing alerts in GCP Console to monitor usage and costs, though they should remain minimal for typical admin tool usage.
-
-## Troubleshooting
-
-### Build fails
-
-- Check Docker is running
-- Verify all dependencies are in package.json
-- Check Dockerfile syntax
-
-### Deployment fails
-
-- Verify service account has correct permissions
-- Check secrets exist in Secret Manager
-- Verify API quotas haven't been exceeded
-
-### Application errors
-
-- Check Cloud Run logs: `gcloud run services logs read workspace-admin --region us-central1`
-- Verify all secrets are correctly configured
-- Check OAuth redirect URI matches Cloud Run URL
-
-### Authentication issues
-
-- Verify domain-wide delegation is set up
-- Check service account key is valid
-- Ensure OAuth consent screen is configured
-
-## Monitoring
-
-View logs:
-```bash
-gcloud run services logs read workspace-admin --region us-central1 --limit 50
-```
-
-View metrics in GCP Console:
-- Cloud Run > workspace-admin > Metrics
-
-## Updating
-
-To update the application:
-
-```bash
-# Make changes, then:
-./deploy.sh $GCP_PROJECT_ID us-central1
-```
-
-Or use GitHub Actions (if configured):
-```bash
-git push origin main
-```
+See also [QUICK_START_UI.md](QUICK_START_UI.md) for local/demo and [GWS_HARDENING.md](GWS_HARDENING.md).

@@ -11,93 +11,46 @@ Sign-in uses Google OAuth; API access uses a **service account with domain-wide 
 
 Network-level controls (for example **Identity-Aware Proxy** and OAuth client restrictions) are separate; they do not replace this in-app enforcement.
 
-## Prerequisites
+## Prerequisites & Setup (Simplified)
 
-1. Google Cloud Project with billing enabled
-2. Google Workspace domain with admin access
-3. Service Account with domain-wide delegation
+**Follow [DEPLOYMENT.md](DEPLOYMENT.md) for the complete <30min help-desk flow.** It uses `./setup-secrets.sh` (now non-interactive with env var support and placeholders) and `./deploy.sh`.
 
-## Step 1: Enable Required APIs
+Key security setup (one-time):
 
-Enable the following APIs in your GCP project:
+1. **Enable APIs** (included in DEPLOYMENT.md prerequisites):
+   ```bash
+   gcloud services enable run.googleapis.com secretmanager.googleapis.com cloudbuild.googleapis.com \
+     artifactregistry.googleapis.com admin.googleapis.com drive.googleapis.com gmail.googleapis.com calendar-json.googleapis.com
+   ```
 
-```bash
-gcloud services enable \
-  admin.googleapis.com \
-  drive.googleapis.com \
-  gmail.googleapis.com \
-  calendar-json.googleapis.com \
-  secretmanager.googleapis.com \
-  run.googleapis.com \
-  cloudbuild.googleapis.com
-```
+2. **Service Account (`workspace-admin-sa`)**:
+   - Create in IAM & Admin > Service Accounts.
+   - Grant `roles/secretmanager.secretAccessor` and `roles/run.invoker`.
+   - Set up **domain-wide delegation** in Google Workspace Admin Console > Security > API Controls:
+     - Client ID from SA JSON.
+     - Scopes: `https://www.googleapis.com/auth/admin.directory.user`, `admin.directory.group`, `drive`, `gmail.settings.basic`, `calendar`.
+   - Download JSON key (`sa-key.json`) — passed to `setup-secrets.sh`.
 
-## Step 2: Create Service Account
+3. **OAuth 2.0 Web Client** (APIs & Services > Credentials):
+   - Application type: Web application.
+   - Authorized redirect URIs: `http://localhost:5001/api/auth/callback` (dev), production `https://<service-url>/api/auth/callback` (updated automatically by deploy.sh).
+   - Configure consent screen with appropriate scopes (userinfo.email, profile, admin.directory.*.readonly, etc.).
 
-1. Go to IAM & Admin > Service Accounts in GCP Console
-2. Create a new service account
-3. Grant the following roles:
-   - Secret Manager Secret Accessor
-   - Cloud Run Invoker
-4. Download the JSON key file
+4. **Secrets**:
+   - Run `./setup-secrets.sh` (or with env vars). It creates **one secret per value** for unambiguous Cloud Run `--set-secrets` injection (`:latest` or specific version).
+   - Script handles SA key JSON, JWT (auto-generates if missing), placeholders for redirect/CORS.
+   - **Run the printed IAM commands** to grant `roles/secretmanager.secretAccessor` to the Cloud Run SA on each secret.
+   - `deploy.sh` automatically adds versions for production URLs.
 
-## Step 3: Set Up Domain-Wide Delegation
+**Production mapping** (in `deploy.sh` and `cloud-run.yaml` / `service.yaml`):
+- `GOOGLE_CLIENT_ID` ← `oauth-client-id:latest`
+- Similar for secret, redirect, JWT, domain, allowed domains.
+- SA key loaded at runtime via `@google-cloud/secret-manager` (`backend/src/config/gcp.config.ts`).
+- `GCP_PROJECT_ID`, `SERVICE_ACCOUNT_SECRET_NAME` set as literal env vars.
 
-1. In Google Workspace Admin Console:
-   - Go to Security > API Controls > Domain-wide Delegation
-   - Click "Add new"
-   - Enter the Service Account Client ID (from the JSON key)
-   - Add the following OAuth scopes:
-     - https://www.googleapis.com/auth/admin.directory.user
-     - https://www.googleapis.com/auth/admin.directory.group
-     - https://www.googleapis.com/auth/drive
-     - https://www.googleapis.com/auth/gmail.settings.basic
-     - https://www.googleapis.com/auth/calendar
-   - Click "Authorize"
+See DEPLOYMENT.md for exact commands. Old combined secrets (`oauth-config` etc.) are supported via migration in the new script.
 
-## Step 4: Store Service Account Key in Secret Manager
-
-```bash
-# Create secret
-gcloud secrets create service-account-key \
-  --data-file=path/to/service-account-key.json \
-  --project=YOUR_PROJECT_ID
-
-# Grant access to Cloud Run service account
-gcloud secrets add-iam-binding service-account-key \
-  --member="serviceAccount:workspace-admin-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
-```
-
-## Step 5: Create OAuth2 Credentials
-
-1. Go to APIs & Services > Credentials in GCP Console
-2. Create OAuth 2.0 Client ID
-3. Application type: Web application
-4. **Authorized redirect URIs** for the Google OAuth **web client** (must match **`GOOGLE_REDIRECT_URI`** in the backend—the Google OAuth flow calls **`GET /api/auth/callback`** on the **API** host first; the API then redirects the browser to **`${CORS_ORIGIN}/auth/callback`** with tokens, which the SPA handles—same component as `/login`):
-   - `http://localhost:5001/api/auth/callback` — backend default when running `npm run dev` in `backend/` (port `5001`)
-   - `http://localhost:5000/api/auth/callback` — backend on host port `5000` (e.g. **Docker Compose**)
-   - `https://YOUR-CLOUD-RUN-URL/api/auth/callback` — production Cloud Run
-5. Download the credentials
-
-## Step 6: Store secrets in Secret Manager
-
-Production deploys map environment variables to Secret Manager entries via **`--set-secrets`** (exact names and version aliases are in **[DEPLOYMENT.md](./DEPLOYMENT.md)** and **`deploy.sh`**). At minimum you need:
-
-- **`service-account-key`** — JSON for the delegated service account  
-- **OAuth values** — client ID, secret, redirect URI (stored as separate versions on the secrets your deploy references)  
-- **JWT** and **workspace domain** — as referenced by Cloud Run  
-- **GCP project id** — for the logging client and Secret Manager lookups  
-
-**Recommended:** run the interactive script from the repo root (creates or updates secrets and versions in the order `setup-secrets.sh` expects):
-
-```bash
-./setup-secrets.sh YOUR_PROJECT_ID
-```
-
-Avoid copy-pasting duplicate `gcloud secrets create oauth-config` lines—each secret name can only be created once; additional values use `gcloud secrets versions add`.
-
-## Step 7: Create Cloud Run Service Account
+## Application Roles & Permissions
 
 ```bash
 gcloud iam service-accounts create workspace-admin-sa \
