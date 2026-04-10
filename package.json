@@ -1,0 +1,26 @@
+{
+  "name": "google-workspace-admin-ui",
+  "version": "1.0.0",
+  "description": "Google Workspace Admin Management UI - GAM alternative with web interface",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "test": "cd backend && npm test",
+    "test:security": "cd backend && npm run test:security",
+    "test:backend": "cd backend && npm test",
+    "lint": "cd backend && npm run lint",
+    "type-check": "cd backend && npm run type-check"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,0 +1,1046 @@
+import { useEffect, useState, useMemo, useRef } from 'react';
+import {
+  Box,
+  Typography,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  Select,
+  MenuItem,
+  IconButton,
+  Button,
+  Alert,
+  Snackbar,
+  TablePagination,
+  Checkbox,
+  Tooltip,
+  Popover,
+  Grid,
+  Link,
+  Divider,
+  InputAdornment,
+  useMediaQuery,
+} from '@mui/material';
+import {
+  Trash2,
+  Plus,
+  Pencil,
+  Search,
+  RefreshCw,
+  ListFilter,
+  Calendar,
+  ExternalLink,
+  X,
+  Check,
+} from 'lucide-react';
+import { apiClient } from '../services/api.client';
+import { isDemoMode, sharedDrives as demoSharedDrives, sharedDrivePermissions as demoSharedDrivePermissions } from '../data/demoData';
+import { useTable, TableColumn } from '../hooks/useTable.tsx';
+import { ExportButton } from '../components/ExportButton';
+import { DateRangeCalendar } from '../components/DateRangeCalendar';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
+import { tablePaginationProps } from '../components/ui/tablePaginationProps';
+import { ColumnHeader } from '../components/ui/ColumnHeader';
+import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
+import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
+import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
+import { DotLabel } from '../components/StatusDot';
+import { FilterToken } from '../components/ui/FilterToken';
+import { useTheme } from '@mui/material/styles';
+
+interface SharedDrive {
+  id: string;
+  name: string;
+  kind: string;
+  createdTime?: string;
+  hidden?: boolean;
+  organizationalUnit?: string;
+  creator?: string;
+  storageUsed?: number | string;
+  storageLimit?: number | string;
+  itemCap?: number | string;
+}
+
+interface SharedDrivePermission {
+  id: string;
+  type: 'user' | 'group' | 'domain' | 'anyone';
+  role: 'organizer' | 'fileOrganizer' | 'writer' | 'commenter' | 'reader';
+  emailAddress?: string;
+  domain?: string;
+  displayName?: string;
+  deleted?: boolean;
+}
+
+export function SharedDrives() {
+  const muiTheme = useTheme();
+  const isMdUp = useMediaQuery(muiTheme.breakpoints.up('md'));
+  const dialogPaperSx = {
+    fontFamily: T.font,
+    bgcolor: pick(muiTheme, T.surface, '#18181b'),
+    backgroundImage: 'none',
+    border: `1px solid ${pick(muiTheme, T.border, '#3f3f46')}`,
+    borderRadius: T.radiusLg,
+    '& .MuiDialogContent-root': { pt: 0 },
+    '& .MuiTypography-root, & .MuiInputBase-root': { fontFamily: T.font },
+  };
+  const [drives, setDrives] = useState<SharedDrive[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedDrive, setSelectedDrive] = useState<SharedDrive | null>(null);
+  const [permissions, setPermissions] = useState<SharedDrivePermission[]>([]);
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false);
+  const [addPermissionDialogOpen, setAddPermissionDialogOpen] = useState(false);
+  const [sdPermissionsPage, setSdPermissionsPage] = useState(0);
+  const [sdPermissionsRowsPerPage, setSdPermissionsRowsPerPage] = useState(DIALOG_LIST_PAGE_SIZE);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+    open: false,
+    message: '',
+    severity: 'success',
+  });
+
+  // Add permission form state
+  const [newPermissionType, setNewPermissionType] = useState<'user' | 'group' | 'domain'>('user');
+  const [newPermissionRole, setNewPermissionRole] = useState<'organizer' | 'fileOrganizer' | 'writer' | 'commenter' | 'reader'>('reader');
+  const [newPermissionEmail, setNewPermissionEmail] = useState('');
+  const [newPermissionDomain, setNewPermissionDomain] = useState('');
+  const [selectedDriveIds, setSelectedDriveIds] = useState<Set<string>>(new Set());
+  const [selectedPermissionIds, setSelectedPermissionIds] = useState<Set<string>>(new Set());
+
+  interface SharedDriveFiltersType {
+    name: string;
+    organizationalUnit: string;
+    status: string;
+    dateCreatedFrom: string;
+    dateCreatedTo: string;
+    creator: string;
+    storageUsed: string;
+    storageLimit: string;
+    itemCap: string;
+    sharedDriveId: string;
+  }
+  const [filters, setFilters] = useState<SharedDriveFiltersType>({
+    name: '',
+    organizationalUnit: '',
+    status: '',
+    dateCreatedFrom: '',
+    dateCreatedTo: '',
+    creator: '',
+    storageUsed: '',
+    storageLimit: '',
+    itemCap: '',
+    sharedDriveId: '',
+  });
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const exportAllCSVRef = useRef<() => void>(() => {});
+  const exportSelectedCSVRef = useRef<() => void>(() => {});
+  const [dateCreatedAnchor, setDateCreatedAnchor] = useState<HTMLElement | null>(null);
+
+  const formatFilterDateRange = (from: string, to: string): string => {
+    if (!from && !to) return 'Any';
+    const fmt = (s: string) => { const d = new Date(`${s}T12:00:00`); return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
+    if (!to || from === to) return fmt(from);
+    return `${fmt(from)} \u2013 ${fmt(to)}`;
+  };
+
+  const handleFilterChange = (key: keyof SharedDriveFiltersType, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+  const hasActiveFilters = () => Object.values(filters).some((v) => v.trim() !== '');
+  const clearFilters = () => {
+    setFilters({
+      name: '',
+      organizationalUnit: '',
+      status: '',
+      dateCreatedFrom: '',
+      dateCreatedTo: '',
+      creator: '',
+      storageUsed: '',
+      storageLimit: '',
+      itemCap: '',
+      sharedDriveId: '',
+    });
+  };
+
+  const activeFilterLabels = useMemo(() => {
+    const tokens: Array<{ label: string; key: keyof SharedDriveFiltersType }> = [];
+    if (filters.name) tokens.push({ label: `Name: ${filters.name}`, key: 'name' });
+    if (filters.organizationalUnit) tokens.push({ label: `OU: ${filters.organizationalUnit}`, key: 'organizationalUnit' });
+    if (filters.status) tokens.push({ label: filters.status === 'active' ? 'Active' : 'Hidden', key: 'status' });
+    if (filters.dateCreatedFrom) {
+      const fmt = (s: string) => { const d = new Date(`${s}T12:00:00`); return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
+      tokens.push({ label: `Created ${fmt(filters.dateCreatedFrom)}${filters.dateCreatedTo && filters.dateCreatedTo !== filters.dateCreatedFrom ? ` \u2013 ${fmt(filters.dateCreatedTo)}` : ''}`, key: 'dateCreatedFrom' });
+    }
+    if (filters.creator) tokens.push({ label: `Creator: ${filters.creator}`, key: 'creator' });
+    if (filters.storageUsed) tokens.push({ label: `Storage \u2265 ${filters.storageUsed}`, key: 'storageUsed' });
+    if (filters.storageLimit) tokens.push({ label: `Limit \u2264 ${filters.storageLimit}`, key: 'storageLimit' });
+    if (filters.itemCap) tokens.push({ label: `Cap \u2265 ${filters.itemCap}`, key: 'itemCap' });
+    if (filters.sharedDriveId) tokens.push({ label: `ID: ${filters.sharedDriveId}`, key: 'sharedDriveId' });
+    return tokens;
+  }, [filters]);
+
+  const filteredByColumnFilters = useMemo(() => {
+    return drives.filter((d) => {
+      if (filters.name.trim() && !String(d.name ?? '').toLowerCase().includes(filters.name.toLowerCase())) return false;
+      if (filters.organizationalUnit.trim() && !String(d.organizationalUnit ?? '').toLowerCase().includes(filters.organizationalUnit.toLowerCase())) return false;
+      if (filters.status === 'active' && d.hidden) return false;
+      if (filters.status === 'hidden' && !d.hidden) return false;
+      if (filters.dateCreatedFrom.trim() || filters.dateCreatedTo.trim()) {
+        if (!d.createdTime) return false;
+        const startStr = filters.dateCreatedFrom || filters.dateCreatedTo;
+        const endStr = filters.dateCreatedTo || filters.dateCreatedFrom;
+        const from = new Date(startStr); from.setHours(0, 0, 0, 0);
+        const to = new Date(endStr); to.setHours(23, 59, 59, 999);
+        const t = new Date(d.createdTime);
+        if (t < from || t > to) return false;
+      }
+      if (filters.creator.trim() && !String(d.creator ?? '').toLowerCase().includes(filters.creator.toLowerCase())) return false;
+      if (filters.storageUsed.trim()) {
+        const num = Number(filters.storageUsed);
+        if (Number.isNaN(num) || (typeof d.storageUsed === 'number' && d.storageUsed < num)) return false;
+      }
+      if (filters.storageLimit.trim()) {
+        const num = Number(filters.storageLimit);
+        if (Number.isNaN(num) || (typeof d.storageLimit === 'number' && d.storageLimit > num)) return false;
+      }
+      if (filters.itemCap.trim()) {
+        const num = Number(filters.itemCap);
+        if (Number.isNaN(num) || (typeof d.itemCap === 'number' && d.itemCap < num)) return false;
+      }
+      if (filters.sharedDriveId.trim() && !String(d.id ?? '').toLowerCase().includes(filters.sharedDriveId.toLowerCase())) return false;
+      return true;
+    });
+  }, [drives, filters]);
+
+  // Table columns (Name, Status, Date created, Creator — mirroring Drive File Explorer; Org Unit, Drive ID, Storage in Details dialog)
+  const columns: TableColumn<SharedDrive>[] = [
+    { id: 'name', label: 'Name', sortable: true, getValue: (row) => row.name },
+    { id: 'hidden', label: 'Status', sortable: true, getValue: (row) => row.hidden ? 'Hidden' : 'Active' },
+    { id: 'createdTime', label: 'Date created', sortable: true, getValue: (row) => row.createdTime ? new Date(row.createdTime).getTime() : 0 },
+    { id: 'creator', label: 'Creator', sortable: true, getValue: (row) => row.creator ?? '' },
+  ];
+
+  const getSharedDriveUrl = (driveId: string) => `https://drive.google.com/drive/folders/${driveId}`;
+
+  // Use table hook
+  const {
+    data: tableData,
+    page,
+    setPage,
+    rowsPerPage,
+    setRowsPerPage,
+    searchTerm,
+    setSearchTerm,
+    sortConfig,
+    handleSort,
+    exportToCSV,
+    totalRows,
+  } = useTable(filteredByColumnFilters, columns, 'name');
+
+  useEffect(() => {
+    fetchSharedDrives();
+  }, []);
+
+
+  const isDriveSelected = (drive: SharedDrive) => selectedDriveIds.has(drive.id);
+  const handleSelectDrive = (drive: SharedDrive) => {
+    setSelectedDriveIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(drive.id)) next.delete(drive.id);
+      else next.add(drive.id);
+      return next;
+    });
+  };
+  const handleSelectAllDrives = () => {
+    if (selectedDriveIds.size === tableData.length) {
+      setSelectedDriveIds(new Set());
+    } else {
+      setSelectedDriveIds(new Set(tableData.map((d) => d.id)));
+    }
+  };
+
+  const handleExportAllCSV = () => { exportToCSV(`SharedDrives${searchTerm || hasActiveFilters() ? '_filtered' : ''}_${new Date().toISOString().split('T')[0]}.csv`); setSnackbar({ open: true, message: 'CSV downloading now.', severity: 'success' }); };
+  const handleExportSelectedCSV = () => {
+    const selected = tableData.filter((d) => selectedDriveIds.has(d.id));
+    if (selected.length === 0) return;
+    const csvData = selected.map((d) => ({
+      Name: d.name,
+      ID: d.id,
+      Created: d.createdTime ? new Date(d.createdTime).toISOString() : '',
+      Status: d.hidden ? 'Hidden' : 'Active',
+    }));
+    const headers = Object.keys(csvData[0] || {});
+    const rows = csvData.map((row) =>
+      headers
+        .map((h) => {
+          const v = row[h as keyof typeof row];
+          const s = v === null || v === undefined ? '' : String(v);
+          return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
+        })
+        .join(',')
+    );
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `shared-drives-selected-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    setSnackbar({ open: true, message: 'Selected drives exported.', severity: 'success' });
+  };
+  const handleExportFilteredCSV = () => { exportToCSV(`SharedDrives_filtered_${new Date().toISOString().split('T')[0]}.csv`); setSnackbar({ open: true, message: 'Filtered export downloading.', severity: 'success' }); };
+  const handleExportAllDrive = async () => {
+    try {
+      const response = await apiClient.post('/drive/shared-drives/export/drive');
+      if (response.data?.webViewLink) window.open(response.data.webViewLink, '_blank');
+      setSnackbar({ open: true, message: 'Saved to Google Drive.', severity: 'success' });
+    } catch (err: any) {
+      console.error(err);
+      setSnackbar({ open: true, message: err?.response?.data?.error || 'Drive export failed.', severity: 'error' });
+    }
+  };
+  const handleExportSelectedDrive = async () => {
+    if (selectedDriveIds.size === 0) return;
+    try {
+      const response = await apiClient.post('/drive/shared-drives/export/selected/drive', {
+        driveIds: Array.from(selectedDriveIds),
+      });
+      if (response.data?.webViewLink) window.open(response.data.webViewLink, '_blank');
+      setSnackbar({ open: true, message: 'Selection saved to Google Drive.', severity: 'success' });
+    } catch (err: any) {
+      console.error(err);
+      setSnackbar({ open: true, message: err?.response?.data?.error || 'Drive export failed.', severity: 'error' });
+    }
+  };
+  const handleExportFilteredDrive = async () => {
+    try {
+      const response = await apiClient.post('/drive/shared-drives/export/drive');
+      if (response.data?.webViewLink) window.open(response.data.webViewLink, '_blank');
+      setSnackbar({ open: true, message: 'Filtered export saved to Google Drive.', severity: 'success' });
+    } catch (err: any) {
+      console.error(err);
+      setSnackbar({ open: true, message: err?.response?.data?.error || 'Drive export failed.', severity: 'error' });
+    }
+  };
+
+  exportAllCSVRef.current = handleExportAllCSV;
+  exportSelectedCSVRef.current = handleExportSelectedCSV;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        setFiltersVisible((v) => !v);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        e.stopPropagation();
+        const fn = selectedDriveIds.size > 0 ? exportSelectedCSVRef.current : exportAllCSVRef.current;
+        if (typeof fn === 'function') fn();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
+        e.preventDefault();
+        if (selectedDriveIds.size > 0) handleExportSelectedDrive();
+        else if (Boolean(searchTerm) || hasActiveFilters()) handleExportFilteredDrive();
+        else handleExportAllDrive();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [selectedDriveIds.size]);
+
+  useEffect(() => {
+    if (!permissionsDialogOpen) return;
+    setSdPermissionsPage(0);
+  }, [permissionsDialogOpen, selectedDrive?.id]);
+
+  useEffect(() => {
+    const max = Math.max(0, Math.ceil(permissions.length / sdPermissionsRowsPerPage) - 1);
+    setSdPermissionsPage((p) => Math.min(p, max));
+  }, [permissions.length, sdPermissionsRowsPerPage]);
+
+  const fetchSharedDrives = async () => {
+    try {
+      setLoading(true);
+      const response = await apiClient.get('/drive/shared-drives');
+      setDrives(response.data);
+    } catch (error) {
+      console.error('Error fetching shared drives:', error);
+      // In demo mode, show sample data from central demo data
+      if (isDemoMode()) {
+        setDrives(demoSharedDrives as SharedDrive[]);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchPermissions = async (driveId: string) => {
+    try {
+      setPermissionsLoading(true);
+      const response = await apiClient.get(`/drive/shared-drives/${driveId}/permissions`);
+      setPermissions(response.data);
+    } catch (error) {
+      console.error('Error fetching permissions:', error);
+      // In demo mode, show sample data from central demo data
+      if (isDemoMode()) {
+        setPermissions(demoSharedDrivePermissions as SharedDrivePermission[]);
+      }
+    } finally {
+      setPermissionsLoading(false);
+    }
+  };
+
+  const handleViewPermissions = async (drive: SharedDrive) => {
+    setSelectedDrive(drive);
+    setPermissionsDialogOpen(true);
+    await fetchPermissions(drive.id);
+  };
+
+  const handleClosePermissionsDialog = () => {
+    setPermissionsDialogOpen(false);
+    setSelectedDrive(null);
+    setPermissions([]);
+    setSelectedPermissionIds(new Set());
+  };
+
+  const handleAddPermission = async () => {
+    if (!selectedDrive) return;
+
+    if ((newPermissionType === 'user' || newPermissionType === 'group') && !newPermissionEmail.trim()) {
+      setSnackbar({ open: true, message: 'Email address is required', severity: 'error' });
+      return;
+    }
+
+    if (newPermissionType === 'domain' && !newPermissionDomain.trim()) {
+      setSnackbar({ open: true, message: 'Domain is required', severity: 'error' });
+      return;
+    }
+
+    try {
+      await apiClient.post(`/drive/shared-drives/${selectedDrive.id}/permissions`, {
+        type: newPermissionType,
+        role: newPermissionRole,
+        emailAddress: newPermissionType === 'user' || newPermissionType === 'group' ? newPermissionEmail.trim() : undefined,
+        domain: newPermissionType === 'domain' ? newPermissionDomain.trim() : undefined,
+      });
+
+      setSnackbar({ open: true, message: 'Permission added successfully', severity: 'success' });
+      setAddPermissionDialogOpen(false);
+      setNewPermissionEmail('');
+      setNewPermissionDomain('');
+      await fetchPermissions(selectedDrive.id);
+    } catch (error: any) {
+      console.error('Error adding permission:', error);
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.error || 'Failed to add permission',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleRemovePermission = async (permissionId: string) => {
+    if (!selectedDrive) return;
+    if (!confirm('Are you sure you want to remove this permission?')) return;
+
+    try {
+      await apiClient.delete(`/drive/shared-drives/${selectedDrive.id}/permissions/${permissionId}`);
+      setPermissions((prev) => prev.filter((p) => p.id !== permissionId));
+      setSelectedPermissionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(permissionId);
+        return next;
+      });
+      setSnackbar({ open: true, message: 'Permission removed successfully', severity: 'success' });
+    } catch (error: any) {
+      console.error('Error removing permission:', error);
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.error || 'Failed to remove permission',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleBulkRemovePermissions = async () => {
+    if (!selectedDrive || selectedPermissionIds.size === 0) return;
+    const count = selectedPermissionIds.size;
+    if (!confirm(`Remove ${count} permission(s)?`)) return;
+    try {
+      for (const id of selectedPermissionIds) {
+        await apiClient.delete(`/drive/shared-drives/${selectedDrive.id}/permissions/${id}`);
+      }
+      setPermissions((prev) => prev.filter((p) => !selectedPermissionIds.has(p.id)));
+      setSelectedPermissionIds(new Set());
+      setSnackbar({ open: true, message: `${count} permission(s) removed`, severity: 'success' });
+    } catch (error: any) {
+      console.error('Error bulk removing permissions:', error);
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.error || 'Failed to remove some permissions',
+        severity: 'error',
+      });
+    }
+  };
+
+  const togglePermissionSelected = (permissionId: string) => {
+    setSelectedPermissionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(permissionId)) next.delete(permissionId);
+      else next.add(permissionId);
+      return next;
+    });
+  };
+
+  const selectAllPermissions = (checked: boolean) => {
+    setSelectedPermissionIds(checked ? new Set(permissions.map((p) => p.id)) : new Set());
+  };
+
+  const getRoleDotColor = (role: string) => {
+    switch (role) {
+      case 'organizer':
+        return T.danger;
+      case 'fileOrganizer':
+        return T.warning;
+      case 'writer':
+        return T.accent;
+      case 'commenter':
+        return '#0ea5e9';
+      case 'reader':
+        return textTertiary(muiTheme);
+      default:
+        return textTertiary(muiTheme);
+    }
+  };
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'user':
+        return 'User';
+      case 'group':
+        return 'Group';
+      case 'domain':
+        return 'Domain';
+      case 'anyone':
+        return 'Anyone';
+      default:
+        return type;
+    }
+  };
+
+  const sdPermMaxPage = Math.max(0, Math.ceil(permissions.length / sdPermissionsRowsPerPage) - 1);
+  const sdPermPageSafe = Math.min(sdPermissionsPage, sdPermMaxPage);
+  const pagedSharedDrivePermissions = useMemo(() => {
+    const start = sdPermPageSafe * sdPermissionsRowsPerPage;
+    return permissions.slice(start, start + sdPermissionsRowsPerPage);
+  }, [permissions, sdPermPageSafe, sdPermissionsRowsPerPage]);
+
+  return (
+    <Box sx={{ fontFamily: T.font, minHeight: '100vh' }}>
+      {/* Header — always visible */}
+      <Box sx={{ mb: 3, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { md: 'center' }, justifyContent: 'space-between' }}>
+        <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (theme: any) => pick(theme, T.text, '#fafafa') }}>
+          Shared drives
+        </Typography>
+      </Box>
+
+      {/* Toolbar — always visible */}
+      <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <TextField
+          size="small"
+          placeholder="Search shared drives..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Box component="span" sx={{ display: 'flex', color: (t: any) => textTertiary(t) }}>
+                  <Search size={18} strokeWidth={1.75} />
+                </Box>
+              </InputAdornment>
+            ),
+            ...(searchTerm ? { endAdornment: (
+              <InputAdornment position="end">
+                <Box component="span" onClick={() => setSearchTerm('')} sx={{ display: 'flex', cursor: 'pointer', color: (t: any) => textTertiary(t) }}>
+                  <X size={16} strokeWidth={2} />
+                </Box>
+              </InputAdornment>
+            ) } : {}),
+          }}
+          sx={(theme: any) => ({
+            flex: '1 1 240px',
+            maxWidth: 360,
+            '& .MuiOutlinedInput-root': {
+              fontFamily: T.font,
+              fontSize: '0.8125rem',
+              borderRadius: T.radius,
+              bgcolor: pick(theme, T.surface, '#27272a'),
+              '& fieldset': { borderColor: pick(theme, T.border, '#3f3f46') },
+              '&:hover fieldset': { borderColor: pick(theme, T.textTertiary, '#52525b') },
+            },
+          })}
+        />
+
+        <Tooltip title="Filters">
+          <IconButton
+            size="small"
+            onClick={() => setFiltersVisible((v) => !v)}
+            sx={(theme: any) => ({
+              color: filtersVisible || hasActiveFilters() ? T.accent : textSecondary(theme),
+              bgcolor: filtersVisible ? pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)') : 'transparent',
+              borderRadius: T.radiusSm,
+              '&:hover': { bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)') },
+            })}
+          >
+            <ListFilter size={18} strokeWidth={1.75} />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Refresh data">
+          <IconButton size="small" onClick={fetchSharedDrives} aria-label="Refresh data" sx={{ color: (t: any) => textSecondary(t) }}>
+            <RefreshCw size={18} strokeWidth={1.75} />
+          </IconButton>
+        </Tooltip>
+
+        <Box sx={{ flex: 1 }} />
+
+        {selectedDriveIds.size > 0 && (
+          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: T.accent }}>
+            {selectedDriveIds.size} selected
+          </Typography>
+        )}
+
+        <ExportButton
+          iconOnly={!isMdUp}
+          tooltipTitle="Export"
+          totalItems={tableData.length}
+          selectedCount={selectedDriveIds.size}
+          hasFilters={Boolean(searchTerm) || hasActiveFilters()}
+          onExportAllCSV={handleExportAllCSV}
+          onExportSelectedCSV={handleExportSelectedCSV}
+          onExportFilteredCSV={handleExportFilteredCSV}
+          onExportAllDrive={handleExportAllDrive}
+          onExportSelectedDrive={handleExportSelectedDrive}
+          onExportFilteredDrive={handleExportFilteredDrive}
+          disabled={tableData.length === 0}
+          triggerSx={exportToolbarButtonSx()}
+        />
+      </Box>
+
+      {/* Filter panel (collapsible) */}
+      <Box sx={{ overflow: 'hidden', maxHeight: filtersVisible ? 400 : 0, transition: 'max-height 0.25s ease, opacity 0.2s ease', opacity: filtersVisible ? 1 : 0, mb: filtersVisible ? 2 : 0 }}>
+        <Box sx={(theme: any) => ({
+          display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center',
+          p: 1.5, borderRadius: T.radius, border: `1px solid ${pick(theme, T.border, '#3f3f46')}`, bgcolor: pick(theme, T.surface, '#27272a'),
+        })}>
+          <TextField size="small" placeholder="Name..." value={filters.name} onChange={(e) => handleFilterChange('name', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 120, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
+          <TextField size="small" placeholder="Org unit..." value={filters.organizationalUnit} onChange={(e) => handleFilterChange('organizationalUnit', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 120, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
+          <FormControl size="small" sx={{ minWidth: 110 }}>
+            <Select
+              value={filters.status} displayEmpty
+              renderValue={(v) => (v ? (v === 'active' ? 'Active' : 'Hidden') : 'Status')}
+              onChange={(e) => handleFilterChange('status', e.target.value)}
+              MenuProps={selectMenuProps}
+              sx={{ fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }}
+            >
+              <MenuItem value="">Any</MenuItem>
+              <MenuItem value="active">Active</MenuItem>
+              <MenuItem value="hidden">Hidden</MenuItem>
+            </Select>
+          </FormControl>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Typography component="span" sx={{ fontFamily: T.font, fontSize: '0.75rem', fontWeight: 500, color: (t: any) => textTertiary(t), whiteSpace: 'nowrap' }}>
+              Date created
+            </Typography>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<Calendar size={18} strokeWidth={1.75} />}
+              onClick={(e) => setDateCreatedAnchor(e.currentTarget)}
+              sx={(theme: any) => ({
+                fontFamily: T.font,
+                fontSize: '0.75rem',
+                textTransform: 'none',
+                borderRadius: T.radiusSm,
+                borderColor: pick(theme, T.border, '#5f6368'),
+                color: textSecondary(theme),
+                py: 0.5,
+                '&:hover': {
+                  borderColor: pick(theme, T.accent, '#8ab4f8'),
+                  bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.08)'),
+                },
+              })}
+            >
+              {formatFilterDateRange(filters.dateCreatedFrom, filters.dateCreatedTo)}
+            </Button>
+          </Box>
+          <Popover open={!!dateCreatedAnchor} anchorEl={dateCreatedAnchor} onClose={() => setDateCreatedAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
+            <Box sx={{ p: 2 }}>
+              <DateRangeCalendar mode="single-or-range" value={{ from: filters.dateCreatedFrom, to: filters.dateCreatedTo }} onChange={(v) => { const r = typeof v === 'string' ? { from: v, to: v } : v; handleFilterChange('dateCreatedFrom', r.from); handleFilterChange('dateCreatedTo', r.to); }} onClose={() => setDateCreatedAnchor(null)} />
+            </Box>
+          </Popover>
+          <TextField size="small" placeholder="Creator..." value={filters.creator} onChange={(e) => handleFilterChange('creator', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 120, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
+          <TextField size="small" placeholder="Storage min..." value={filters.storageUsed} onChange={(e) => handleFilterChange('storageUsed', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 100, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
+          <TextField size="small" placeholder="Storage max..." value={filters.storageLimit} onChange={(e) => handleFilterChange('storageLimit', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 100, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
+          <TextField size="small" placeholder="Item cap..." value={filters.itemCap} onChange={(e) => handleFilterChange('itemCap', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 100, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
+          <TextField size="small" placeholder="Drive ID..." value={filters.sharedDriveId} onChange={(e) => handleFilterChange('sharedDriveId', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 120, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
+          {hasActiveFilters() && (
+            <Button size="small" onClick={clearFilters} sx={{ fontFamily: T.font, fontSize: '0.75rem', textTransform: 'none', color: (t: any) => textSecondary(t) }}>
+              Clear all
+            </Button>
+          )}
+        </Box>
+      </Box>
+
+      {/* Active filter tokens */}
+      {activeFilterLabels.length > 0 && !filtersVisible && (
+        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 1.5 }}>
+          {activeFilterLabels.map((t) => (
+            <FilterToken key={t.key} label={t.label} onRemove={() => {
+              if (t.key === 'dateCreatedFrom') { handleFilterChange('dateCreatedFrom', ''); handleFilterChange('dateCreatedTo', ''); }
+              else handleFilterChange(t.key, '');
+            }} />
+          ))}
+        </Box>
+      )}
+
+      {loading ? (
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+          <CircularProgress size={28} thickness={4} sx={{ color: T.accent }} />
+        </Box>
+      ) : (
+        <>
+          <ListShell>
+            <ListHeaderRow>
+              <Checkbox
+                size="small"
+                indeterminate={selectedDriveIds.size > 0 && selectedDriveIds.size < tableData.length}
+                checked={tableData.length > 0 && selectedDriveIds.size === tableData.length}
+                onChange={handleSelectAllDrives}
+                sx={{ p: 0.25, mr: 0.5 }}
+              />
+              {columns.map((col) => (
+                <ColumnHeader
+                  key={col.id}
+                  label={col.label}
+                  columnId={col.id}
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                  width={col.id === 'name' ? '24%' : col.id === 'hidden' ? 120 : col.id === 'createdTime' ? 120 : undefined}
+                />
+              ))}
+              <ColumnHeader label="Open in Drive" columnId="__o" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={56} align="center" />
+              <ColumnHeader label="Details" columnId="__d" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={72} align="center" />
+            </ListHeaderRow>
+            {tableData.length === 0 ? (
+              <Box sx={{ py: 6, textAlign: 'center' }}>
+                <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>No shared drives found</Typography>
+              </Box>
+            ) : (
+              tableData.map((drive, idx) => (
+                <ListDataRow key={drive.id} last={idx === tableData.length - 1} selected={isDriveSelected(drive)}>
+                  <Checkbox size="small" checked={isDriveSelected(drive)} onChange={() => handleSelectDrive(drive)} sx={{ p: 0.25, mr: 0.5 }} />
+                  <Box sx={{ width: '24%', minWidth: 0, overflow: 'hidden' }}>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (theme) => pick(theme, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {drive.name}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ width: 120, flexShrink: 0 }}>
+                    <DotLabel dotColor={drive.hidden ? textTertiary(muiTheme) : T.success}>{drive.hidden ? 'Hidden' : 'Active'}</DotLabel>
+                  </Box>
+                  <Box sx={{ width: 120, flexShrink: 0 }}>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                      {drive.createdTime ? new Date(drive.createdTime).toLocaleDateString() : '—'}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {drive.creator ?? '—'}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ width: 56, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                    <Tooltip title="Open in Google Drive">
+                      <Link href={getSharedDriveUrl(drive.id)} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
+                        <ExternalLink size={16} strokeWidth={1.75} />
+                      </Link>
+                    </Tooltip>
+                  </Box>
+                  <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
+                    <Tooltip title="Details & Permissions">
+                      <IconButton size="small" onClick={() => handleViewPermissions(drive)} sx={{ p: 0.5 }} aria-label="Details">
+                        <Pencil size={16} strokeWidth={1.75} />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </ListDataRow>
+              ))
+            )}
+          </ListShell>
+
+          {totalRows > 0 && (
+            <TablePagination
+              component="div"
+              count={totalRows}
+              page={page}
+              onPageChange={(_, newPage) => setPage(newPage)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(e) => {
+                setRowsPerPage(parseInt(e.target.value, 10));
+                setPage(0);
+              }}
+              rowsPerPageOptions={[25, 50, 100]}
+              {...tablePaginationProps(muiTheme)}
+            />
+          )}
+        </>
+      )}
+
+      {/* Details & Permissions Dialog (mirrors Drive File Explorer permission dialog) */}
+      <Dialog
+        open={permissionsDialogOpen}
+        onClose={handleClosePermissionsDialog}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: dialogPaperSx }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>{selectedDrive?.name}</Typography>
+            <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t), mt: 0.25 }}>Details & Permissions</Typography>
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ pt: '20px !important' }}>
+          {selectedDrive && (
+            <Box sx={{ mb: 2 }}>
+              <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1 }}>Drive details</Typography>
+              <Grid container spacing={1.5} sx={{ mb: 2 }}>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Organizational unit</Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>{selectedDrive.organizationalUnit ?? '–'}</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Shared drive ID</Typography>
+                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8125rem', wordBreak: 'break-all' }}>{selectedDrive.id}</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Storage used</Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
+                    {selectedDrive.storageUsed != null
+                      ? (typeof selectedDrive.storageUsed === 'number'
+                          ? `${(selectedDrive.storageUsed / 1024 / 1024 / 1024).toFixed(2)} GB`
+                          : String(selectedDrive.storageUsed))
+                      : '–'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Storage limit</Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
+                    {selectedDrive.storageLimit != null
+                      ? (typeof selectedDrive.storageLimit === 'number'
+                          ? `${(selectedDrive.storageLimit / 1024 / 1024 / 1024).toFixed(2)} GB`
+                          : String(selectedDrive.storageLimit))
+                      : '–'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Item cap</Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>{selectedDrive.itemCap != null ? String(selectedDrive.itemCap) : '–'}</Typography>
+                </Grid>
+              </Grid>
+              <Divider sx={{ my: 2 }} />
+              <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1 }}>Permissions</Typography>
+            </Box>
+          )}
+          {permissionsLoading ? (
+            <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+              <CircularProgress />
+            </Box>
+          ) : (
+            <>
+              {selectedPermissionIds.size > 0 && (
+                <Box display="flex" gap={0.5} alignItems="center" mb={1.5}>
+                  <Tooltip title={`Remove selected (${selectedPermissionIds.size})`}>
+                    <IconButton size="small" color="error" onClick={handleBulkRemovePermissions} aria-label="Remove selected">
+                      <Trash2 size={16} strokeWidth={1.75} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              )}
+
+              <ListShell>
+                <ListHeaderRow>
+                  {permissions.length > 0 ? (
+                    <Checkbox
+                      size="small"
+                      indeterminate={selectedPermissionIds.size > 0 && selectedPermissionIds.size < permissions.length}
+                      checked={selectedPermissionIds.size === permissions.length}
+                      onChange={(_, checked) => selectAllPermissions(checked)}
+                      sx={{ p: 0.25, mr: 0.5 }}
+                    />
+                  ) : (
+                    <Box sx={{ width: 34, mr: 0.5, flexShrink: 0 }} />
+                  )}
+                  <ColumnHeader label="Type" columnId="pt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
+                  <ColumnHeader label="Entity" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} />
+                  <ColumnHeader label="Role" columnId="pr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={120} />
+                  <ColumnHeader label="Remove" columnId="prm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="center" />
+                </ListHeaderRow>
+                {permissions.length === 0 && !addPermissionDialogOpen && (
+                  <Box sx={{ py: 4, textAlign: 'center' }}>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>No permissions found</Typography>
+                  </Box>
+                )}
+                {pagedSharedDrivePermissions.map((permission, pidx) => {
+                  const globalPidx = sdPermPageSafe * sdPermissionsRowsPerPage + pidx;
+                  return (
+                  <ListDataRow key={permission.id} last={globalPidx === permissions.length - 1 && addPermissionDialogOpen} selected={selectedPermissionIds.has(permission.id)}>
+                    <Checkbox
+                      size="small"
+                      checked={selectedPermissionIds.has(permission.id)}
+                      onChange={() => togglePermissionSelected(permission.id)}
+                      sx={{ p: 0.25, mr: 0.5 }}
+                    />
+                    <Box sx={{ width: 88, flexShrink: 0 }}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                        {getTypeLabel(permission.type)}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), wordBreak: 'break-word' }}>
+                        {permission.displayName || permission.emailAddress || permission.domain || '—'}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ width: 120, flexShrink: 0 }}>
+                      <DotLabel dotColor={getRoleDotColor(permission.role)}>{permission.role}</DotLabel>
+                    </Box>
+                    <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                      <Tooltip title="Remove permission">
+                        <IconButton size="small" color="error" onClick={() => handleRemovePermission(permission.id)} sx={{ p: 0.5 }}>
+                          <Trash2 size={16} strokeWidth={1.75} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </ListDataRow>
+                  );
+                })}
+                <DialogListPagination
+                  page={sdPermPageSafe}
+                  rowsPerPage={sdPermissionsRowsPerPage}
+                  total={permissions.length}
+                  onPageChange={setSdPermissionsPage}
+                  onRowsPerPageChange={(n) => {
+                    setSdPermissionsRowsPerPage(n);
+                    setSdPermissionsPage(0);
+                  }}
+                />
+                {addPermissionDialogOpen ? (
+                  <Box
+                    sx={(t) => ({
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.5,
+                      px: 2,
+                      py: 1.25,
+                      borderTop: `1px solid ${pick(t, T.borderSubtle, '#27272a')}`,
+                      bgcolor: pick(t, T.surfaceHover, '#27272a'),
+                    })}
+                  >
+                    <Box sx={{ width: 34, flexShrink: 0 }} />
+                    <Box sx={{ width: 88, flexShrink: 0 }}>
+                      <FormControl size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0.5 } } }}>
+                        <Select value={newPermissionType} onChange={(e) => setNewPermissionType(e.target.value as 'user' | 'group' | 'domain')} displayEmpty>
+                          <MenuItem value="user">User</MenuItem>
+                          <MenuItem value="group">Group</MenuItem>
+                          <MenuItem value="domain">Domain</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      {newPermissionType === 'domain' ? (
+                        <TextField
+                          size="small"
+                          placeholder="domain.com"
+                          value={newPermissionDomain}
+                          onChange={(e) => setNewPermissionDomain(e.target.value)}
+                          fullWidth
+                          sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
+                        />
+                      ) : (
+                        <TextField
+                          size="small"
+                          placeholder="user@domain.com"
+                          value={newPermissionEmail}
+                          onChange={(e) => setNewPermissionEmail(e.target.value)}
+                          fullWidth
+                          sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
+                        />
+                      )}
+                    </Box>
+                    <Box sx={{ width: 120, flexShrink: 0 }}>
+                      <FormControl size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0.5 } } }}>
+                        <Select value={newPermissionRole} onChange={(e) => setNewPermissionRole(e.target.value as any)}>
+                          <MenuItem value="reader">Reader</MenuItem>
+                          <MenuItem value="commenter">Commenter</MenuItem>
+                          <MenuItem value="writer">Writer</MenuItem>
+                          <MenuItem value="fileOrganizer">File Organizer</MenuItem>
+                          <MenuItem value="organizer">Organizer</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
+                    <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center', gap: 0.5 }}>
+                      <Tooltip title="Cancel">
+                        <IconButton size="small" onClick={() => { setAddPermissionDialogOpen(false); setNewPermissionEmail(''); setNewPermissionDomain(''); }} aria-label="Cancel">
+                          <X size={18} strokeWidth={1.75} />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Add">
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={handleAddPermission}
+                          disabled={!(((newPermissionType === 'user' || newPermissionType === 'group') && newPermissionEmail.trim()) || (newPermissionType === 'domain' && newPermissionDomain.trim()))}
+                          aria-label="Add"
+                        >
+                          <Check size={18} strokeWidth={1.75} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Box sx={(t) => ({ px: 2, py: 1, borderTop: permissions.length > 0 ? `1px solid ${pick(t, T.borderSubtle, '#27272a')}` : 'none' })}>
+                    <Tooltip title="Add user or group">
+                      <IconButton size="small" color="primary" onClick={() => setAddPermissionDialogOpen(true)} aria-label="Add permission">
+                        <Plus size={16} strokeWidth={1.75} />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                )}
+              </ListShell>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, borderTop: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}`, gap: 1 }}>
+          <Button onClick={handleClosePermissionsDialog} sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, color: (t) => textSecondary(t), '&:hover': { bgcolor: (t) => pick(t, '#f0f0ec', '#27272a') } }}>
+            Done
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSnackbar((s) => ({ ...s, open: false }))} severity={snackbar.severity} sx={{ width: '100%', fontFamily: T.font, borderRadius: T.radius, alignItems: 'center' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+}

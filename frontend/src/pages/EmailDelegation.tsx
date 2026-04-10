@@ -1,0 +1,630 @@
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import {
+  Box,
+  TextField,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TablePagination,
+  Checkbox,
+  IconButton,
+  Button,
+  Tooltip,
+  Typography,
+  FormControl,
+  Select,
+  MenuItem,
+  useMediaQuery,
+  InputAdornment,
+  Snackbar,
+  Alert,
+} from '@mui/material';
+import type { AlertColor } from '@mui/material';
+import { Plus, Search, Trash2, RefreshCw, ListFilter, X } from 'lucide-react';
+import { isDemoMode, emailDelegations as demoEmailDelegations } from '../data/demoData';
+import { apiClient } from '../services/api.client';
+import { useTable, TableColumn } from '../hooks/useTable.tsx';
+import { ExportButton } from '../components/ExportButton';
+import { FilterToken } from '../components/ui/FilterToken';
+import { T, pick, textSecondary, textTertiary, exportToolbarButtonSx, selectMenuProps } from '../theme/designTokens';
+import { tablePaginationProps } from '../components/ui/tablePaginationProps';
+import { ColumnHeader } from '../components/ui/ColumnHeader';
+import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
+import { useTheme } from '@mui/material/styles';
+import { DotLabel } from '../components/StatusDot';
+
+interface AllDelegation {
+  userEmail: string;
+  delegateEmail: string;
+  verificationStatus: string;
+}
+
+function delegationKey(d: AllDelegation) {
+  return `${d.userEmail}|${d.delegateEmail}`;
+}
+
+export function EmailDelegation() {
+  const muiTheme = useTheme();
+  const isMdUp = useMediaQuery(muiTheme.breakpoints.up('md'));
+  const dialogPaperSx = {
+    fontFamily: T.font,
+    bgcolor: pick(muiTheme, T.surface, '#18181b'),
+    backgroundImage: 'none',
+    border: `1px solid ${pick(muiTheme, T.border, '#3f3f46')}`,
+    borderRadius: T.radiusLg,
+    '& .MuiDialogContent-root': { pt: 0 },
+    '& .MuiTypography-root, & .MuiInputBase-root, & .MuiFormLabel-root': { fontFamily: T.font },
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: pick(muiTheme, T.border, '#3f3f46') },
+  };
+  const [allDelegations, setAllDelegations] = useState<AllDelegation[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newDelegateEmail, setNewDelegateEmail] = useState('');
+  const [selectedDelegations, setSelectedDelegations] = useState<Set<string>>(new Set());
+  const [removing, setRemoving] = useState(false);
+  const [filtersVisible, setFiltersVisible] = useState(false);
+
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: AlertColor }>({
+    open: false, message: '', severity: 'info',
+  });
+  const showSnackbar = useCallback((message: string, severity: AlertColor = 'info') => {
+    setSnackbar({ open: true, message, severity });
+  }, []);
+  const closeSnackbar = useCallback(() => setSnackbar((s) => ({ ...s, open: false })), []);
+
+  type DelegationFiltersType = { userEmail: string; delegateEmail: string; verificationStatus: string };
+  const [filters, setFilters] = useState<DelegationFiltersType>({
+    userEmail: '',
+    delegateEmail: '',
+    verificationStatus: '',
+  });
+
+  const exportAllCSVRef = useRef<() => void>(() => {});
+  const exportSelectedCSVRef = useRef<() => void>(() => {});
+
+  const handleFilterChange = (key: keyof DelegationFiltersType, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+  const hasActiveFilters = () => Object.values(filters).some((v) => v.trim() !== '');
+  const clearFilters = () => {
+    setFilters({ userEmail: '', delegateEmail: '', verificationStatus: '' });
+  };
+
+  const activeFilterLabels = useMemo(() => {
+    const labels: { key: string; label: string }[] = [];
+    if (filters.userEmail.trim()) labels.push({ key: 'userEmail', label: `User: ${filters.userEmail}` });
+    if (filters.delegateEmail.trim()) labels.push({ key: 'delegateEmail', label: `Delegate: ${filters.delegateEmail}` });
+    if (filters.verificationStatus) labels.push({ key: 'verificationStatus', label: `Status: ${filters.verificationStatus}` });
+    return labels;
+  }, [filters]);
+
+  const filteredByColumnFilters = useMemo(() => {
+    return allDelegations.filter((d) => {
+      if (filters.userEmail.trim() && !d.userEmail.toLowerCase().includes(filters.userEmail.toLowerCase())) return false;
+      if (filters.delegateEmail.trim() && !d.delegateEmail.toLowerCase().includes(filters.delegateEmail.toLowerCase())) return false;
+      if (filters.verificationStatus.trim() && d.verificationStatus !== filters.verificationStatus) return false;
+      return true;
+    });
+  }, [allDelegations, filters]);
+
+  const allDelegationsColumns: TableColumn<AllDelegation>[] = [
+    {
+      id: 'userEmail',
+      label: 'User Email',
+      sortable: true,
+      getValue: (row) => row.userEmail,
+    },
+    {
+      id: 'delegateEmail',
+      label: 'Delegate Email',
+      sortable: true,
+      getValue: (row) => row.delegateEmail,
+    },
+    {
+      id: 'verificationStatus',
+      label: 'Verification Status',
+      sortable: true,
+      getValue: (row) => row.verificationStatus,
+    },
+  ];
+
+  const allDelegationsTable = useTable(filteredByColumnFilters, allDelegationsColumns, 'userEmail');
+  const { sortConfig, handleSort } = allDelegationsTable;
+
+  useEffect(() => {
+    if (isDemoMode()) {
+      fetchAllDelegations();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fetchAllDelegations = async () => {
+    try {
+      setLoading(true);
+      const response = await apiClient.get('/gmail/delegations');
+      setAllDelegations(response.data);
+    } catch (error) {
+      console.error('Error fetching all delegations:', error);
+      if (isDemoMode()) {
+        setAllDelegations(demoEmailDelegations);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddDelegation = async () => {
+    if (!newUserEmail.trim() || !newDelegateEmail.trim()) return;
+    try {
+      await apiClient.post(`/gmail/${encodeURIComponent(newUserEmail)}/delegations`, {
+        delegateEmail: newDelegateEmail,
+      });
+      setNewUserEmail('');
+      setNewDelegateEmail('');
+      setDialogOpen(false);
+      fetchAllDelegations();
+    } catch (error) {
+      console.error('Error adding delegation:', error);
+    }
+  };
+
+  const data = allDelegationsTable.data;
+  const isSelected = (d: AllDelegation) => selectedDelegations.has(delegationKey(d));
+  const handleSelectOne = (d: AllDelegation) => {
+    const key = delegationKey(d);
+    setSelectedDelegations((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const handleSelectAll = () => {
+    if (selectedDelegations.size === data.length) {
+      setSelectedDelegations(new Set());
+    } else {
+      setSelectedDelegations(new Set(data.map(delegationKey)));
+    }
+  };
+  const handleRemoveSelected = async () => {
+    if (selectedDelegations.size === 0) return;
+    if (!window.confirm(`Remove ${selectedDelegations.size} delegation(s)?`)) return;
+    setRemoving(true);
+    try {
+      for (const key of selectedDelegations) {
+        const [userEmail, delegateEmail] = key.split('|');
+        await apiClient.delete(`/gmail/${encodeURIComponent(userEmail)}/delegations/${encodeURIComponent(delegateEmail)}`);
+      }
+      setSelectedDelegations(new Set());
+      fetchAllDelegations();
+    } catch (err: any) {
+      console.error(err);
+      showSnackbar(err?.response?.data?.error || 'Failed to remove one or more delegations.', 'error');
+    } finally {
+      setRemoving(false);
+    }
+  };
+  const handleRemoveOne = async (d: AllDelegation) => {
+    if (!window.confirm(`Remove delegation for ${d.delegateEmail} from ${d.userEmail}?`)) return;
+    try {
+      await apiClient.delete(`/gmail/${encodeURIComponent(d.userEmail)}/delegations/${encodeURIComponent(d.delegateEmail)}`);
+      fetchAllDelegations();
+      setSelectedDelegations((prev) => {
+        const next = new Set(prev);
+        next.delete(delegationKey(d));
+        return next;
+      });
+    } catch (err: any) {
+      console.error(err);
+      showSnackbar(err?.response?.data?.error || 'Failed to remove delegation.', 'error');
+    }
+  };
+
+  const handleExportAllCSV = () => { allDelegationsTable.exportToCSV(`AllDelegations${allDelegationsTable.searchTerm || hasActiveFilters() ? '_filtered' : ''}_${new Date().toISOString().split('T')[0]}.csv`); showSnackbar('CSV downloading now.', 'success'); };
+  const handleExportSelectedCSV = () => {
+    const selected = allDelegations.filter((d) => selectedDelegations.has(delegationKey(d)));
+    if (selected.length === 0) return;
+    const headers = ['User Email', 'Delegate Email', 'Verification Status'];
+    const rows = selected.map((d) => [d.userEmail, d.delegateEmail, d.verificationStatus].map((c) => (String(c).includes(',') ? `"${String(c).replace(/"/g, '""')}"` : c)).join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Delegations_selected_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    showSnackbar('CSV downloading now.', 'success');
+  };
+  const handleExportFilteredCSV = () => { allDelegationsTable.exportToCSV(`AllDelegations_filtered_${new Date().toISOString().split('T')[0]}.csv`); showSnackbar('CSV downloading now.', 'success'); };
+  const handleExportAllDrive = async () => {
+    try {
+      const response = await apiClient.post('/gmail/delegations/export/drive');
+      const msg = response.data?.message || 'Delegations exported to Drive.';
+      if (response.data?.webViewLink) window.open(response.data.webViewLink, '_blank');
+      showSnackbar(msg, 'success');
+    } catch (err: any) {
+      console.error(err);
+      showSnackbar(err?.response?.data?.error || 'Failed to export delegations to Drive.', 'error');
+    }
+  };
+  const handleExportSelectedDrive = async () => {
+    const selected = allDelegations.filter((d) => selectedDelegations.has(delegationKey(d)));
+    if (selected.length === 0) return;
+    try {
+      const response = await apiClient.post('/gmail/delegations/export/selected/drive', {
+        delegations: selected.map((d) => ({ userEmail: d.userEmail, delegateEmail: d.delegateEmail })),
+      });
+      const msg = response.data?.message || 'Selected delegations exported to Drive.';
+      if (response.data?.webViewLink) window.open(response.data.webViewLink, '_blank');
+      showSnackbar(msg, 'success');
+    } catch (err: any) {
+      console.error(err);
+      showSnackbar(err?.response?.data?.error || 'Failed to export selected delegations to Drive.', 'error');
+    }
+  };
+  const handleExportFilteredDrive = async () => {
+    try {
+      const response = await apiClient.post('/gmail/delegations/export/drive');
+      const msg = response.data?.message || 'Delegations exported to Drive.';
+      if (response.data?.webViewLink) window.open(response.data.webViewLink, '_blank');
+      showSnackbar(msg, 'success');
+    } catch (err: any) {
+      console.error(err);
+      showSnackbar(err?.response?.data?.error || 'Failed to export delegations to Drive.', 'error');
+    }
+  };
+
+  exportAllCSVRef.current = handleExportAllCSV;
+  exportSelectedCSVRef.current = handleExportSelectedCSV;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+      }
+      if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        setFiltersVisible((v) => !v);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        e.stopPropagation();
+        const fn = selectedDelegations.size > 0 ? exportSelectedCSVRef.current : exportAllCSVRef.current;
+        if (typeof fn === 'function') fn();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
+        e.preventDefault();
+        if (selectedDelegations.size > 0) handleExportSelectedDrive();
+        else if (Boolean(allDelegationsTable.searchTerm) || hasActiveFilters()) handleExportFilteredDrive();
+        else handleExportAllDrive();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [selectedDelegations.size]);
+
+  return (
+    <Box sx={{ fontFamily: T.font, minHeight: '100vh' }}>
+      <Box sx={{ mb: 3 }}>
+        <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (theme) => pick(theme, T.text, '#fafafa') }}>
+          Email delegation
+        </Typography>
+      </Box>
+
+      {/* Toolbar */}
+      <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <TextField
+          size="small"
+          placeholder="Search delegations…"
+          value={allDelegationsTable.searchTerm}
+          onChange={(e) => allDelegationsTable.setSearchTerm(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Box component="span" sx={{ display: 'flex', color: (t: any) => textTertiary(t) }}>
+                  <Search size={18} strokeWidth={1.75} />
+                </Box>
+              </InputAdornment>
+            ),
+            ...(allDelegationsTable.searchTerm ? { endAdornment: (
+              <InputAdornment position="end">
+                <Box component="span" onClick={() => allDelegationsTable.setSearchTerm('')} sx={{ display: 'flex', cursor: 'pointer', color: (t: any) => textTertiary(t) }}>
+                  <X size={16} strokeWidth={2} />
+                </Box>
+              </InputAdornment>
+            ) } : {}),
+          }}
+          sx={(theme: any) => ({
+            flex: '1 1 240px',
+            maxWidth: 360,
+            '& .MuiOutlinedInput-root': {
+              fontFamily: T.font,
+              fontSize: '0.8125rem',
+              borderRadius: T.radius,
+              bgcolor: pick(theme, T.surface, '#27272a'),
+              '& fieldset': { borderColor: pick(theme, T.border, '#3f3f46') },
+              '&:hover fieldset': { borderColor: pick(theme, T.textTertiary, '#52525b') },
+            },
+          })}
+        />
+
+        <Tooltip title="Filters">
+          <IconButton
+            size="small"
+            onClick={() => setFiltersVisible((v) => !v)}
+            sx={(theme) => ({
+              color: filtersVisible || hasActiveFilters() ? T.accent : textSecondary(theme),
+              bgcolor: filtersVisible ? pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)') : 'transparent',
+              borderRadius: T.radiusSm,
+              '&:hover': { bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)') },
+            })}
+          >
+            <ListFilter size={18} strokeWidth={1.75} />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Refresh data">
+          <span>
+            <IconButton size="small" onClick={fetchAllDelegations} disabled={loading} aria-label="Refresh data" sx={{ color: (t) => textSecondary(t) }}>
+              {loading ? <CircularProgress size={20} /> : <RefreshCw size={18} strokeWidth={1.75} />}
+            </IconButton>
+          </span>
+        </Tooltip>
+
+        <Box sx={{ flex: 1 }} />
+
+        {selectedDelegations.size > 0 && (
+          <Button
+            size="small"
+            variant="contained"
+            color="error"
+            onClick={handleRemoveSelected}
+            disabled={removing}
+            startIcon={removing ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={15} strokeWidth={1.75} />}
+            sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 30, px: 1.5 }}
+          >
+            Remove {selectedDelegations.size} selected
+          </Button>
+        )}
+
+        <Button
+          size="small"
+          variant="contained"
+          onClick={() => setDialogOpen(true)}
+          startIcon={<Plus size={15} strokeWidth={1.75} />}
+          sx={{
+            fontFamily: T.font,
+            textTransform: 'none',
+            borderRadius: T.radius,
+            fontSize: '0.8125rem',
+            fontWeight: 600,
+            px: 1.5,
+            border: 'none',
+            bgcolor: T.accent,
+            color: '#ffffff',
+            boxShadow: 'none',
+            '&:hover': {
+              border: 'none',
+              bgcolor: T.accentHover,
+              boxShadow: 'none',
+            },
+          }}
+        >
+          Add delegation
+        </Button>
+
+        <ExportButton
+          iconOnly={!isMdUp}
+          tooltipTitle="Export"
+          totalItems={allDelegationsTable.totalRows}
+          selectedCount={selectedDelegations.size}
+          hasFilters={Boolean(allDelegationsTable.searchTerm) || hasActiveFilters()}
+          onExportAllCSV={handleExportAllCSV}
+          onExportSelectedCSV={handleExportSelectedCSV}
+          onExportFilteredCSV={handleExportFilteredCSV}
+          onExportAllDrive={handleExportAllDrive}
+          onExportSelectedDrive={handleExportSelectedDrive}
+          onExportFilteredDrive={handleExportFilteredDrive}
+          disabled={allDelegationsTable.data.length === 0}
+          triggerSx={exportToolbarButtonSx()}
+        />
+      </Box>
+
+      {/* Filter panel (collapsible) */}
+      <Box sx={{ overflow: 'hidden', maxHeight: filtersVisible ? 320 : 0, opacity: filtersVisible ? 1 : 0, transition: 'max-height 0.3s ease, opacity 0.2s ease, margin 0.3s ease', mb: filtersVisible ? 2 : 0 }}>
+        <Box sx={(theme: any) => ({
+          display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center',
+          p: 1.5, borderRadius: T.radius, border: `1px solid ${pick(theme, T.border, '#3f3f46')}`, bgcolor: pick(theme, T.surface, '#27272a'),
+        })}>
+          <TextField
+            size="small"
+            placeholder="User email…"
+            value={filters.userEmail}
+            onChange={(e) => handleFilterChange('userEmail', e.target.value)}
+            sx={{ minWidth: 160, '& .MuiOutlinedInput-root': { fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm } }}
+          />
+          <TextField
+            size="small"
+            placeholder="Delegate email…"
+            value={filters.delegateEmail}
+            onChange={(e) => handleFilterChange('delegateEmail', e.target.value)}
+            sx={{ minWidth: 160, '& .MuiOutlinedInput-root': { fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm } }}
+          />
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <Select
+              value={filters.verificationStatus}
+              displayEmpty
+              renderValue={(v) => (v ? (v === 'accepted' ? 'Accepted' : v === 'pending' ? 'Pending' : 'Rejected') : 'Status')}
+              onChange={(e) => handleFilterChange('verificationStatus', e.target.value)}
+              MenuProps={selectMenuProps}
+              sx={{ fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }}
+            >
+              <MenuItem value="">Any</MenuItem>
+              <MenuItem value="accepted">Accepted</MenuItem>
+              <MenuItem value="pending">Pending</MenuItem>
+              <MenuItem value="rejected">Rejected</MenuItem>
+            </Select>
+          </FormControl>
+          {hasActiveFilters() && (
+            <Button size="small" onClick={clearFilters} sx={{ fontFamily: T.font, fontSize: '0.75rem', textTransform: 'none', color: (t) => textSecondary(t) }}>
+              Clear all
+            </Button>
+          )}
+        </Box>
+      </Box>
+
+      {/* Active filter tokens */}
+      {activeFilterLabels.length > 0 && !filtersVisible && (
+        <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 1.5 }}>
+          {activeFilterLabels.map((t) => (
+            <FilterToken key={t.key} label={t.label} onRemove={() => handleFilterChange(t.key as keyof DelegationFiltersType, '')} />
+          ))}
+        </Box>
+      )}
+
+      {loading ? (
+        <Box display="flex" justifyContent="center" py={6}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <>
+          <ListShell>
+            <ListHeaderRow>
+              <Checkbox
+                size="small"
+                indeterminate={selectedDelegations.size > 0 && selectedDelegations.size < data.length}
+                checked={data.length > 0 && selectedDelegations.size === data.length}
+                onChange={handleSelectAll}
+                sx={{ p: 0.25, mr: 0.5 }}
+              />
+              {allDelegationsColumns.map((col) => (
+                <ColumnHeader
+                  key={col.id}
+                  label={col.label}
+                  columnId={col.id}
+                  sortConfig={sortConfig}
+                  onSort={handleSort}
+                  width={col.id === 'userEmail' ? '28%' : col.id === 'delegateEmail' ? '28%' : undefined}
+                />
+              ))}
+              <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={88} align="right" />
+            </ListHeaderRow>
+            {data.length === 0 ? (
+              <Box sx={{ py: 6, textAlign: 'center' }}>
+                <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>No delegations found</Typography>
+              </Box>
+            ) : (
+              data.map((delegation, index) => (
+                <ListDataRow key={`${delegation.userEmail}-${delegation.delegateEmail}-${index}`} last={index === data.length - 1} selected={isSelected(delegation)}>
+                  <Checkbox size="small" checked={isSelected(delegation)} onChange={() => handleSelectOne(delegation)} sx={{ p: 0.25, mr: 0.5 }} />
+                  <Box sx={{ width: '28%', minWidth: 0, overflow: 'hidden' }}>
+                    <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {delegation.userEmail}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ width: '28%', minWidth: 0, overflow: 'hidden' }}>
+                    <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {delegation.delegateEmail}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <DotLabel dotColor={delegation.verificationStatus === 'accepted' ? T.success : T.warning}>
+                      {delegation.verificationStatus}
+                    </DotLabel>
+                  </Box>
+                  <Box sx={{ width: 88, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
+                    <Tooltip title="Remove delegation">
+                      <IconButton size="small" onClick={() => handleRemoveOne(delegation)} sx={{ p: 0.5, color: T.danger }}>
+                        <Trash2 size={16} strokeWidth={1.75} />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </ListDataRow>
+              ))
+            )}
+          </ListShell>
+
+          {allDelegationsTable.totalRows > 0 && (
+            <TablePagination
+              component="div"
+              count={allDelegationsTable.totalRows}
+              page={allDelegationsTable.page}
+              onPageChange={(_, newPage) => allDelegationsTable.setPage(newPage)}
+              rowsPerPage={allDelegationsTable.rowsPerPage}
+              onRowsPerPageChange={(e) => {
+                allDelegationsTable.setRowsPerPage(parseInt(e.target.value, 10));
+                allDelegationsTable.setPage(0);
+              }}
+              rowsPerPageOptions={[25, 50, 100]}
+              {...tablePaginationProps(muiTheme)}
+            />
+          )}
+        </>
+      )}
+
+      <Dialog
+        open={dialogOpen}
+        onClose={() => { setDialogOpen(false); setNewUserEmail(''); setNewDelegateEmail(''); }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: dialogPaperSx }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>Add email delegation</Typography>
+          </Box>
+          <Tooltip title="Close">
+            <IconButton size="small" onClick={() => { setDialogOpen(false); setNewUserEmail(''); setNewDelegateEmail(''); }} aria-label="Close" sx={{ alignSelf: 'flex-start' }}>
+              <X size={18} strokeWidth={1.75} />
+            </IconButton>
+          </Tooltip>
+        </DialogTitle>
+        <DialogContent sx={{ pt: '20px !important' }}>
+          <Box sx={{ '& .MuiTextField-root': { mb: 1.5 } }}>
+            <TextField
+              size="small"
+              label="User email"
+              value={newUserEmail}
+              onChange={(e) => setNewUserEmail(e.target.value)}
+              placeholder="user@domain.com"
+              fullWidth
+              helperText="Email to delegate from"
+            />
+            <TextField
+              size="small"
+              label="Delegate email"
+              value={newDelegateEmail}
+              onChange={(e) => setNewDelegateEmail(e.target.value)}
+              placeholder="delegate@domain.com"
+              fullWidth
+              helperText="Email that will receive delegation access"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, borderTop: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}`, gap: 1 }}>
+          <Button onClick={() => { setDialogOpen(false); setNewUserEmail(''); setNewDelegateEmail(''); }} sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, color: (t) => textSecondary(t), '&:hover': { bgcolor: (t) => pick(t, '#f0f0ec', '#27272a') } }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleAddDelegation}
+            disabled={!newUserEmail.trim() || !newDelegateEmail.trim()}
+            sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover }, px: 2.5 }}
+          >
+            Add Delegation
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={closeSnackbar} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
+        <Alert onClose={closeSnackbar} severity={snackbar.severity} sx={{ width: '100%', fontFamily: T.font, borderRadius: T.radius, alignItems: 'center' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+}

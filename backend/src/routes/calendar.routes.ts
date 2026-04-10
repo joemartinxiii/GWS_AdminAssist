@@ -1,0 +1,334 @@
+import { Router, Response } from 'express';
+import { authenticateSession, AuthRequest } from '../middleware/auth.middleware';
+import { requirePermission, requireAnyAdmin } from '../middleware/permissions.middleware';
+import { auditLog } from '../middleware/audit.middleware';
+import { calendarService } from '../services/calendar.service';
+
+const router = Router();
+
+// All routes require authentication
+router.use(authenticateSession);
+
+/**
+ * GET /api/calendar/:email/calendars
+ * List calendars for a user
+ */
+router.get('/:email/calendars', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const calendars = await calendarService.listCalendars(
+      req.user!.email,
+      req.params.email
+    );
+    res.json(calendars);
+  } catch (error: any) {
+    console.error('Error listing calendars:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to list calendars' });
+  }
+});
+
+/**
+ * GET /api/calendar/:calendarId/acl
+ * Get calendar ACL
+ */
+router.get('/:calendarId/acl', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const acl = await calendarService.getCalendarAcl(
+      req.user!.email,
+      req.params.calendarId
+    );
+    res.json(acl);
+  } catch (error: any) {
+    console.error('Error getting calendar ACL:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to get calendar ACL' });
+  }
+});
+
+/**
+ * GET /api/calendar/resources
+ * List calendar resources
+ */
+router.get('/resources', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const resources = await calendarService.listResources(req.user!.email);
+    res.json(resources);
+  } catch (error: any) {
+    console.error('Error listing resources:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to list resources' });
+  }
+});
+
+/**
+ * POST /api/calendar/resources
+ * Create calendar resource
+ */
+router.post('/resources', requirePermission('calendar.resources.manage'), auditLog('calendar.resource.create', 'calendar'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { resourceName, resourceType, capacity, buildingId, floorName } = req.body;
+
+    if (!resourceName || !resourceType) {
+      return res.status(400).json({ error: 'Missing required fields: resourceName, resourceType' });
+    }
+
+    const resource = await calendarService.createResource(req.user!.email, {
+      resourceName,
+      resourceType,
+      capacity,
+      buildingId,
+      floorName,
+    });
+
+    res.status(201).json(resource);
+  } catch (error: any) {
+    console.error('Error creating resource:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to create resource' });
+  }
+});
+
+/**
+ * PATCH /api/calendar/resources/:resourceId
+ * Update calendar resource
+ */
+router.patch('/resources/:resourceId', requirePermission('calendar.resources.manage'), auditLog('calendar.resource.update', 'calendar'), async (req: AuthRequest, res: Response) => {
+  try {
+    const updates = req.body;
+    const resource = await calendarService.updateResource(
+      req.user!.email,
+      req.params.resourceId,
+      updates
+    );
+    res.json(resource);
+  } catch (error: any) {
+    console.error('Error updating resource:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to update resource' });
+  }
+});
+
+/**
+ * DELETE /api/calendar/resources/:resourceId
+ * Delete calendar resource
+ */
+router.delete('/resources/:resourceId', requirePermission('calendar.resources.manage'), auditLog('calendar.resource.delete', 'calendar'), async (req: AuthRequest, res: Response) => {
+  try {
+    await calendarService.deleteResource(req.user!.email, req.params.resourceId);
+    res.json({ message: 'Resource deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting resource:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to delete resource' });
+  }
+});
+
+/**
+ * GET /api/calendar/:email/events
+ * List events for a user's calendar
+ */
+router.get('/:email/events', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const calendarId = (req.query.calendarId as string) || 'primary';
+    const timeMin = req.query.timeMin as string | undefined;
+    const timeMax = req.query.timeMax as string | undefined;
+    const maxResults = parseInt(req.query.maxResults as string) || 250;
+
+    const events = await calendarService.listEvents(
+      req.user!.email,
+      req.params.email,
+      calendarId,
+      timeMin,
+      timeMax,
+      maxResults
+    );
+    res.json(events);
+  } catch (error: any) {
+    console.error('Error listing events:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to list events' });
+  }
+});
+
+/**
+ * GET /api/calendar/:email/events/:eventId
+ * Get a specific event
+ */
+router.get('/:email/events/:eventId', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const calendarId = (req.query.calendarId as string) || 'primary';
+    const event = await calendarService.getEvent(
+      req.user!.email,
+      req.params.email,
+      calendarId,
+      req.params.eventId
+    );
+    res.json(event);
+  } catch (error: any) {
+    console.error('Error getting event:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to get event' });
+  }
+});
+
+/**
+ * PATCH /api/calendar/:email/events/:eventId
+ * Update an event
+ */
+router.patch('/:email/events/:eventId', requirePermission('calendar.resources.manage'), auditLog('calendar.event.update', 'calendar'), async (req: AuthRequest, res: Response) => {
+  try {
+    const calendarId = (req.query.calendarId as string) || 'primary';
+    const updates = req.body;
+    const event = await calendarService.updateEvent(
+      req.user!.email,
+      req.params.email,
+      calendarId,
+      req.params.eventId,
+      updates
+    );
+    res.json(event);
+  } catch (error: any) {
+    console.error('Error updating event:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to update event' });
+  }
+});
+
+/**
+ * POST /api/calendar/:email/events/:eventId/attendees
+ * Add attendees to an event
+ */
+router.post('/:email/events/:eventId/attendees', requirePermission('calendar.resources.manage'), auditLog('calendar.event.addAttendees', 'calendar'), async (req: AuthRequest, res: Response) => {
+  try {
+    const calendarId = (req.query.calendarId as string) || 'primary';
+    const { attendees } = req.body;
+
+    if (!attendees || !Array.isArray(attendees)) {
+      return res.status(400).json({ error: 'Missing required field: attendees (array)' });
+    }
+
+    const event = await calendarService.addAttendees(
+      req.user!.email,
+      req.params.email,
+      calendarId,
+      req.params.eventId,
+      attendees
+    );
+    res.json(event);
+  } catch (error: any) {
+    console.error('Error adding attendees:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to add attendees' });
+  }
+});
+
+/**
+ * POST /api/calendar/:email/events/:eventId/move
+ * Move an event to a new time
+ */
+router.post('/:email/events/:eventId/move', requirePermission('calendar.resources.manage'), auditLog('calendar.event.move', 'calendar'), async (req: AuthRequest, res: Response) => {
+  try {
+    const calendarId = (req.query.calendarId as string) || 'primary';
+    const { newStart, newEnd, timeZone } = req.body;
+
+    if (!newStart || !newEnd) {
+      return res.status(400).json({ error: 'Missing required fields: newStart, newEnd' });
+    }
+
+    const event = await calendarService.moveEvent(
+      req.user!.email,
+      req.params.email,
+      calendarId,
+      req.params.eventId,
+      newStart,
+      newEnd,
+      timeZone
+    );
+    res.json(event);
+  } catch (error: any) {
+    console.error('Error moving event:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to move event' });
+  }
+});
+
+/**
+ * DELETE /api/calendar/:email/events/:eventId
+ * Delete an event
+ */
+router.delete('/:email/events/:eventId', requirePermission('calendar.resources.manage'), auditLog('calendar.event.delete', 'calendar'), async (req: AuthRequest, res: Response) => {
+  try {
+    const calendarId = (req.query.calendarId as string) || 'primary';
+    const sendUpdates = (req.query.sendUpdates as 'all' | 'externalOnly' | 'none') || 'all';
+    
+    await calendarService.deleteEvent(
+      req.user!.email,
+      req.params.email,
+      calendarId,
+      req.params.eventId,
+      sendUpdates
+    );
+    res.json({ message: 'Event deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting event:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to delete event' });
+  }
+});
+
+/**
+ * POST /api/calendar/:email/events
+ * Create a new event
+ */
+router.post('/:email/events', requirePermission('calendar.resources.manage'), auditLog('calendar.event.create', 'calendar'), async (req: AuthRequest, res: Response) => {
+  try {
+    const calendarId = (req.query.calendarId as string) || 'primary';
+    const { summary, description, start, end, attendees, location } = req.body;
+
+    if (!summary || !start || !end) {
+      return res.status(400).json({ error: 'Missing required fields: summary, start, end' });
+    }
+
+    const event = await calendarService.createEvent(
+      req.user!.email,
+      req.params.email,
+      calendarId,
+      {
+        summary,
+        description,
+        start,
+        end,
+        attendees,
+        location,
+      }
+    );
+    res.status(201).json(event);
+  } catch (error: any) {
+    console.error('Error creating event:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to create event' });
+  }
+});
+
+/**
+ * POST /api/calendar/:email/events/:eventId/transfer
+ * Transfer an event to another user's calendar
+ */
+router.post('/:email/events/:eventId/transfer', requirePermission('calendar.resources.manage'), auditLog('calendar.event.transfer', 'calendar'), async (req: AuthRequest, res: Response) => {
+  try {
+    const sourceCalendarId = (req.query.calendarId as string) || 'primary';
+    const { targetEmail, targetCalendarId, deleteOriginal } = req.body;
+
+    if (!targetEmail) {
+      return res.status(400).json({ error: 'Missing required field: targetEmail' });
+    }
+
+    const newEvent = await calendarService.transferEvent(
+      req.user!.email,
+      req.params.email, // source email
+      targetEmail,
+      sourceCalendarId,
+      targetCalendarId || 'primary',
+      req.params.eventId,
+      deleteOriginal === true
+    );
+
+    res.json({
+      message: 'Event transferred successfully',
+      event: newEvent,
+      deletedOriginal: deleteOriginal === true,
+    });
+  } catch (error: any) {
+    console.error('Error transferring event:', error);
+    res.status(error.status || 500).json({ error: error.message || 'Failed to transfer event' });
+  }
+});
+
+export default router;

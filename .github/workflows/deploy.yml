@@ -1,0 +1,73 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  SERVICE_NAME: workspace-admin
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint, type-check, and security tests
+        run: |
+          npm run lint
+          npm run type-check
+          npm run test:security
+        # Note: npm audit shows vulnerabilities (mostly dev deps); address with `npm audit fix` and Dependabot.
+        # Full CI hardening (Trivy for Docker, dependency review) to be added in future.
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
+
+      - name: Build Docker image
+        run: |
+          docker build -t gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA .
+          docker tag gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA gcr.io/$PROJECT_ID/$SERVICE_NAME:latest
+
+      - name: Push Docker image
+        run: |
+          docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA
+          docker push gcr.io/$PROJECT_ID/$SERVICE_NAME:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy $SERVICE_NAME \
+            --image gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+            --platform managed \
+            --region $REGION \
+            --memory 1Gi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 2 \
+            --timeout 300 \
+            --ingress=internal-and-cloud-load-balancing \
+            --set-env-vars "NODE_ENV=production,PORT=5000" \
+            --set-secrets "GCP_PROJECT_ID=gcp-config/project-id:latest,SERVICE_ACCOUNT_SECRET_NAME=service-account-key:latest,GOOGLE_CLIENT_ID=oauth-config/client-id:latest,GOOGLE_CLIENT_SECRET=oauth-config/client-secret:latest,GOOGLE_REDIRECT_URI=oauth-config/redirect-uri:latest,JWT_SECRET=app-secrets/jwt-secret:latest,WORKSPACE_DOMAIN=app-secrets/workspace-domain:latest"
+            # Note: For full zero-trust, configure Identity-Aware Proxy (IAP) in GCP Console.
+            # This restricts access to authenticated users only. Update OAuth consent screen and IAP settings.
+            # See updated DEPLOYMENT.md and SECURITY.md for details.
