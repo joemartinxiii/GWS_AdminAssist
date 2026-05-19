@@ -668,16 +668,40 @@ export class DriveService extends WorkspaceService {
   /**
    * Delete file permission
    */
-  async deleteFilePermission(userEmail: string, fileId: string, permissionId: string): Promise<void> {
+  async deleteFilePermission(userEmail: string, fileId: string, permissionId: string, driveId?: string): Promise<void> {
     await this.initialize(userEmail);
 
-    await this.withRetry(() =>
-      this.drive.permissions.delete({
-        fileId,
-        permissionId,
-        supportsAllDrives: true,
-      })
-    );
+    try {
+      await this.withRetry(() =>
+        this.drive.permissions.delete({
+          fileId,
+          permissionId,
+          supportsAllDrives: true,
+        })
+      );
+    } catch (error: any) {
+      const googleMsg: string = error?.response?.data?.error?.message || error?.message || '';
+      if (error?.response?.status === 403 && googleMsg.toLowerCase().includes('inherited')) {
+        let driveName = 'a Shared Drive';
+        const resolvedDriveId = driveId || (() => {
+          try { return error?.response?.data?.error?.errors?.[0]?.location; } catch { return undefined; }
+        })();
+        if (resolvedDriveId) {
+          try {
+            const driveRes = await this.drive.drives.get({ driveId: resolvedDriveId });
+            if (driveRes.data.name) driveName = `"${driveRes.data.name}"`;
+          } catch { /* fall back to generic name */ }
+        }
+        const err: any = new Error(
+          `This permission is inherited from the ${driveName} Shared Drive membership and cannot be removed at the file level. ` +
+          `To restrict access, remove the account from ${driveName} or move the file outside the drive.`
+        );
+        err.status = 403;
+        err.code = 'INHERITED_PERMISSION';
+        throw err;
+      }
+      throw error;
+    }
   }
 
   /**

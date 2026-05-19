@@ -351,10 +351,12 @@ router.patch('/files/:fileId/permissions/:permissionId', requirePermission('driv
  */
 router.delete('/files/:fileId/permissions/:permissionId', requirePermission('drive.permissions.manage'), auditLog('drive.permission.delete', 'drive'), async (req: AuthRequest, res: Response) => {
   try {
+    const driveId = req.query.driveId as string | undefined;
     await driveService.deleteFilePermission(
       req.user!.email,
       req.params.fileId,
-      req.params.permissionId
+      req.params.permissionId,
+      driveId
     );
     res.json({ message: 'Permission deleted successfully' });
   } catch (error: any) {

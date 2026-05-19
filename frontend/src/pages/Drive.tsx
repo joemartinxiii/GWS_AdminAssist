@@ -76,6 +76,7 @@ interface DriveFile {
   size?: string;
   path?: string;
   shared: boolean;
+  driveId?: string;
   permissions: Array<{
     id: string;
     type: string;
@@ -560,13 +561,20 @@ export function Drive() {
     }
   };
 
-  const handleOpenPermissionDialog = (file: DriveFile, permission?: any) => {
+  const handleOpenPermissionDialog = async (file: DriveFile, permission?: any) => {
+    // Open immediately with list-state data so the modal feels instant
     setSelectedFile(file);
     setSelectedPermission(permission || null);
-    if (permission) {
-      setNewRole(permission.role);
-    }
+    if (permission) setNewRole(permission.role);
     setPermissionDialogOpen(true);
+
+    // Then silently refresh with fresh data (correct path + up-to-date permissions)
+    try {
+      const { data } = await apiClient.get<DriveFile>(`/drive/files/${file.id}`);
+      setSelectedFile((prev) => (prev?.id === file.id ? data : prev));
+    } catch {
+      // keep the list-state fallback already set above
+    }
   };
 
   const handleUpdatePermission = async () => {
@@ -589,7 +597,10 @@ export function Drive() {
     if (!confirm('Are you sure you want to remove this permission?')) return;
 
     try {
-      await apiClient.delete(`/drive/files/${fileId}/permissions/${permissionId}`);
+      const driveId = selectedFile?.driveId;
+      await apiClient.delete(`/drive/files/${fileId}/permissions/${permissionId}`, {
+        params: driveId ? { driveId } : undefined,
+      });
       setSelectedFile((prev) =>
         prev && prev.id === fileId ? { ...prev, permissions: (prev.permissions ?? []).filter((p) => p.id !== permissionId) } : prev
       );
@@ -600,9 +611,13 @@ export function Drive() {
       });
       if (tabValue === 0) fetchExternalSharing();
       else fetchFiles();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting permission:', error);
-      alert('Failed to delete permission. Please try again.');
+      const msg =
+        error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        'Failed to delete permission. Please try again.';
+      setSnackbar({ open: true, message: msg, severity: 'error' });
     }
   };
 
@@ -656,22 +671,46 @@ export function Drive() {
     const perms = (selectedFile.permissions ?? []).filter((p) => selectedPermissionIds.has(p.id) && p.role !== 'owner');
     if (perms.length === 0) return;
     if (!confirm(`Remove ${perms.length} permission(s)?`)) return;
-    try {
-      for (const p of perms) {
-        await apiClient.delete(`/drive/files/${selectedFile.id}/permissions/${p.id}`);
+    const driveId = selectedFile.driveId;
+    const succeeded: string[] = [];
+    const errors: string[] = [];
+
+    for (const p of perms) {
+      try {
+        await apiClient.delete(`/drive/files/${selectedFile.id}/permissions/${p.id}`, {
+          params: driveId ? { driveId } : undefined,
+        });
+        succeeded.push(p.id);
+      } catch (error: any) {
+        const msg =
+          error?.response?.data?.error ||
+          error?.response?.data?.message ||
+          `Failed to remove permission ${p.id}`;
+        errors.push(msg);
       }
+    }
+
+    if (succeeded.length > 0) {
+      const removed = new Set(succeeded);
       setSelectedFile((prev) =>
         prev && prev.id === selectedFile.id
-          ? { ...prev, permissions: (prev.permissions ?? []).filter((p) => !selectedPermissionIds.has(p.id)) }
+          ? { ...prev, permissions: (prev.permissions ?? []).filter((p) => !removed.has(p.id)) }
           : prev
       );
-      setSelectedPermissionIds(new Set());
-      setSnackbar({ open: true, message: `${perms.length} permission(s) removed`, severity: 'success' });
+      setSelectedPermissionIds((prev) => {
+        const next = new Set(prev);
+        succeeded.forEach((id) => next.delete(id));
+        return next;
+      });
       if (tabValue === 0) fetchExternalSharing();
       else fetchFiles();
-    } catch (error: any) {
-      console.error('Error removing permissions:', error);
-      setSnackbar({ open: true, message: error.response?.data?.error || 'Failed to remove some permissions', severity: 'error' });
+    }
+
+    if (errors.length > 0) {
+      // Show first unique error — typically all inherited errors share the same message
+      setSnackbar({ open: true, message: errors[0], severity: 'error' });
+    } else {
+      setSnackbar({ open: true, message: `${succeeded.length} permission(s) removed`, severity: 'success' });
     }
   };
 
@@ -1544,19 +1583,23 @@ export function Drive() {
                       <Box sx={{ width: 72, flexShrink: 0 }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{permission.type}</Typography>
                       </Box>
-                      <Box sx={{ width: '24%', minWidth: 0 }}>
-                        <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), wordBreak: 'break-word' }}>
-                          {permission.type === 'anyone'
-                            ? 'Anyone with link'
-                            : permission.displayName || '—'}
-                        </Typography>
+                      <Box sx={{ width: '24%', minWidth: 0, overflow: 'hidden' }}>
+                        <Tooltip title={permission.type === 'anyone' ? '' : (permission.displayName || '')} placement="top">
+                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {permission.type === 'anyone'
+                              ? 'Anyone with link'
+                              : permission.displayName || '—'}
+                          </Typography>
+                        </Tooltip>
                       </Box>
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), wordBreak: 'break-word' }}>
-                          {permission.type === 'anyone'
-                            ? 'Anyone with link'
-                            : permission.emailAddress || permission.domain || permission.id || '—'}
-                        </Typography>
+                      <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                        <Tooltip title={permission.type === 'anyone' ? '' : (permission.emailAddress || permission.domain || '')} placement="top">
+                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {permission.type === 'anyone'
+                              ? 'Anyone with link'
+                              : permission.emailAddress || permission.domain || permission.id || '—'}
+                          </Typography>
+                        </Tooltip>
                       </Box>
                       <Box sx={{ width: '28%', minWidth: 120 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: 32 }}>
