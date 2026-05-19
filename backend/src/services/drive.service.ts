@@ -74,7 +74,7 @@ export class DriveService extends WorkspaceService {
     return query;
   }
 
-  private classifyExternalSharing(
+  classifyExternalSharing(
     permissions: DriveFile['permissions'],
     workspaceDomain: string,
     domainFilter?: string
@@ -659,6 +659,7 @@ export class DriveService extends WorkspaceService {
       this.drive.permissions.update({
         fileId,
         permissionId,
+        supportsAllDrives: true,
         requestBody: { role },
       })
     );
@@ -674,6 +675,7 @@ export class DriveService extends WorkspaceService {
       this.drive.permissions.delete({
         fileId,
         permissionId,
+        supportsAllDrives: true,
       })
     );
   }
@@ -787,6 +789,7 @@ export class DriveService extends WorkspaceService {
     await this.withRetry(() =>
       this.drive.permissions.create({
         fileId,
+        supportsAllDrives: true,
         requestBody: {
           type: permission.type,
           role: permission.role,

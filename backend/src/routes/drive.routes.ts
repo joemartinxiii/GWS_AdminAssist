@@ -81,23 +81,7 @@ router.get('/files/export', requireAnyAdmin, async (req: AuthRequest, res: Respo
 
     const workspaceDomain = process.env.WORKSPACE_DOMAIN || '';
     const csvData = files.map(file => {
-      const externalDomains: string[] = [];
-      const externalEmails: string[] = [];
-
-      for (const perm of file.permissions) {
-        if (perm.type === 'domain' && perm.domain && perm.domain !== workspaceDomain) {
-          externalDomains.push(perm.domain);
-        } else if (perm.type === 'user' && perm.emailAddress) {
-          const emailDomain = perm.emailAddress.split('@')[1];
-          if (emailDomain !== workspaceDomain) {
-            externalEmails.push(perm.emailAddress);
-            if (!externalDomains.includes(emailDomain)) {
-              externalDomains.push(emailDomain);
-            }
-          }
-        }
-      }
-
+      const { externalDomains, externalEmails } = driveService.classifyExternalSharing(file.permissions, workspaceDomain);
       return {
         'File Name': file.name,
         'File ID': file.id,
@@ -175,22 +159,7 @@ router.get('/export/stream', requireAnyAdmin, async (req: AuthRequest, res: Resp
       (files) => {
         // Process each batch of files
         for (const file of files) {
-          const externalDomains: string[] = [];
-          const externalEmails: string[] = [];
-
-          for (const perm of file.permissions) {
-            if (perm.type === 'domain' && perm.domain && perm.domain !== workspaceDomain) {
-              externalDomains.push(perm.domain);
-            } else if ((perm.type === 'user' || perm.type === 'group') && perm.emailAddress) {
-              const emailDomain = perm.emailAddress.split('@')[1];
-              if (emailDomain !== workspaceDomain) {
-                externalEmails.push(perm.emailAddress);
-                if (!externalDomains.includes(emailDomain)) {
-                  externalDomains.push(emailDomain);
-                }
-              }
-            }
-          }
+          const { externalDomains, externalEmails } = driveService.classifyExternalSharing(file.permissions, workspaceDomain);
 
           const csvRow = [
             `"${(file.name || '').replace(/"/g, '""')}"`,
@@ -417,19 +386,7 @@ router.post('/files/export/drive', requireSuperAdmin, async (req: AuthRequest, r
 
     const workspaceDomain = process.env.WORKSPACE_DOMAIN || '';
     const csvData = files.map(file => {
-      const externalDomains: string[] = [];
-      const externalEmails: string[] = [];
-      for (const perm of file.permissions || []) {
-        if (perm.type === 'domain' && perm.domain && perm.domain !== workspaceDomain) {
-          externalDomains.push(perm.domain);
-        } else if (perm.type === 'user' && perm.emailAddress) {
-          const emailDomain = perm.emailAddress.split('@')[1];
-          if (emailDomain !== workspaceDomain) {
-            externalEmails.push(perm.emailAddress);
-            if (!externalDomains.includes(emailDomain)) externalDomains.push(emailDomain);
-          }
-        }
-      }
+      const { externalDomains, externalEmails } = driveService.classifyExternalSharing(file.permissions, workspaceDomain);
       return {
         'File Name': file.name,
         'File ID': file.id,
@@ -562,18 +519,7 @@ router.post('/files/export/selected/drive', requireSuperAdmin, async (req: AuthR
       if (file) files.push(file);
     }
     const csvData = files.map(file => {
-      const externalDomains: string[] = [];
-      const externalEmails: string[] = [];
-      for (const perm of file.permissions || []) {
-        if (perm.type === 'domain' && perm.domain && perm.domain !== workspaceDomain) externalDomains.push(perm.domain);
-        else if (perm.type === 'user' && perm.emailAddress) {
-          const emailDomain = perm.emailAddress.split('@')[1];
-          if (emailDomain !== workspaceDomain) {
-            externalEmails.push(perm.emailAddress);
-            if (!externalDomains.includes(emailDomain)) externalDomains.push(emailDomain);
-          }
-        }
-      }
+      const { externalDomains, externalEmails } = driveService.classifyExternalSharing(file.permissions || [], workspaceDomain);
       return {
         'File Name': file.name,
         'File ID': file.id,

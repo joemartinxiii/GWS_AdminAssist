@@ -568,7 +568,16 @@ export function Users() {
   // Edit dialog
   // -------------------------------------------------------------------------
 
-  const handleOpenEdit = (user: User) => { setSelectedUser(user); setEditDialogOpen(true); };
+  const handleOpenEdit = async (user: User) => {
+    setEditDialogOpen(true);
+    setSelectedUser(user);
+    try {
+      const { data } = await apiClient.get(`/users/${encodeURIComponent(user.primaryEmail)}`);
+      setSelectedUser(data);
+    } catch {
+      // keep the list-state fallback already set above
+    }
+  };
   const handleCloseEdit = () => { setEditDialogOpen(false); setSelectedUser(null); };
 
   // -------------------------------------------------------------------------
@@ -944,9 +953,9 @@ export function Users() {
                 <ColHeader label="Status" sortId="status" width={80} />
                 <ColHeader label="2FA" sortId="2fa" width={80} />
                 {isAdminsTab ? (
-                  <ColHeader label="Admin type" sortId="adminType" width={220} />
+                  <ColHeader label="Admin type" sortId="adminType" width={120} />
                 ) : (
-                  <ColHeader label="Role" sortId="role" width={72} />
+                  <ColHeader label="Role" sortId="role" width={120} />
                 )}
                 {isMdUp && <ColHeader label="Last sign-in" sortId="lastLogin" width={100} align="right" />}
                 <ColumnHeader
@@ -1030,7 +1039,7 @@ export function Users() {
                         </Typography>
                       </Box>
                       {isAdminsTab ? (
-                        <Box sx={{ width: 220, minWidth: 160, flexShrink: 1, alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}>
+                        <Box sx={{ width: 120, minWidth: 120, flexShrink: 1, alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}>
                           <Tooltip title={describeAdminType(user)} placement="top">
                             <Typography
                               sx={{
@@ -1050,7 +1059,7 @@ export function Users() {
                           </Tooltip>
                         </Box>
                       ) : (
-                        <Box sx={{ width: 72 }}>
+                        <Box sx={{ width: 120 }}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', fontWeight: user.isAdmin ? 600 : 400, color: (t) => (user.isAdmin ? T.accent : textSecondary(t)) }}>
                             {isWorkspaceAdmin(user) ? 'Admin' : 'User'}
                           </Typography>
