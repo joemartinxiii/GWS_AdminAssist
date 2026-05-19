@@ -1554,9 +1554,9 @@ export function Drive() {
                     <Box sx={{ width: 42, mr: 0.5, flexShrink: 0 }} />
                   )}
                   <ColumnHeader label="Type" columnId="dt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} />
-                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="24%" />
-                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} />
-                  <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="28%" />
+                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="18%" />
+                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="30%" />
+                  <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="20%" />
                   <ColumnHeader label="External" columnId="dx" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} align="center" />
                   <ColumnHeader label="Remove" columnId="drm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="center" />
                 </ListHeaderRow>
@@ -1583,7 +1583,7 @@ export function Drive() {
                       <Box sx={{ width: 72, flexShrink: 0 }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{permission.type}</Typography>
                       </Box>
-                      <Box sx={{ width: '24%', minWidth: 0, overflow: 'hidden' }}>
+                      <Box sx={{ width: '18%', minWidth: 0, overflow: 'hidden' }}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.displayName || '')} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
@@ -1592,7 +1592,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                      <Box sx={{ width: '30%', minWidth: 0, overflow: 'hidden' }}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.emailAddress || permission.domain || '')} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
@@ -1601,7 +1601,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ width: '28%', minWidth: 120 }}>
+                      <Box sx={{ width: '20%', minWidth: 110 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: 32 }}>
                           {isEditing ? (
                             <Select
