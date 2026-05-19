@@ -1,0 +1,42 @@
+---
+description: End-of-session ritual — write session log and update tech debt
+alwaysApply: false
+---
+
+# End Session
+
+When the user says **"end session"** (or similar like "wrap up", "save our spot", "end the day"):
+
+## 1. Write a session log
+
+Save a file to `docs/sessions/YYYY-MM-DD.md` (use today's date). Structure:
+
+```markdown
+# Session — YYYY-MM-DD
+
+## Summary
+One-paragraph overview of what was accomplished.
+
+## Changes Made
+- **file/component**: what changed and why
+
+## Bugs Fixed
+- Short description → root cause → fix applied
+
+## Pending / Carry-over
+- Anything started but not finished, or deferred by the user
+
+## Notes
+Any context worth preserving for the next session.
+```
+
+## 2. Update tech debt
+
+Append any new items discovered during the session to `docs/tech-debt.md` under the appropriate section (Bugs, UX, Performance, etc.). Do not duplicate items already listed.
+
+## 3. Commit
+
+Stage `docs/sessions/YYYY-MM-DD.md` and `docs/tech-debt.md`, then commit with message:
+`docs: session log YYYY-MM-DD + tech debt updates`
+
+Then confirm to the user that the session is saved.

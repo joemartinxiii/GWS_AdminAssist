@@ -139,6 +139,36 @@ These are reported from deployed runtime behavior and should be treated as produ
 - Required role (super admin vs delegated admin) and actual signed-in role
 - Scope/IAM dependency check (DWD scopes + service account IAM)
 
+## Drive Permissions Modal — Remaining Polish
+
+Discovered during 2026-05-19 live testing. Not blocking but degrades UX.
+
+### Confirm dialogs
+
+Several Drive actions still use `window.confirm()` which is a browser-native modal and inconsistent with app UX:
+- `handleDeletePermission` (`Drive.tsx`) — single permission delete
+- `handleBulkRemovePermissions` (`Drive.tsx`) — bulk permission delete
+- `handleBulkRemoveExternalShares` (`Drive.tsx`) — bulk external share removal
+
+Replace with MUI `<Dialog>` confirmation modal (consistent with the rest of the app).
+
+### Remaining `alert()` calls in Drive.tsx
+
+- `handleUpdatePermission` — uses `alert()` on failure; replace with `setSnackbar`
+- `handleOpenPermissionDialogForReport` — uses `alert()` on failure; replace with `setSnackbar`
+
+### File list path shows drive root only
+
+`buildFastPath` (used during bulk scan for performance) returns only `/Shared Drives/<name>` for Shared Drive files — no subfolder path. The permissions modal now shows the correct full path via a fresh `GET /files/:id` fetch. If full path is also needed in the file list rows, it requires either per-file API calls (high perf cost) or a lazy-expand pattern.
+
+Area: `backend/src/services/drive.service.ts` → `buildFastPath`
+
+### Priority
+
+Low-medium — UX polish, not functional blockers.
+
+---
+
 ## Post-Deployment Verification Checklist (Add to Release SOP)
 
 Add a lightweight verification pass after each production deploy to catch configuration and role-gating regressions early.
