@@ -86,6 +86,9 @@ export class UserService extends WorkspaceService {
             isEnforcedIn2Sv: user.isEnforcedIn2Sv === true,
             isEnrolledIn2Sv: user.isEnrolledIn2Sv === true,
             department: departmentFromGoogleUser(user),
+            location: user.locations?.[0]?.area || user.locations?.[0]?.buildingId || '',
+            phone: user.phones?.[0]?.value || '',
+            notes: user.notes?.content || '',
           });
         }
       }

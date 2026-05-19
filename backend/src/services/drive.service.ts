@@ -132,6 +132,46 @@ export class DriveService extends WorkspaceService {
     return driveIds;
   }
 
+  /**
+   * Fetch id→name map for all shared drives in one paginated call.
+   * Used by bulk scan so we can build paths without per-file API calls.
+   */
+  private async fetchSharedDriveNames(): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    let pageToken: string | undefined;
+    do {
+      const response = await this.withRetry(() =>
+        this.drive.drives.list({
+          pageSize: 100,
+          pageToken,
+          useDomainAdminAccess: true,
+          fields: 'nextPageToken, drives(id, name)',
+        })
+      );
+      for (const drive of response.data.drives || []) {
+        if (drive.id && drive.name) names.set(drive.id, drive.name);
+      }
+      pageToken = response.data.nextPageToken || undefined;
+    } while (pageToken);
+    return names;
+  }
+
+  /**
+   * Build an admin-centric path using only data already present in the file
+   * list response — no additional API calls per file.
+   *
+   * - Shared drive file  → /Shared Drives/<drive-name>/
+   * - My Drive file      → /Users/<owner-email>/My Drive/
+   */
+  private buildFastPath(file: any, sharedDriveNames: Map<string, string>): string {
+    const ownerEmail = (file.owners || [])[0]?.emailAddress || 'unknown-owner';
+    if (file.driveId) {
+      const driveName = sharedDriveNames.get(file.driveId) || file.driveId;
+      return `/Shared Drives/${driveName}`;
+    }
+    return `/Users/${ownerEmail}/My Drive`;
+  }
+
   private async collectAuditCandidates(
     query: string,
     maxResults: number,
@@ -154,52 +194,44 @@ export class DriveService extends WorkspaceService {
       }
     };
 
-    const listFilesPaged = async (params: Record<string, unknown>) => {
-      let pageToken: string | undefined;
-      do {
-        const response = await this.withRetry(() =>
-          this.drive.files.list({
-            q: query,
-            fields:
-              'nextPageToken, files(id, name, mimeType, driveId, owners, shared, permissions(id, type, role, emailAddress, domain, displayName, deleted, permissionDetails), webViewLink, webContentLink, thumbnailLink, modifiedTime, createdTime, size, description, starred, trashed, version, parents)',
-            supportsAllDrives: true,
-            includeItemsFromAllDrives: true,
-            useDomainAdminAccess: true,
-            pageSize: 100,
-            pageToken,
-            ...params,
-          })
-        );
+    let pageToken: string | undefined;
+    do {
+      const response = await this.withRetry(() =>
+        this.drive.files.list({
+          q: query,
+          fields:
+            'nextPageToken, files(id, name, mimeType, driveId, owners, shared, permissions(id, type, role, emailAddress, domain, displayName, deleted, permissionDetails), webViewLink, webContentLink, thumbnailLink, modifiedTime, createdTime, size, description, starred, trashed, version, parents)',
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+          useDomainAdminAccess: true,
+          corpora: 'allDrives',
+          pageSize: 1000,
+          pageToken,
+        })
+      );
 
-        for (const file of response.data.files || []) {
-          ingest(file);
-          if (byId.size >= maxResults) return;
-        }
-
-        pageToken = response.data.nextPageToken || undefined;
-      } while (pageToken && byId.size < maxResults);
-    };
-
-    // My Drive/user corpus
-    await listFilesPaged({ corpora: 'user' });
-    if (byId.size >= maxResults) return Array.from(byId.values());
-
-    // Shared drives corpus (explicit per-drive scan for completeness)
-    const sharedDriveIds = await this.listSharedDriveIds();
-    for (const driveId of sharedDriveIds) {
-      try {
-        await listFilesPaged({ corpora: 'drive', driveId });
-      } catch (error) {
-        // Skip inaccessible drives and continue scanning remaining drives.
-        console.warn(`Skipping shared drive ${driveId} during audit scan:`, (error as Error).message);
+      for (const file of response.data.files || []) {
+        ingest(file);
+        if (byId.size >= maxResults) break;
       }
-      if (byId.size >= maxResults) break;
-    }
+
+      pageToken = response.data.nextPageToken || undefined;
+    } while (pageToken && byId.size < maxResults);
 
     return Array.from(byId.values());
   }
 
-  private async mapToDriveFile(userEmail: string, file: any): Promise<DriveFile> {
+  /**
+   * Map a raw Drive API file to DriveFile.
+   * `sharedDriveNames` is optional; when provided the path is built without
+   * additional API calls (fast path for bulk scans). When omitted the full
+   * recursive path walk is used (single-file lookups from the UI).
+   */
+  private async mapToDriveFile(
+    userEmail: string,
+    file: any,
+    sharedDriveNames?: Map<string, string>
+  ): Promise<DriveFile> {
     const permissions = (file.permissions || [])
       .filter((perm: any) => !perm.deleted)
       .map((perm: any) => ({
@@ -211,10 +243,16 @@ export class DriveService extends WorkspaceService {
         displayName: perm.displayName || undefined,
       }));
 
-    const parents = file.parents || [];
-    const filePath = await this.getFilePathCached(userEmail, file.id!, parents.length > 0 ? parents : undefined);
-    const ownerEmail = (file.owners || [])[0]?.emailAddress || undefined;
-    const adminPath = this.toAdminPath(filePath, ownerEmail, file.driveId || undefined);
+    let adminPath: string;
+    if (sharedDriveNames) {
+      // Fast path: no extra API calls — use data already in the list response
+      adminPath = this.buildFastPath(file, sharedDriveNames);
+    } else {
+      const parents = file.parents || [];
+      const filePath = await this.getFilePathCached(userEmail, file.id!, parents.length > 0 ? parents : undefined);
+      const ownerEmail = (file.owners || [])[0]?.emailAddress || undefined;
+      adminPath = this.toAdminPath(filePath, ownerEmail, file.driveId || undefined);
+    }
 
     return {
       id: file.id!,
@@ -353,16 +391,19 @@ export class DriveService extends WorkspaceService {
   ): Promise<DriveFile[]> {
     await this.initialize(userEmail);
     const workspaceDomain = process.env.WORKSPACE_DOMAIN || '';
-    const candidates = await this.collectAuditCandidates(
-      this.buildDriveQuery(filter),
-      maxResults,
-      (processed) => onProgress?.(processed, maxResults)
-    );
+    const [candidates, sharedDriveNames] = await Promise.all([
+      this.collectAuditCandidates(
+        this.buildDriveQuery(filter),
+        maxResults,
+        (processed) => onProgress?.(processed, maxResults)
+      ),
+      this.fetchSharedDriveNames(),
+    ]);
 
     const files: DriveFile[] = [];
     const sharedDrivePermissionsCache = new Map<string, DriveFile['permissions']>();
     for (const candidate of candidates) {
-      let driveFile = await this.mapToDriveFile(userEmail, candidate);
+      let driveFile = await this.mapToDriveFile(userEmail, candidate, sharedDriveNames);
       if (driveFile.shared || driveFile.driveId) {
         driveFile = await this.hydrateEffectivePermissions(userEmail, driveFile, sharedDrivePermissionsCache);
       }
@@ -424,10 +465,13 @@ export class DriveService extends WorkspaceService {
     const workspaceDomain = process.env.WORKSPACE_DOMAIN || '';
     const reports: ExternalSharingReport[] = [];
     const sharedDrivePermissionsCache = new Map<string, DriveFile['permissions']>();
-    const candidates = await this.collectAuditCandidates('trashed=false', 100000, onProgress);
+    const [candidates, sharedDriveNames] = await Promise.all([
+      this.collectAuditCandidates('trashed=false', 100000, onProgress),
+      this.fetchSharedDriveNames(),
+    ]);
 
     for (const candidate of candidates) {
-      let driveFile = await this.mapToDriveFile(userEmail, candidate);
+      let driveFile = await this.mapToDriveFile(userEmail, candidate, sharedDriveNames);
       if (driveFile.shared || driveFile.driveId) {
         driveFile = await this.hydrateEffectivePermissions(userEmail, driveFile, sharedDrivePermissionsCache);
       }
