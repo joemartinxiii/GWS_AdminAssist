@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  Autocomplete,
   FormControl,
   Select,
   MenuItem,
@@ -38,7 +39,6 @@ import {
   Check,
 } from 'lucide-react';
 import { apiClient } from '../services/api.client';
-import { isDemoMode, sharedDrives as demoSharedDrives, sharedDrivePermissions as demoSharedDrivePermissions } from '../data/demoData';
 import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
@@ -51,6 +51,15 @@ import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogLis
 import { DotLabel } from '../components/StatusDot';
 import { FilterToken } from '../components/ui/FilterToken';
 import { useTheme } from '@mui/material/styles';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeEmailInput(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (EMAIL_RE.test(trimmed)) return trimmed;
+  const inParens = trimmed.match(/\(([^\s@]+@[^\s@]+\.[^\s@]+)\)\s*$/)?.[1];
+  return inParens || '';
+}
 
 interface SharedDrive {
   id: string;
@@ -107,6 +116,8 @@ export function SharedDrives() {
   const [newPermissionRole, setNewPermissionRole] = useState<'organizer' | 'fileOrganizer' | 'writer' | 'commenter' | 'reader'>('reader');
   const [newPermissionEmail, setNewPermissionEmail] = useState('');
   const [newPermissionDomain, setNewPermissionDomain] = useState('');
+  const [directorySuggestions, setDirectorySuggestions] = useState<string[]>([]);
+  const [loadingDirectoryUsers, setLoadingDirectoryUsers] = useState(false);
   const [selectedDriveIds, setSelectedDriveIds] = useState<Set<string>>(new Set());
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<Set<string>>(new Set());
 
@@ -363,17 +374,52 @@ export function SharedDrives() {
     setSdPermissionsPage((p) => Math.min(p, max));
   }, [permissions.length, sdPermissionsRowsPerPage]);
 
+  useEffect(() => {
+    if (!addPermissionDialogOpen || newPermissionType === 'domain' || loadingDirectoryUsers || directorySuggestions.length > 0) return;
+    const fetchDirectoryUsers = async () => {
+      try {
+        setLoadingDirectoryUsers(true);
+        const response = await apiClient.get('/users?maxResults=500');
+        const uniqueByEmail = new Map<string, string>();
+        if (Array.isArray(response.data)) {
+          for (const user of response.data) {
+            const email = String(user?.primaryEmail || '').trim();
+            if (!EMAIL_RE.test(email)) continue;
+            const fullName = String(user?.name?.fullName || '').trim();
+            uniqueByEmail.set(email, fullName ? `${fullName} (${email})` : email);
+          }
+        }
+        setDirectorySuggestions(Array.from(uniqueByEmail.values()).sort((a, b) => a.localeCompare(b)));
+      } catch (error) {
+        console.error('Error fetching users for shared drive permission suggestions:', error);
+        setDirectorySuggestions([]);
+      } finally {
+        setLoadingDirectoryUsers(false);
+      }
+    };
+    void fetchDirectoryUsers();
+  }, [addPermissionDialogOpen, newPermissionType, loadingDirectoryUsers, directorySuggestions.length]);
+
   const fetchSharedDrives = async () => {
     try {
       setLoading(true);
       const response = await apiClient.get('/drive/shared-drives');
-      setDrives(response.data);
-    } catch (error) {
-      console.error('Error fetching shared drives:', error);
-      // In demo mode, show sample data from central demo data
-      if (isDemoMode()) {
-        setDrives(demoSharedDrives as SharedDrive[]);
+      const payload = response.data;
+      if (Array.isArray(payload)) {
+        setDrives(payload);
+      } else if (payload && Array.isArray(payload.drives)) {
+        setDrives(payload.drives);
+      } else {
+        setDrives([]);
       }
+    } catch (error: any) {
+      console.error('Error fetching shared drives:', error);
+      setDrives([]);
+      setSnackbar({
+        open: true,
+        message: error?.response?.data?.error || 'Failed to load shared drives.',
+        severity: 'error',
+      });
     } finally {
       setLoading(false);
     }
@@ -383,13 +429,22 @@ export function SharedDrives() {
     try {
       setPermissionsLoading(true);
       const response = await apiClient.get(`/drive/shared-drives/${driveId}/permissions`);
-      setPermissions(response.data);
-    } catch (error) {
-      console.error('Error fetching permissions:', error);
-      // In demo mode, show sample data from central demo data
-      if (isDemoMode()) {
-        setPermissions(demoSharedDrivePermissions as SharedDrivePermission[]);
+      const payload = response.data;
+      if (Array.isArray(payload)) {
+        setPermissions(payload);
+      } else if (payload && Array.isArray(payload.permissions)) {
+        setPermissions(payload.permissions);
+      } else {
+        setPermissions([]);
       }
+    } catch (error: any) {
+      console.error('Error fetching permissions:', error);
+      setPermissions([]);
+      setSnackbar({
+        open: true,
+        message: error?.response?.data?.error || 'Failed to load shared drive permissions.',
+        severity: 'error',
+      });
     } finally {
       setPermissionsLoading(false);
     }
@@ -410,8 +465,9 @@ export function SharedDrives() {
 
   const handleAddPermission = async () => {
     if (!selectedDrive) return;
+    const normalizedPermissionEmail = normalizeEmailInput(newPermissionEmail);
 
-    if ((newPermissionType === 'user' || newPermissionType === 'group') && !newPermissionEmail.trim()) {
+    if ((newPermissionType === 'user' || newPermissionType === 'group') && !normalizedPermissionEmail) {
       setSnackbar({ open: true, message: 'Email address is required', severity: 'error' });
       return;
     }
@@ -425,7 +481,7 @@ export function SharedDrives() {
       await apiClient.post(`/drive/shared-drives/${selectedDrive.id}/permissions`, {
         type: newPermissionType,
         role: newPermissionRole,
-        emailAddress: newPermissionType === 'user' || newPermissionType === 'group' ? newPermissionEmail.trim() : undefined,
+        emailAddress: newPermissionType === 'user' || newPermissionType === 'group' ? normalizedPermissionEmail : undefined,
         domain: newPermissionType === 'domain' ? newPermissionDomain.trim() : undefined,
       });
 
@@ -886,7 +942,8 @@ export function SharedDrives() {
                     <Box sx={{ width: 34, mr: 0.5, flexShrink: 0 }} />
                   )}
                   <ColumnHeader label="Type" columnId="pt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
-                  <ColumnHeader label="Entity" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} />
+                  <ColumnHeader label="Name" columnId="pn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="24%" />
+                  <ColumnHeader label="Email" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} />
                   <ColumnHeader label="Role" columnId="pr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={120} />
                   <ColumnHeader label="Remove" columnId="prm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="center" />
                 </ListHeaderRow>
@@ -910,9 +967,16 @@ export function SharedDrives() {
                         {getTypeLabel(permission.type)}
                       </Typography>
                     </Box>
+                    <Box sx={{ width: '24%', minWidth: 0 }}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), wordBreak: 'break-word' }}>
+                        {permission.type === 'anyone' ? 'Anyone with link' : permission.displayName || '—'}
+                      </Typography>
+                    </Box>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), wordBreak: 'break-word' }}>
-                        {permission.displayName || permission.emailAddress || permission.domain || '—'}
+                        {permission.type === 'anyone'
+                          ? 'Anyone with link'
+                          : permission.emailAddress || permission.domain || permission.id || '—'}
                       </Typography>
                     </Box>
                     <Box sx={{ width: 120, flexShrink: 0 }}>
@@ -971,13 +1035,28 @@ export function SharedDrives() {
                           sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
                         />
                       ) : (
-                        <TextField
-                          size="small"
-                          placeholder="user@domain.com"
+                        <Autocomplete
+                          freeSolo
+                          options={directorySuggestions}
                           value={newPermissionEmail}
-                          onChange={(e) => setNewPermissionEmail(e.target.value)}
+                          inputValue={newPermissionEmail}
+                          onInputChange={(_, value) => setNewPermissionEmail(value)}
+                          onChange={(_, value) => setNewPermissionEmail(typeof value === 'string' ? value : '')}
+                          loading={loadingDirectoryUsers}
+                          filterOptions={(options, { inputValue }) => {
+                            if (!inputValue.trim()) return options;
+                            const search = inputValue.toLowerCase().trim();
+                            return options.filter((option) => option.toLowerCase().includes(search));
+                          }}
                           fullWidth
-                          sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              size="small"
+                              placeholder="Type name/email (e.g. ops)"
+                              sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
+                            />
+                          )}
                         />
                       )}
                     </Box>
@@ -1003,7 +1082,7 @@ export function SharedDrives() {
                           size="small"
                           color="primary"
                           onClick={handleAddPermission}
-                          disabled={!(((newPermissionType === 'user' || newPermissionType === 'group') && newPermissionEmail.trim()) || (newPermissionType === 'domain' && newPermissionDomain.trim()))}
+                          disabled={!(((newPermissionType === 'user' || newPermissionType === 'group') && normalizeEmailInput(newPermissionEmail)) || (newPermissionType === 'domain' && newPermissionDomain.trim()))}
                           aria-label="Add"
                         >
                           <Check size={18} strokeWidth={1.75} />

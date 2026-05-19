@@ -4,12 +4,30 @@ This document outlines the security setup required for the Google Workspace Admi
 
 ## Application roles (Workspace)
 
-Sign-in uses Google OAuth; API access uses a **service account with domain-wide delegation** impersonating the signed-in user. After authentication, the backend loads Admin SDK directory data for that user:
+Sign-in uses Google OAuth; API access uses a **service account with domain-wide delegation** impersonating the signed-in user. After authentication, the backend loads Admin SDK directory data for that user. The UI now shows a clear role badge (green "Super Admin (Full Access)" or orange "Delegated Admin (View Only)") in the top-right user menu:
 
 - **Super admins** (`isAdmin` in the Admin SDK) receive full app permissions, including all **mutations** and exports.
-- **Delegated admins** receive **view-only** permissions in this app (browsing users, groups, Drive, calendar, audit views, Gmail read-only areas). They **cannot** perform writes, Drive uploads from exports, or other actions gated by `requireSuperAdmin` or mutation permissions.
+- **Delegated admins** receive **view-only** permissions in this app (browsing users, groups, Drive, calendar, audit views, Gmail read-only areas). They **cannot** perform writes, Drive uploads from exports, or other actions gated by `requireSuperAdmin` or mutation permissions. This is the most common source of "what I can and cannot do" in production.
 
-Network-level controls (for example **Identity-Aware Proxy** and OAuth client restrictions) are separate; they do not replace this in-app enforcement.
+**Error messages** have been improved to provide actionable guidance for Secret Manager, IAM, and delegation issues (see Troubleshooting below). Network-level controls (for example **Identity-Aware Proxy** and OAuth client restrictions) are separate; they do not replace this in-app enforcement.
+
+## Copy-paste scope strings (full URLs, comma-delimited)
+
+Use **no spaces** after commas. Some UIs accept one line; others let you add scopes one-by-one (split on commas).
+
+**Google Cloud — OAuth consent screen** (APIs & Services → OAuth consent screen → add scopes):
+
+```
+https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/userinfo.profile,https://www.googleapis.com/auth/admin.directory.user.readonly,https://www.googleapis.com/auth/admin.directory.group.readonly,https://www.googleapis.com/auth/drive.readonly,https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/calendar.readonly
+```
+
+**Google Workspace Admin — domain-wide delegation** (admin.google.com → Security → API controls → Domain-wide delegation). Use the **`client_id`** from the **service account JSON** (not the OAuth web client ID). Scopes must match `backend/src/config/google.config.ts` (`getServiceAccountClient`):
+
+```
+https://www.googleapis.com/auth/admin.directory.user,https://www.googleapis.com/auth/admin.directory.group,https://www.googleapis.com/auth/admin.directory.orgunit.readonly,https://www.googleapis.com/auth/admin.directory.user.security,https://www.googleapis.com/auth/apps.security,https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/gmail.settings.basic,https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/calendar,https://www.googleapis.com/auth/chrome.management.policy
+```
+
+Enable the Chrome Policy API in GCP if you use the last scope (`gcloud services enable chromepolicy.googleapis.com`).
 
 ## Prerequisites & Setup (Simplified)
 
@@ -25,16 +43,17 @@ Key security setup (one-time):
 
 2. **Service Account (`workspace-admin-sa`)**:
    - Create in IAM & Admin > Service Accounts.
-   - Grant `roles/secretmanager.secretAccessor` and `roles/run.invoker`.
+   - Grant `roles/secretmanager.secretAccessor`, `roles/run.invoker`, and `roles/logging.logWriter` (for audit logging).
    - Set up **domain-wide delegation** in Google Workspace Admin Console > Security > API Controls:
-     - Client ID from SA JSON.
-     - Scopes: `https://www.googleapis.com/auth/admin.directory.user`, `admin.directory.group`, `drive`, `gmail.settings.basic`, `calendar`.
+     - **Client ID**: numeric `client_id` from the service account JSON key (not the OAuth web client).
+     - **OAuth scopes (comma-delimited)**: paste the **domain-wide delegation** single line from the **Copy-paste scope strings** section at the top of this file.
    - Download JSON key (`sa-key.json`) — passed to `setup-secrets.sh`.
+   - **Cloud Build permission** (common with `--source .`): The default compute service account must have `roles/storage.objectViewer`. `deploy.sh` now grants this automatically. See DEPLOYMENT.md if it fails.
 
 3. **OAuth 2.0 Web Client** (APIs & Services > Credentials):
    - Application type: Web application.
    - Authorized redirect URIs: `http://localhost:5001/api/auth/callback` (dev), production `https://<service-url>/api/auth/callback` (updated automatically by deploy.sh).
-   - Configure consent screen with appropriate scopes (userinfo.email, profile, admin.directory.*.readonly, etc.).
+   - Configure consent screen: paste the **OAuth consent screen** comma-delimited line from the **Copy-paste scope strings** section at the top of this file (or add scopes one-by-one by splitting on commas).
 
 4. **Secrets**:
    - Run `./setup-secrets.sh` (or with env vars). It creates **one secret per value** for unambiguous Cloud Run `--set-secrets` injection (`:latest` or specific version).
@@ -68,14 +87,11 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
 1. Go to APIs & Services > OAuth consent screen
 2. Choose "Internal" (for Workspace users) or "External"
 3. Fill in required information
-4. Add scopes:
-   - https://www.googleapis.com/auth/userinfo.email
-   - https://www.googleapis.com/auth/userinfo.profile
-   - https://www.googleapis.com/auth/admin.directory.user.readonly
-   - https://www.googleapis.com/auth/admin.directory.group.readonly
-   - https://www.googleapis.com/auth/drive.readonly
-   - https://www.googleapis.com/auth/gmail.readonly
-   - https://www.googleapis.com/auth/calendar.readonly
+4. Add scopes — copy the **OAuth consent screen** comma-delimited line from the **Copy-paste scope strings** section at the top of this file (split on commas if the UI adds scopes one at a time):
+
+```
+https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/userinfo.profile,https://www.googleapis.com/auth/admin.directory.user.readonly,https://www.googleapis.com/auth/admin.directory.group.readonly,https://www.googleapis.com/auth/drive.readonly,https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/calendar.readonly
+```
 
 ## Security Features Implemented
 
@@ -178,19 +194,27 @@ Required environment variables (stored as secrets):
 
 ## Troubleshooting
 
-### Service Account Authentication Fails
+The UI now displays a **role badge** (green "Super Admin (Full Access)" or orange "Delegated Admin (View Only)") in the top-right user menu. Permission fetch and middleware now return **detailed, actionable error messages** for prod issues (Secret Manager, domain-wide delegation, IAM). Check Cloud Run logs with:
+```bash
+gcloud beta run services logs tail workspace-admin --region us-central1
+# Or (all gcloud versions):
+gcloud run services logs read workspace-admin --region us-central1 --limit 200
+```
 
-- Verify domain-wide delegation is set up correctly
-- Check that the service account has the correct scopes
-- Ensure the service account key is valid
+### Service Account / Permissions / "What I Can and Cannot Do" Fails (Most Common)
+
+- **Delegated vs Super Admin**: If badge shows "Delegated Admin (View Only)", mutations are intentionally blocked (see Application Roles section). Use a true Super Admin account.
+- Verify domain-wide delegation scopes **exactly** match SECURITY.md (copy-paste, no extra spaces/commas) using SA `client_id` in GWS Admin Console > Security > API controls.
+- Re-run `./setup-secrets.sh <project>` and all printed IAM commands. SA must have Secret Manager access on **every** secret.
+- Check for 403s on `users.get()` or SA init in logs.
 
 ### OAuth Flow Fails
 
-- Verify redirect URI matches exactly (including trailing slashes)
-- Check OAuth consent screen is configured
-- Ensure client ID and secret are correct
+- Verify redirect URI matches **exactly** (including trailing slashes, no query params) in GCP Console (use the one printed by `./deploy.sh`).
+- Check OAuth consent screen is configured with readonly scopes.
+- Ensure `GOOGLE_CLIENT_ID`/`SECRET` are in Secret Manager.
 
 ### Secret Manager Access Denied
 
-- Verify the Cloud Run service account has Secret Manager Secret Accessor role
-- Check IAM bindings for the secrets
+- Verify the Cloud Run service account (`workspace-admin-sa`) has `roles/secretmanager.secretAccessor` on each secret (re-apply IAM from setup script).
+- Confirm `GCP_PROJECT_ID`, secret versions (`:latest`), and env vars in Cloud Run service.

@@ -15,7 +15,6 @@ import {
 } from '@mui/material';
 import { Download, CloudUpload, FileText, ChevronDown, RefreshCw, EyeOff, RotateCcw } from 'lucide-react';
 import { apiClient } from '../services/api.client';
-import { isDemoMode, hardeningData as demoHardeningData } from '../data/demoData';
 import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
 import { T, pick, menuPaperProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
@@ -297,49 +296,9 @@ export function SecurityAudit() {
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({ open: false, message: '', severity: 'success' });
   const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' = 'success') => setSnackbar({ open: true, message, severity });
 
-  const buildCSVFromData = (data: HardeningData, ignored: Set<string>) => {
-    const headers = ['Category', 'Name', 'Description', 'Status', 'Current Value', 'Recommended Value', 'Recommendation', 'Admin Console URL', 'Waived'];
-    const rows = data.checks.map(check =>
-      [
-        check.category,
-        check.name,
-        check.description,
-        check.status.toUpperCase(),
-        String(check.currentValue ?? ''),
-        String(check.recommendedValue ?? ''),
-        check.recommendation,
-        check.adminConsoleUrl ?? '',
-        ignored.has(check.id) ? 'yes' : 'no',
-      ].map(cell => {
-        const str = String(cell ?? '');
-        return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
-      })
-    );
-    return [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-  };
-
   const handleExportCSV = async () => {
     setExportAnchorEl(null);
     const filename = `gws-hardening-${new Date().toISOString().split('T')[0]}.csv`;
-    if (isDemoMode() && hardeningData) {
-      try {
-        const csv = buildCSVFromData(hardeningData, ignoredIds);
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
-        showSnackbar('CSV downloading now.');
-      } catch (e) {
-        console.error(e);
-        showSnackbar('Failed to export CSV.', 'error');
-      }
-      return;
-    }
     try {
       const response = await apiClient.get('/audit/hardening/export', { responseType: 'blob' });
       if (response.status < 200 || response.status >= 300) {
@@ -405,10 +364,6 @@ export function SecurityAudit() {
       setHardeningData(response.data);
     } catch (error) {
       console.error('Error fetching hardening checks:', error);
-      // In demo mode, show sample data from central demo data
-      if (isDemoMode()) {
-        setHardeningData(demoHardeningData as HardeningData);
-      }
     } finally {
       setLoading(false);
     }

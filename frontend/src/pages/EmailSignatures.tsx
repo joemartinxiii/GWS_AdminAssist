@@ -18,7 +18,6 @@ import {
 } from '@mui/material';
 import { Search, X, Save, Send, ChevronDown, ChevronUp, HelpCircle, FileCode } from 'lucide-react';
 import { apiClient } from '../services/api.client';
-import { isDemoMode, users as demoUsers } from '../data/demoData';
 import { T, pick, textSecondary, textTertiary } from '../theme/designTokens';
 
 // ---------------------------------------------------------------------------
@@ -66,11 +65,6 @@ const EXAMPLE_TEMPLATE = `<table cellpadding="0" cellspacing="0" style="font-fam
   </tr>
 </table>`.trim();
 
-// ---------------------------------------------------------------------------
-// Demo
-// ---------------------------------------------------------------------------
-const DEMO_TEMPLATE_KEY = 'demo_domain_signature_template';
-
 interface UserRow {
   primaryEmail: string;
   name: { fullName: string };
@@ -81,16 +75,14 @@ interface UserRow {
 // ---------------------------------------------------------------------------
 export function EmailSignatures() {
   const [templateHtml, setTemplateHtml]           = useState('');
-  const [templateLoading, setTemplateLoading]     = useState(!isDemoMode());
+  const [templateLoading, setTemplateLoading]     = useState(true);
   const [templateSaving, setTemplateSaving]       = useState(false);
   const [templateUpdatedAt, setTemplateUpdatedAt] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess]             = useState(false);
   const [helpOpen, setHelpOpen]                   = useState(false);
 
-  const [users, setUsers]             = useState<UserRow[]>(() =>
-    isDemoMode() ? demoUsers.map((u) => ({ primaryEmail: u.primaryEmail, name: { fullName: u.name.fullName } })) : []
-  );
-  const [usersLoading, setUsersLoading] = useState(!isDemoMode());
+  const [users, setUsers]             = useState<UserRow[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
 
   // Push dialog state
   const [pushOpen, setPushOpen]               = useState(false);
@@ -106,12 +98,6 @@ export function EmailSignatures() {
 
   // ---- data loading --------------------------------------------------------
   const loadTemplate = useCallback(async () => {
-    if (isDemoMode()) {
-      setTemplateHtml(localStorage.getItem(DEMO_TEMPLATE_KEY) || '');
-      setTemplateUpdatedAt(null);
-      setTemplateLoading(false);
-      return;
-    }
     setTemplateLoading(true);
     try {
       const { data } = await apiClient.get<{ html: string; updatedAt: string | null }>('/gmail/signatures/template');
@@ -125,11 +111,6 @@ export function EmailSignatures() {
   }, []);
 
   const loadUsers = useCallback(async () => {
-    if (isDemoMode()) {
-      setUsers(demoUsers.map((u) => ({ primaryEmail: u.primaryEmail, name: { fullName: u.name.fullName } })));
-      setUsersLoading(false);
-      return;
-    }
     setUsersLoading(true);
     try {
       const { data } = await apiClient.get<Array<{ primaryEmail: string; name: { fullName: string } }>>('/users', {
@@ -148,13 +129,6 @@ export function EmailSignatures() {
 
   // ---- save ----------------------------------------------------------------
   const handleSave = async () => {
-    if (isDemoMode()) {
-      localStorage.setItem(DEMO_TEMPLATE_KEY, templateHtml);
-      setTemplateUpdatedAt(new Date().toISOString());
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-      return;
-    }
     setTemplateSaving(true);
     try {
       const { data } = await apiClient.post<{ html: string; updatedAt: string | null }>('/gmail/signatures/template', { html: templateHtml });
@@ -227,11 +201,6 @@ export function EmailSignatures() {
   const handlePush = async () => {
     const emails = Array.from(selectedEmails);
     if (emails.length === 0) return;
-
-    if (isDemoMode()) {
-      setPushResult({ succeeded: emails, failed: [] });
-      return;
-    }
 
     setApplying(true);
     setPushResult(null);
@@ -467,12 +436,6 @@ export function EmailSignatures() {
 
         </Box>
       </Box>
-
-      {isDemoMode() && (
-        <Alert severity="info" sx={{ mb: 2, fontFamily: T.font, fontSize: '0.8125rem' }}>
-          Demo mode — template saves to local storage; push is simulated.
-        </Alert>
-      )}
 
       {templateLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>

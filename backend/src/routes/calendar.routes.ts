@@ -6,6 +6,16 @@ import { calendarService } from '../services/calendar.service';
 
 const router = Router();
 
+function normalizeCalendarEmail(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  const direct = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed) ? trimmed : '';
+  if (direct) return direct;
+
+  // Accept UI labels like "Jane Admin (jane@example.com)".
+  const parenMatch = trimmed.match(/\(([^\s@]+@[^\s@]+\.[^\s@]+)\)\s*$/);
+  return parenMatch?.[1] || '';
+}
+
 // All routes require authentication
 router.use(authenticateSession);
 
@@ -15,9 +25,12 @@ router.use(authenticateSession);
  */
 router.get('/:email/calendars', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeCalendarEmail(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
+
     const calendars = await calendarService.listCalendars(
       req.user!.email,
-      req.params.email
+      targetEmail
     );
     res.json(calendars);
   } catch (error: any) {
@@ -123,6 +136,9 @@ router.delete('/resources/:resourceId', requirePermission('calendar.resources.ma
  */
 router.get('/:email/events', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeCalendarEmail(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
+
     const calendarId = (req.query.calendarId as string) || 'primary';
     const timeMin = req.query.timeMin as string | undefined;
     const timeMax = req.query.timeMax as string | undefined;
@@ -130,7 +146,7 @@ router.get('/:email/events', requireAnyAdmin, async (req: AuthRequest, res: Resp
 
     const events = await calendarService.listEvents(
       req.user!.email,
-      req.params.email,
+      targetEmail,
       calendarId,
       timeMin,
       timeMax,
@@ -149,10 +165,13 @@ router.get('/:email/events', requireAnyAdmin, async (req: AuthRequest, res: Resp
  */
 router.get('/:email/events/:eventId', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeCalendarEmail(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
+
     const calendarId = (req.query.calendarId as string) || 'primary';
     const event = await calendarService.getEvent(
       req.user!.email,
-      req.params.email,
+      targetEmail,
       calendarId,
       req.params.eventId
     );
@@ -169,11 +188,14 @@ router.get('/:email/events/:eventId', requireAnyAdmin, async (req: AuthRequest, 
  */
 router.patch('/:email/events/:eventId', requirePermission('calendar.resources.manage'), auditLog('calendar.event.update', 'calendar'), async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeCalendarEmail(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
+
     const calendarId = (req.query.calendarId as string) || 'primary';
     const updates = req.body;
     const event = await calendarService.updateEvent(
       req.user!.email,
-      req.params.email,
+      targetEmail,
       calendarId,
       req.params.eventId,
       updates
@@ -191,6 +213,9 @@ router.patch('/:email/events/:eventId', requirePermission('calendar.resources.ma
  */
 router.post('/:email/events/:eventId/attendees', requirePermission('calendar.resources.manage'), auditLog('calendar.event.addAttendees', 'calendar'), async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeCalendarEmail(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
+
     const calendarId = (req.query.calendarId as string) || 'primary';
     const { attendees } = req.body;
 
@@ -200,7 +225,7 @@ router.post('/:email/events/:eventId/attendees', requirePermission('calendar.res
 
     const event = await calendarService.addAttendees(
       req.user!.email,
-      req.params.email,
+      targetEmail,
       calendarId,
       req.params.eventId,
       attendees
@@ -218,6 +243,9 @@ router.post('/:email/events/:eventId/attendees', requirePermission('calendar.res
  */
 router.post('/:email/events/:eventId/move', requirePermission('calendar.resources.manage'), auditLog('calendar.event.move', 'calendar'), async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeCalendarEmail(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
+
     const calendarId = (req.query.calendarId as string) || 'primary';
     const { newStart, newEnd, timeZone } = req.body;
 
@@ -227,7 +255,7 @@ router.post('/:email/events/:eventId/move', requirePermission('calendar.resource
 
     const event = await calendarService.moveEvent(
       req.user!.email,
-      req.params.email,
+      targetEmail,
       calendarId,
       req.params.eventId,
       newStart,
@@ -247,12 +275,15 @@ router.post('/:email/events/:eventId/move', requirePermission('calendar.resource
  */
 router.delete('/:email/events/:eventId', requirePermission('calendar.resources.manage'), auditLog('calendar.event.delete', 'calendar'), async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeCalendarEmail(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
+
     const calendarId = (req.query.calendarId as string) || 'primary';
     const sendUpdates = (req.query.sendUpdates as 'all' | 'externalOnly' | 'none') || 'all';
     
     await calendarService.deleteEvent(
       req.user!.email,
-      req.params.email,
+      targetEmail,
       calendarId,
       req.params.eventId,
       sendUpdates
@@ -270,6 +301,9 @@ router.delete('/:email/events/:eventId', requirePermission('calendar.resources.m
  */
 router.post('/:email/events', requirePermission('calendar.resources.manage'), auditLog('calendar.event.create', 'calendar'), async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeCalendarEmail(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
+
     const calendarId = (req.query.calendarId as string) || 'primary';
     const { summary, description, start, end, attendees, location } = req.body;
 
@@ -279,7 +313,7 @@ router.post('/:email/events', requirePermission('calendar.resources.manage'), au
 
     const event = await calendarService.createEvent(
       req.user!.email,
-      req.params.email,
+      targetEmail,
       calendarId,
       {
         summary,
@@ -303,17 +337,21 @@ router.post('/:email/events', requirePermission('calendar.resources.manage'), au
  */
 router.post('/:email/events/:eventId/transfer', requirePermission('calendar.resources.manage'), auditLog('calendar.event.transfer', 'calendar'), async (req: AuthRequest, res: Response) => {
   try {
+    const sourceEmail = normalizeCalendarEmail(req.params.email);
+    if (!sourceEmail) return res.status(400).json({ error: 'Invalid source email' });
+
     const sourceCalendarId = (req.query.calendarId as string) || 'primary';
     const { targetEmail, targetCalendarId, deleteOriginal } = req.body;
 
-    if (!targetEmail) {
-      return res.status(400).json({ error: 'Missing required field: targetEmail' });
+    const normalizedTarget = normalizeCalendarEmail(String(targetEmail || ''));
+    if (!normalizedTarget) {
+      return res.status(400).json({ error: 'Missing or invalid required field: targetEmail' });
     }
 
     const newEvent = await calendarService.transferEvent(
       req.user!.email,
-      req.params.email, // source email
-      targetEmail,
+      sourceEmail,
+      normalizedTarget,
       sourceCalendarId,
       targetCalendarId || 'primary',
       req.params.eventId,

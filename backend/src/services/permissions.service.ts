@@ -1,5 +1,19 @@
 import { WorkspaceService } from './workspace.service';
 
+/**
+ * Google Workspace Directory User response shape (from Admin SDK users.get with projection=full).
+ * These fields are not always in the strict googleapis types, hence the interface.
+ */
+interface DirectoryUser {
+  isAdmin?: boolean;
+  isDelegatedAdmin?: boolean;
+  delegatedAdminPrivileges?: string[];
+  orgUnitPath?: string;
+  primaryEmail?: string;
+  name?: { fullName?: string };
+  // Add other commonly used fields as needed
+}
+
 export type Permission = 
   | 'users.create'
   | 'users.update'
@@ -32,23 +46,37 @@ export class PermissionsService extends WorkspaceService {
    * Get user's admin roles and privileges from Google Workspace
    */
   async getAdminRoles(userEmail: string): Promise<AdminRole> {
-    await this.initialize(userEmail);
-    
-    const response = await this.withRetry(() =>
-      this.admin.users.get({
-        userKey: userEmail,
-        projection: 'full',
-      })
-    );
+    try {
+      await this.initialize(userEmail);
+      
+      const response = await this.withRetry<{ data: DirectoryUser }>(() =>
+        this.admin.users.get({
+          userKey: userEmail,
+          projection: 'full',
+        })
+      );
 
-    const user = response.data;
-    
-    return {
-      isSuperAdmin: user.isAdmin === true,
-      isDelegatedAdmin: user.isDelegatedAdmin === true,
-      delegatedAdminPrivileges: user.delegatedAdminPrivileges || [],
-      orgUnitPath: user.orgUnitPath,
-    };
+      const user = response.data;
+      
+      return {
+        isSuperAdmin: user.isAdmin === true,
+        isDelegatedAdmin: user.isDelegatedAdmin === true,
+        delegatedAdminPrivileges: user.delegatedAdminPrivileges || [],
+        orgUnitPath: user.orgUnitPath,
+      };
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      const message = err.message;
+      // Provide clear, actionable errors for common Cloud Run / SA / delegation issues
+      if (message.includes('secret') || message.includes('SecretManager') || (message.includes('403') && message.includes('access'))) {
+        throw new Error(`Secret Manager or IAM configuration error. Run './setup-secrets.sh <project>' and apply all printed IAM commands (see DEPLOYMENT.md). Details: ${message}`);
+      }
+      if (message.includes('delegation') || message.includes('Forbidden') || message.includes('403') || message.includes('insufficient')) {
+        throw new Error(`Domain-wide delegation or admin privileges issue for ${userEmail}. Verify SA scopes in GWS Admin Console match SECURITY.md exactly, and confirm user is a Workspace admin. Details: ${message}`);
+      }
+      console.error('getAdminRoles failed:', error);
+      throw new Error(`Failed to fetch admin roles for ${userEmail}: ${message}`);
+    }
   }
 
   /**

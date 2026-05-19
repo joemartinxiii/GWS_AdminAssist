@@ -1,7 +1,8 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import { isDemoMode } from '../data/demoData';
 
-const API_BASE_URL = (import.meta as unknown as { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL || 'http://localhost:5001/api';
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? '/api' : 'http://localhost:5001/api');
 
 class ApiClient {
   private client: AxiosInstance;
@@ -33,13 +34,6 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
-        // In demo mode, don't redirect on errors - just log them
-        if (isDemoMode()) {
-          console.warn('API call failed (demo mode):', error.message);
-          // Return a mock response to prevent crashes
-          return Promise.reject(error);
-        }
-        
         if (error.response?.status === 401) {
           // Token expired or invalid
           localStorage.removeItem('sessionToken');

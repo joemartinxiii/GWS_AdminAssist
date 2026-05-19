@@ -38,7 +38,6 @@ import {
   Check,
 } from 'lucide-react';
 import { apiClient } from '../services/api.client';
-import { isDemoMode, groups as demoGroups, getDemoGroupMembers, users as demoUsersForGroups } from '../data/demoData';
 import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
@@ -51,6 +50,15 @@ import { DotLabel } from '../components/StatusDot';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
 import { useTheme } from '@mui/material/styles';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeEmailInput(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (EMAIL_RE.test(trimmed)) return trimmed;
+  const inParens = trimmed.match(/\(([^\s@]+@[^\s@]+\.[^\s@]+)\)\s*$/)?.[1];
+  return inParens || '';
+}
 
 interface Group {
   id: string;
@@ -66,13 +74,7 @@ interface GroupFilters {
   createdFrom: string;
   createdTo: string;
   membership: string;
-  memberEmail: string;
 }
-
-// Demo: which groups have which members (for Member email filter and distinct member lists)
-const DEMO_GROUP_MEMBERS: Record<string, string[]> = {
-  'engineering@example.com': ['alice@example.com', 'bob@example.com', 'charlie@example.com'],
-};
 
 interface GroupMember {
   id: string;
@@ -118,7 +120,17 @@ export function Groups() {
   const [groupsWithExternalMembers, setGroupsWithExternalMembers] = useState<Group[]>([]);
   const [loadingExternal, setLoadingExternal] = useState(false);
 
-  const noMemberGroups = useMemo(() => (Array.isArray(groups) ? groups : []).filter(g => (g.directMembersCount || 0) === 0), [groups]);
+  const noMemberGroups = useMemo(
+    () =>
+      (Array.isArray(groups) ? groups : []).filter((g) => {
+        const count =
+          typeof g.directMembersCount === 'number'
+            ? g.directMembersCount
+            : Number(String(g.directMembersCount ?? '0'));
+        return Number.isFinite(count) ? count === 0 : true;
+      }),
+    [groups]
+  );
   const dataSource = useMemo(() => {
     const raw = tabValue === 0 ? groups : tabValue === 1 ? groupsWithExternalMembers : noMemberGroups;
     return Array.isArray(raw) ? raw : [];
@@ -129,7 +141,6 @@ export function Groups() {
     createdFrom: '',
     createdTo: '',
     membership: '',
-    memberEmail: '',
   });
   const [filtersVisible, setFiltersVisible] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -168,14 +179,6 @@ export function Groups() {
       result = result.filter(g => externalMemberEmails.has(g.email));
     } else if (filters.membership === 'no-members') {
       result = result.filter(g => (g.directMembersCount || 0) === 0);
-    }
-    if (filters.memberEmail.trim() && isDemoMode()) {
-      const term = filters.memberEmail.trim().toLowerCase();
-      result = result.filter(g => {
-        const memberEmails = DEMO_GROUP_MEMBERS[g.email];
-        if (!memberEmails) return false;
-        return memberEmails.some(m => m.toLowerCase().includes(term) || term.includes(m.toLowerCase()));
-      });
     }
     return result;
   }, [dataSource, filters, externalMemberEmails, tabValue]);
@@ -229,7 +232,7 @@ export function Groups() {
   const filteredGroups = filteredData;
   const hasActiveFilters = () =>
     tabValue === 0 &&
-    [filters.search, filters.createdFrom, filters.createdTo, filters.membership, filters.memberEmail].some(
+    [filters.search, filters.createdFrom, filters.createdTo, filters.membership].some(
       v => v && String(v).trim() !== ''
     );
 
@@ -243,7 +246,6 @@ export function Groups() {
       createdFrom: '',
       createdTo: '',
       membership: '',
-      memberEmail: '',
     });
     setFiltersVisible(false);
   };
@@ -257,22 +259,19 @@ export function Groups() {
           setGroupsWithExternalMembers(Array.isArray(res.data) ? res.data : []);
         } catch (e) {
           console.error('Error fetching groups with external members:', e);
-          if (isDemoMode()) {
-            setGroupsWithExternalMembers([
-              { id: 'ext-1', email: 'partners@example.com', name: 'External Partners', description: 'Partners outside domain', directMembersCount: 8, creationTime: '2022-09-01T10:00:00.000Z' },
-              { id: 'ext-2', email: 'contractors@example.com', name: 'Contractors', description: 'External contractors', directMembersCount: 12, creationTime: '2023-04-10T11:00:00.000Z' },
-              { id: 'ext-3', email: 'vendors@example.com', name: 'Vendors', description: 'Vendor contacts', directMembersCount: 5, creationTime: '2023-08-20T09:00:00.000Z' },
-            ]);
-          } else {
-            setGroupsWithExternalMembers([]);
-          }
+          setGroupsWithExternalMembers([]);
         } finally {
           setLoadingExternal(false);
         }
       };
       fetchExternal();
     }
-  }, [tabValue]);
+  }, [tabValue, groupsWithExternalMembers.length, loadingExternal]);
+
+  useEffect(() => {
+    setPage(0);
+    setSelectedGroups([]);
+  }, [tabValue, setPage]);
 
 
   const handleSelectAllGroups = () => {
@@ -470,15 +469,14 @@ export function Groups() {
   const fetchGroups = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get('/groups?maxResults=100');
+      const response = await apiClient.get('/groups?maxResults=1000');
       setGroups(Array.isArray(response?.data) ? response.data : []);
+      if (tabValue === 1) {
+        setGroupsWithExternalMembers([]);
+      }
     } catch (error) {
       console.error('Error fetching groups:', error);
-      setGroups([]); // ensure we always have an array on error
-      // In demo mode, show sample data from central demo data
-      if (isDemoMode()) {
-        setGroups(demoGroups);
-      }
+      setGroups([]);
     } finally {
       setLoading(false);
     }
@@ -529,6 +527,13 @@ export function Groups() {
   const [addingMember, setAddingMember] = useState(false);
   const editDialogSearchInputRef = useRef<HTMLInputElement>(null);
   const editDialogSearchContainerRef = useRef<HTMLDivElement>(null);
+  const directorySuggestions = useMemo(
+    () =>
+      users.map((user) =>
+        user.name?.fullName ? `${user.name.fullName} (${user.primaryEmail})` : user.primaryEmail
+      ),
+    [users]
+  );
 
   const handleCloseEditDialog = () => {
     setEditDialogOpen(false);
@@ -604,6 +609,12 @@ export function Groups() {
     setAddUserGroupsPage(0);
   }, [addUserDialogOpen]);
 
+  useEffect(() => {
+    if (!addMemberInlineOpen || loadingUsers || users.length > 0) return;
+    void fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addMemberInlineOpen, loadingUsers, users.length]);
+
   const fetchMembers = async (groupEmail: string) => {
     try {
       setLoadingMembers(true);
@@ -611,12 +622,7 @@ export function Groups() {
       setMembers(response.data);
     } catch (error: any) {
       console.error('Error fetching members:', error);
-      // In demo mode, show sample data from central demo data
-      if (isDemoMode()) {
-        setMembers(getDemoGroupMembers(groupEmail));
-      } else {
-        setSnackbar({ open: true, message: error.response?.data?.error || 'Failed to fetch members', severity: 'error' });
-      }
+      setSnackbar({ open: true, message: error.response?.data?.error || 'Failed to fetch members', severity: 'error' });
     } finally {
       setLoadingMembers(false);
     }
@@ -667,11 +673,16 @@ export function Groups() {
   };
 
   const handleAddMember = async () => {
-    if (!selectedGroup || !addMemberEmail.trim()) return;
+    if (!selectedGroup) return;
+    const normalizedMemberEmail = normalizeEmailInput(addMemberEmail);
+    if (!normalizedMemberEmail) {
+      setSnackbar({ open: true, message: 'Enter a valid member email.', severity: 'error' });
+      return;
+    }
     try {
       setAddingMember(true);
       await apiClient.post(`/groups/${encodeURIComponent(selectedGroup.email)}/members`, {
-        memberEmail: addMemberEmail.trim(),
+        memberEmail: normalizedMemberEmail,
         role: addMemberRole,
       });
       setAddMemberInlineOpen(false);
@@ -720,23 +731,7 @@ export function Groups() {
       setUsers(sortedUsers);
     } catch (error: any) {
       console.error('Error fetching users:', error);
-      // In demo mode, show sample data
-      if (isDemoMode()) {
-        const demoUsersList = demoUsersForGroups.map(u => ({
-          id: u.id,
-          primaryEmail: u.primaryEmail,
-          name: { givenName: u.name.givenName, familyName: u.name.familyName, fullName: u.name.fullName },
-        }));
-        const sortedDemoUsers = demoUsersList.sort((a, b) => {
-          const nameA = a.name.fullName.toLowerCase();
-          const nameB = b.name.fullName.toLowerCase();
-          if (nameA !== nameB) return nameA.localeCompare(nameB);
-          return a.primaryEmail.toLowerCase().localeCompare(b.primaryEmail.toLowerCase());
-        });
-        setUsers(sortedDemoUsers);
-      } else {
-        setSnackbar({ open: true, message: error.response?.data?.error || 'Failed to fetch users', severity: 'error' });
-      }
+      setSnackbar({ open: true, message: error.response?.data?.error || 'Failed to fetch users', severity: 'error' });
     } finally {
       setLoadingUsers(false);
     }
@@ -768,7 +763,7 @@ export function Groups() {
   };
 
   const handleAddUserToGroups = async () => {
-    const emailToUse = selectedUser?.primaryEmail || userEmailToAdd.trim();
+    const emailToUse = selectedUser?.primaryEmail || normalizeEmailInput(userEmailToAdd);
     if (!emailToUse || selectedGroupsForUser.length === 0) return;
 
     try {
@@ -841,7 +836,6 @@ export function Groups() {
         : `${filters.createdFrom || '…'} – ${filters.createdTo || '…'}`;
       labels.push({ key: 'createdFrom', label: `Created: ${dateLabel}` });
     }
-    if (filters.memberEmail.trim()) labels.push({ key: 'memberEmail', label: `Member: ${filters.memberEmail}` });
     return labels;
   }, [filters]);
 
@@ -1037,13 +1031,6 @@ export function Groups() {
                 </Box>
               </Popover>
             </Box>
-            <TextField
-              size="small"
-              placeholder="Member email contains..."
-              value={filters.memberEmail}
-              onChange={(e) => handleFilterChange('memberEmail', e.target.value)}
-              sx={{ width: 200, '& .MuiOutlinedInput-root': { fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radius } }}
-            />
             {hasActiveFilters() && (
               <Button size="small" onClick={clearFilters} sx={{ fontFamily: T.font, fontSize: '0.75rem', textTransform: 'none', color: T.accent }}>
                 Clear all
@@ -1364,13 +1351,28 @@ export function Groups() {
                 >
                   <Box sx={{ width: 34, flexShrink: 0 }} />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <TextField
-                      size="small"
-                      placeholder="user@domain.com"
+                    <Autocomplete
+                      freeSolo
+                      options={directorySuggestions}
                       value={addMemberEmail}
-                      onChange={(e) => setAddMemberEmail(e.target.value)}
+                      inputValue={addMemberEmail}
+                      onInputChange={(_, value) => setAddMemberEmail(value)}
+                      onChange={(_, value) => setAddMemberEmail(typeof value === 'string' ? value : '')}
+                      loading={loadingUsers}
+                      filterOptions={(options, { inputValue }) => {
+                        if (!inputValue.trim()) return options;
+                        const search = inputValue.toLowerCase().trim();
+                        return options.filter((option) => option.toLowerCase().includes(search));
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          size="small"
+                          placeholder="Type name/email (e.g. joe)"
+                          sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
+                        />
+                      )}
                       fullWidth
-                      sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
                     />
                   </Box>
                   <Box sx={{ width: 100, flexShrink: 0 }}>
@@ -1395,7 +1397,7 @@ export function Groups() {
                       </IconButton>
                     </Tooltip>
                     <Tooltip title="Add">
-                      <IconButton size="small" color="primary" onClick={handleAddMember} disabled={!addMemberEmail.trim() || addingMember} aria-label="Add">
+                      <IconButton size="small" color="primary" onClick={handleAddMember} disabled={!normalizeEmailInput(addMemberEmail) || addingMember} aria-label="Add">
                         <Check size={18} strokeWidth={1.75} />
                       </IconButton>
                     </Tooltip>

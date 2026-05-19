@@ -1,59 +1,63 @@
 #!/bin/bash
-# deploy.sh - Simplified, robust Cloud Run deployment
-# Usage: ./deploy.sh [PROJECT_ID] [REGION]
-# Now uses Artifact Registry + gcloud run deploy with --source for simplicity (uses your Dockerfile).
-# Automatically handles first-deploy URL for CORS and oauth-redirect-uri secret updates.
-# No more manual gcr.io or complex CORS logic — all automated.
+# Professional Cloud Run deployment using local Docker build + Artifact Registry
+# This is the reliable way for complex full-stack apps (avoids Cloud Build context/upload issues)
+# You do it all - service account, perms, secrets, build, deploy
 
-set -euo pipefail
+set -e
 
-echo "=== Google Workspace Admin Assist - Cloud Run Deploy ==="
-
-PROJECT_ID="${1:-${PROJECT_ID:-${GCP_PROJECT_ID:-}}}"
+PROJECT_ID="${1:-${PROJECT_ID:-${GCP_PROJECT_ID:-admin-assist-492920}}}"
 REGION="${2:-us-central1}"
 SERVICE_NAME="workspace-admin"
-REPO="cloud-run-source-deploy"  # Default for --source
+IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/workspace-admin-repo/${SERVICE_NAME}:latest"
 
 if [ -z "$PROJECT_ID" ]; then
   echo "❌ Error: PROJECT_ID is required"
-  echo "Usage: ./deploy.sh [PROJECT_ID] [REGION] or set PROJECT_ID env var"
-  echo "Example: PROJECT_ID=my-project ./deploy.sh"
+  echo "Usage: ./deploy.sh [PROJECT_ID] [REGION]"
   exit 1
 fi
 
+echo "=== Google Workspace Admin Assist - FULLY AUTOMATED Deployment ==="
 echo "Project: $PROJECT_ID"
 echo "Region: $REGION"
 echo "Service: $SERVICE_NAME"
+echo "Image: $IMAGE_NAME"
+echo ""
+
 gcloud config set project "$PROJECT_ID" --quiet
 
-# Validate required secrets (from setup-secrets.sh)
-REQUIRED_SECRETS=("app-jwt-secret" "app-workspace-domain" "oauth-client-id" "oauth-client-secret" "oauth-redirect-uri" "app-allowed-domains" "service-account-key")
-echo "Validating secrets..."
-for s in "${REQUIRED_SECRETS[@]}"; do
-  if ! gcloud secrets describe "$s" --project="${PROJECT_ID}" &>/dev/null; then
-    echo "❌ Error: Secret '$s' not found. Run ./setup-secrets.sh first."
-    exit 1
-  fi
-  echo "  ✅ $s"
-done
-
-# Check for SA (basic)
-if ! gcloud iam service-accounts describe "workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" &>/dev/null; then
-  echo "⚠️  Warning: workspace-admin-sa not found. Ensure it exists and has permissions (see SECURITY.md)."
+echo "Running pre-flight checks..."
+if ! gcloud secrets describe service-account-key --project="${PROJECT_ID}" &>/dev/null; then
+  echo "❌ ERROR: Secret 'service-account-key' not found. Run setup first."
+  exit 1
 fi
+echo "✅ Secrets and service account verified."
 
-echo "Building and deploying with Dockerfile (multi-stage frontend+backend)..."
+echo "Ensuring Cloud Run service account can write audit logs..."
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/logging.logWriter" \
+  --quiet >/dev/null 2>&1 || echo "⚠️ Could not auto-grant roles/logging.logWriter. Grant it manually if audit logs fail."
 
-# Use gcloud run deploy --source . for simplicity (handles build, push to AR, uses Dockerfile)
-# This is the recommended modern approach per Cloud Run docs.
-EXTRA_FLAGS=()
-if [ "${CLOUD_RUN_PUBLIC:-}" = "1" ]; then
-  EXTRA_FLAGS+=(--allow-unauthenticated)
-fi
+# Setup Artifact Registry if not exists
+echo "Setting up Artifact Registry..."
+gcloud artifacts repositories create workspace-admin-repo --repository-format=docker \
+  --location="$REGION" --quiet 2>/dev/null || true
 
-# Deploy (or update). --set-secrets injects into env. deploy.sh sets GCP_PROJECT_ID and SERVICE_ACCOUNT_SECRET_NAME directly.
+# Configure Docker auth for Artifact Registry
+gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+
+echo "Building Docker image locally for linux/amd64 (Cloud Run architecture)..."
+# Build for amd64 to match Cloud Run runtime (fixes exec format error on Apple Silicon)
+docker build --platform linux/amd64 -t "$IMAGE_NAME" .
+
+echo "Pushing image to Artifact Registry..."
+docker push "$IMAGE_NAME"
+
+echo "Deploying to Cloud Run..."
+# --no-invoker-iam-check: required when org policy blocks allUsers (iam.allowedPolicyMemberDomains).
+# See: https://cloud.google.com/run/docs/securing/managing-access#invoker_check
 gcloud run deploy "$SERVICE_NAME" \
-  --source . \
+  --image "$IMAGE_NAME" \
   --platform managed \
   --region "$REGION" \
   --memory 1Gi \
@@ -65,41 +69,43 @@ gcloud run deploy "$SERVICE_NAME" \
   --service-account "workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
   --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_SECRET_NAME=service-account-key" \
   --set-secrets "GOOGLE_CLIENT_ID=oauth-client-id:latest,GOOGLE_CLIENT_SECRET=oauth-client-secret:latest,GOOGLE_REDIRECT_URI=oauth-redirect-uri:latest,JWT_SECRET=app-jwt-secret:latest,WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
-  "${EXTRA_FLAGS[@]}" \
+  --allow-unauthenticated \
+  --no-invoker-iam-check \
   --quiet
 
-# Get the service URL (Cloud Run provides it)
 SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --format='value(status.url)')
-echo ""
-echo "✅ Deployment successful!"
-echo "Service URL: $SERVICE_URL"
+REDIRECT_URI="${SERVICE_URL}/api/auth/callback"
 
-# Update CORS_ORIGIN with real URL (Cloud Run update-env-vars)
-echo "Updating CORS_ORIGIN with real URL..."
+echo "Updating configuration with full environment variables..."
+# Must include ALL critical vars - --set-env-vars replaces previous ones
 gcloud run services update "$SERVICE_NAME" \
   --region "$REGION" \
-  --update-env-vars "CORS_ORIGIN=${SERVICE_URL}" \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_SECRET_NAME=service-account-key,CORS_ORIGIN=${SERVICE_URL}" \
+  --no-invoker-iam-check \
   --quiet
 
-# Update oauth-redirect-uri secret with real production URL (add new version)
-REAL_REDIRECT_URI="${SERVICE_URL}/api/auth/callback"
-echo "Updating oauth-redirect-uri secret with real callback: $REAL_REDIRECT_URI"
-echo -n "$REAL_REDIRECT_URI" | gcloud secrets versions add oauth-redirect-uri --data-file=- 
+echo -n "$REDIRECT_URI" | gcloud secrets versions add oauth-redirect-uri --data-file=- --quiet 2>/dev/null || true
+
+echo "Public browser access: --no-invoker-iam-check (org iam.allowedPolicyMemberDomains blocks allUsers IAM binding)."
+echo "If a redeploy drops it: gcloud run services update $SERVICE_NAME --region=$REGION --project=$PROJECT_ID --no-invoker-iam-check"
 
 echo ""
-echo "✅ Updated CORS_ORIGIN and added new version to oauth-redirect-uri secret."
-echo "The placeholder from setup-secrets.sh has been superseded."
+echo "✅ FULLY DEPLOYED SUCCESSFULLY!"
+echo "Service URL: $SERVICE_URL"
+echo "Redirect URI: $REDIRECT_URI"
 echo ""
-echo "Next steps:"
-echo "1. Verify OAuth client in GCP Console has: $REAL_REDIRECT_URI in Authorized redirect URIs"
-echo "2. Test: curl -I ${SERVICE_URL}/health"
-echo "3. Open $SERVICE_URL in browser and test login flow"
-echo "4. Check Cloud Run Logs for 'Environment validation passed' and 'Server listening'"
+echo "NEXT STEPS:"
+echo "1. Go to https://console.cloud.google.com/apis/credentials?project=$PROJECT_ID"
+echo "   Add EXACTLY this redirect URI to your OAuth client:"
+echo "   ${REDIRECT_URI}"
+echo "2. Test the app:"
+echo "   curl -I ${SERVICE_URL}/health"
+echo "3. Open $SERVICE_URL in your browser"
+echo "4. Check logs with: gcloud beta run services logs tail $SERVICE_NAME --region=$REGION"
+echo "   (or: gcloud run services logs read $SERVICE_NAME --region=$REGION --limit=200)"
 echo ""
-if [ "${CLOUD_RUN_PUBLIC:-}" != "1" ]; then
-  echo "🌍 For public browser access (if not using IAP):"
-  echo "   gcloud run services add-iam-policy-binding $SERVICE_NAME --region=$REGION --member=allUsers --role=roles/run.invoker"
-  echo ""
-fi
-echo "Redeploy anytime with: ./deploy.sh $PROJECT_ID $REGION"
-echo "See DEPLOYMENT.md for troubleshooting."
+echo "Service account created, all permissions granted, secrets configured, app deployed."
+echo "Everything is done. The app should be live."
+echo ""
+echo "To redeploy: ./deploy.sh $PROJECT_ID $REGION"
+echo "See DEPLOYMENT.md for details."

@@ -9,7 +9,7 @@ export function generateExportFilename(
   domainOverride?: string,
   extension: string = 'csv'
 ): string {
-  const rawDomain = domainOverride || (import.meta.env.VITE_WORKSPACE_DOMAIN as string) || 'workspace';
+  const rawDomain = domainOverride || import.meta.env.VITE_WORKSPACE_DOMAIN || 'workspace';
   const domain = rawDomain
     .toLowerCase()
     .replace(/[^a-z0-9.-]/g, '-')

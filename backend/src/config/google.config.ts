@@ -36,8 +36,15 @@ export async function getServiceAccountClient(): Promise<JWT> {
       scopes: [
         'https://www.googleapis.com/auth/admin.directory.user',
         'https://www.googleapis.com/auth/admin.directory.group',
+        // Needed for listing org units in Directory API.
+        'https://www.googleapis.com/auth/admin.directory.orgunit.readonly',
+        // Needed for reading OAuth token/app grants (third-party apps panel).
+        'https://www.googleapis.com/auth/admin.directory.user.security',
+        'https://www.googleapis.com/auth/apps.security',
         'https://www.googleapis.com/auth/drive',
         'https://www.googleapis.com/auth/gmail.settings.basic',
+        // Required for delegation APIs (users.settings.delegates.*)
+        'https://www.googleapis.com/auth/gmail.settings.sharing',
         'https://www.googleapis.com/auth/gmail.send',
         'https://www.googleapis.com/auth/calendar',
         'https://www.googleapis.com/auth/chrome.management.policy',

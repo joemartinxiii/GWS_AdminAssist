@@ -5,6 +5,7 @@ export interface AuthRequest extends Request {
   user?: {
     email: string;
     name: string;
+    picture?: string;
   };
   accessToken?: string;
 }
@@ -56,6 +57,7 @@ export async function authenticateOAuth(
     req.user = {
       email: userInfo.email,
       name: userInfo.name,
+      picture: userInfo.picture,
     };
     req.accessToken = token;
     next();

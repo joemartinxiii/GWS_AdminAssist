@@ -9,6 +9,14 @@ import { convertToCSV, generateExportFilename } from '../utils/csv';
 
 const router = Router();
 
+function normalizeEmailParam(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return trimmed;
+  const inParens = trimmed.match(/\(([^\s@]+@[^\s@]+\.[^\s@]+)\)\s*$/)?.[1];
+  return inParens || '';
+}
+
 // All routes require authentication
 router.use(authenticateSession);
 
@@ -102,7 +110,9 @@ router.post('/export/selected/drive', requireSuperAdmin, async (req: AuthRequest
  */
 router.get('/:email', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const group = await groupsService.getGroup(req.user!.email, req.params.email);
+    const groupEmail = normalizeEmailParam(req.params.email);
+    if (!groupEmail) return res.status(400).json({ error: 'Invalid group email' });
+    const group = await groupsService.getGroup(req.user!.email, groupEmail);
     if (!group) {
       return res.status(404).json({ error: 'Group not found' });
     }
@@ -145,7 +155,9 @@ router.post('/', requirePermission('groups.create'), auditLog('group.create', 'g
 router.patch('/:email', requirePermission('groups.update'), auditLog('group.update', 'group'), async (req: AuthRequest, res: Response) => {
   try {
     const updates = req.body;
-    const group = await groupsService.updateGroup(req.user!.email, req.params.email, updates);
+    const groupEmail = normalizeEmailParam(req.params.email);
+    if (!groupEmail) return res.status(400).json({ error: 'Invalid group email' });
+    const group = await groupsService.updateGroup(req.user!.email, groupEmail, updates);
     res.json(group);
   } catch (error: any) {
     console.error('Error updating group:', error);
@@ -159,7 +171,9 @@ router.patch('/:email', requirePermission('groups.update'), auditLog('group.upda
  */
 router.delete('/:email', requirePermission('groups.delete'), auditLog('group.delete', 'group'), async (req: AuthRequest, res: Response) => {
   try {
-    await groupsService.deleteGroup(req.user!.email, req.params.email);
+    const groupEmail = normalizeEmailParam(req.params.email);
+    if (!groupEmail) return res.status(400).json({ error: 'Invalid group email' });
+    await groupsService.deleteGroup(req.user!.email, groupEmail);
     res.json({ message: 'Group deleted successfully' });
   } catch (error: any) {
     console.error('Error deleting group:', error);
@@ -173,7 +187,9 @@ router.delete('/:email', requirePermission('groups.delete'), auditLog('group.del
  */
 router.get('/:email/members', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const members = await groupsService.listMembers(req.user!.email, req.params.email);
+    const groupEmail = normalizeEmailParam(req.params.email);
+    if (!groupEmail) return res.status(400).json({ error: 'Invalid group email' });
+    const members = await groupsService.listMembers(req.user!.email, groupEmail);
     res.json(members);
   } catch (error: any) {
     console.error('Error listing members:', error);
@@ -187,7 +203,10 @@ router.get('/:email/members', requireAnyAdmin, async (req: AuthRequest, res: Res
  */
 router.post('/:email/members', requirePermission('groups.update'), auditLog('group.member.create', 'group'), async (req: AuthRequest, res: Response) => {
   try {
-    const { memberEmail, role } = req.body;
+    const groupEmail = normalizeEmailParam(req.params.email);
+    if (!groupEmail) return res.status(400).json({ error: 'Invalid group email' });
+    const memberEmail = normalizeEmailParam(String(req.body.memberEmail || ''));
+    const { role } = req.body;
 
     // Validate email format
     const emailValidation = validateEmail(memberEmail);
@@ -197,7 +216,7 @@ router.post('/:email/members', requirePermission('groups.update'), auditLog('gro
 
     const member = await groupsService.addMember(
       req.user!.email,
-      req.params.email,
+      groupEmail,
       memberEmail,
       role || 'MEMBER'
     );
@@ -215,6 +234,9 @@ router.post('/:email/members', requirePermission('groups.update'), auditLog('gro
  */
 router.patch('/:email/members/:memberEmail', requirePermission('groups.update'), auditLog('group.member.update', 'group'), async (req: AuthRequest, res: Response) => {
   try {
+    const groupEmail = normalizeEmailParam(req.params.email);
+    const memberEmail = normalizeEmailParam(req.params.memberEmail);
+    if (!groupEmail || !memberEmail) return res.status(400).json({ error: 'Invalid email parameter' });
     const { role } = req.body;
 
     if (!role || !['OWNER', 'MANAGER', 'MEMBER'].includes(role)) {
@@ -223,8 +245,8 @@ router.patch('/:email/members/:memberEmail', requirePermission('groups.update'),
 
     const member = await groupsService.updateMember(
       req.user!.email,
-      req.params.email,
-      req.params.memberEmail,
+      groupEmail,
+      memberEmail,
       role
     );
 
@@ -241,10 +263,13 @@ router.patch('/:email/members/:memberEmail', requirePermission('groups.update'),
  */
 router.delete('/:email/members/:memberEmail', requirePermission('groups.update'), auditLog('group.member.delete', 'group'), async (req: AuthRequest, res: Response) => {
   try {
+    const groupEmail = normalizeEmailParam(req.params.email);
+    const memberEmail = normalizeEmailParam(req.params.memberEmail);
+    if (!groupEmail || !memberEmail) return res.status(400).json({ error: 'Invalid email parameter' });
     await groupsService.removeMember(
       req.user!.email,
-      req.params.email,
-      req.params.memberEmail
+      groupEmail,
+      memberEmail
     );
     res.json({ message: 'Member removed successfully' });
   } catch (error: any) {

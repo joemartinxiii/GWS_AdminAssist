@@ -182,8 +182,9 @@ This allows secure cross-domain operations (delegation, sharing) within your tru
 - **[SECURITY.md](./SECURITY.md)** — Security features, OAuth setup, domain-wide delegation, and best practices (REQUIRED READING)
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** — Cloud Run deployment and local Docker setup
 - **[docs/ui.md](./docs/ui.md)** — UI design system (tokens, `frontend/src/components/ui/`, patterns)
-- **[QUICK_START_UI.md](./QUICK_START_UI.md)** — Frontend-only preview and demo mode
-- **[frontend/ENV_SETUP.md](./frontend/ENV_SETUP.md)** — `VITE_*` variables (demo mode, API URL)
+- **[docs/tech-debt.md](./docs/tech-debt.md)** — Technical debt backlog and UX polish plan
+- **[QUICK_START_UI.md](./QUICK_START_UI.md)** — Frontend-only preview with MSW mocks
+- **[frontend/ENV_SETUP.md](./frontend/ENV_SETUP.md)** — `VITE_*` variables (MSW, API URL)
 - **[GWS_HARDENING.md](./GWS_HARDENING.md)** — Hardening checks referenced by Security Audit
 - **[AUDIT_LOGGING.md](./AUDIT_LOGGING.md)** — Admin mutation audit trail in Cloud Logging
 

@@ -6,10 +6,6 @@ import {
   Button,
   CircularProgress,
   Paper,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
   IconButton,
   Dialog,
   DialogTitle,
@@ -21,6 +17,9 @@ import {
   Popover,
   Checkbox,
   FormControlLabel,
+  FormControl,
+  Select,
+  MenuItem,
   Tooltip,
   Autocomplete,
   TablePagination,
@@ -48,7 +47,6 @@ import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 import { apiClient } from '../services/api.client';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { FilterToken } from '../components/ui/FilterToken';
-import { isDemoMode, demoUserEmail, calendarUsers, getDemoCalendarEvents } from '../data/demoData';
 import { T, pick, textSecondary, textTertiary } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
@@ -57,6 +55,7 @@ import { SegmentedControl } from '../components/ui/SegmentedControl';
 
 const CAL_STATIC_SORT = { key: '_', direction: 'asc' as const };
 const calNoopSort = () => {};
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 
 interface CalendarEvent {
@@ -99,12 +98,20 @@ const localizer = dateFnsLocalizer({
 // Create calendar with drag and drop
 const DragAndDropCalendar = withDragAndDrop(BigCalendar);
 
+function extractEmailCandidate(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (EMAIL_RE.test(trimmed)) return trimmed;
+  const inParens = trimmed.match(/\(([^\s@]+@[^\s@]+\.[^\s@]+)\)\s*$/)?.[1];
+  return inParens || '';
+}
+
 export function Calendar() {
   const theme = useTheme();
   const [viewType, setViewType] = useState<'table' | 'calendar'>('calendar');
   const [calendarView, setCalendarView] = useState<View>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [userEmail, setUserEmail] = useState(isDemoMode() ? demoUserEmail : '');
+  const [userEmail, setUserEmail] = useState('');
   const selectedCalendarId = 'primary';
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<CalendarEvent[]>([]);
@@ -126,6 +133,7 @@ export function Calendar() {
   const [filterLocation, setFilterLocation] = useState('');
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [filterDateAnchor, setFilterDateAnchor] = useState<HTMLElement | null>(null);
+  const [moveDateAnchor, setMoveDateAnchor] = useState<HTMLElement | null>(null);
   const [tablePage, setTablePage] = useState(0);
   const [tableRowsPerPage, setTableRowsPerPage] = useState(25);
 
@@ -137,19 +145,39 @@ export function Calendar() {
   const [eventLocation, setEventLocation] = useState('');
   const [newAttendeeEmail, setNewAttendeeEmail] = useState('');
   const [newAttendees, setNewAttendees] = useState<string[]>([]);
+  const [moveStartDateTime, setMoveStartDateTime] = useState('');
+  const [moveDurationMinutes, setMoveDurationMinutes] = useState(60);
 
   // Transfer state
   const [transferTargetEmail, setTransferTargetEmail] = useState('');
   const [transferDeleteOriginal, setTransferDeleteOriginal] = useState(false);
   const [users, setUsers] = useState<Array<{ id: string; primaryEmail: string; name: { fullName: string } }>>([]);
+  const normalizedUserEmail = useMemo(() => extractEmailCandidate(userEmail), [userEmail]);
+  const directorySuggestions = useMemo(
+    () =>
+      users.map((user) =>
+        user.name?.fullName ? `${user.name.fullName} (${user.primaryEmail})` : user.primaryEmail
+      ),
+    [users]
+  );
+  const transferSuggestions = useMemo(
+    () =>
+      directorySuggestions.filter(
+        (suggestion) => extractEmailCandidate(suggestion).toLowerCase() !== normalizedUserEmail.toLowerCase()
+      ),
+    [directorySuggestions, normalizedUserEmail]
+  );
 
   useEffect(() => {
-    if (userEmail) {
-      fetchEvents();
-      fetchUsers();
-    }
+    void fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userEmail]);
+  }, []);
+
+  useEffect(() => {
+    if (!userEmail.trim() && users.length > 0) {
+      setUserEmail(users[0].primaryEmail);
+    }
+  }, [users, userEmail]);
 
   const fetchUsers = async () => {
     try {
@@ -157,19 +185,16 @@ export function Calendar() {
       setUsers(response.data);
     } catch (error) {
       console.error('Error fetching users:', error);
-      // In demo mode, show sample data from central demo data
-      if (isDemoMode()) {
-        setUsers(calendarUsers);
-      }
+      setUsers([]);
     }
   };
 
   useEffect(() => {
-    if (userEmail) {
+    if (normalizedUserEmail) {
       fetchEvents();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userEmail, currentDate, calendarView]);
+  }, [normalizedUserEmail, currentDate, calendarView]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -265,7 +290,7 @@ export function Calendar() {
   }, [filteredEvents.length, tableRowsPerPage, tablePage]);
 
   const fetchEvents = async () => {
-    if (!userEmail.trim() || !selectedCalendarId) return;
+    if (!normalizedUserEmail || !selectedCalendarId) return;
 
     try {
       setLoading(true);
@@ -292,7 +317,7 @@ export function Calendar() {
         timeMax.setHours(23, 59, 59, 999);
       }
       
-      const response = await apiClient.get(`/calendar/${encodeURIComponent(userEmail)}/events`, {
+      const response = await apiClient.get(`/calendar/${encodeURIComponent(normalizedUserEmail)}/events`, {
         params: {
           calendarId: selectedCalendarId,
           timeMin: timeMin.toISOString(),
@@ -303,11 +328,7 @@ export function Calendar() {
       setEvents(response.data);
     } catch (error) {
       console.error('Error fetching events:', error);
-      if (isDemoMode()) {
-        setEvents(getDemoCalendarEvents(userEmail));
-      } else {
-        setEvents([]);
-      }
+      setEvents([]);
     } finally {
       setLoading(false);
     }
@@ -351,6 +372,13 @@ export function Calendar() {
       setEventEnd(event.end?.dateTime || event.end?.date || '');
       setEventLocation(event.location || '');
       setNewAttendees([]);
+      const startDateIso = event.start?.dateTime || '';
+      const endDateIso = event.end?.dateTime || '';
+      setMoveStartDateTime(formatDateTimeForInput(startDateIso));
+      const startMs = startDateIso ? new Date(startDateIso).getTime() : 0;
+      const endMs = endDateIso ? new Date(endDateIso).getTime() : 0;
+      const derivedDuration = startMs > 0 && endMs > startMs ? Math.round((endMs - startMs) / 60000) : 60;
+      setMoveDurationMinutes(Math.max(15, derivedDuration));
     } else {
       // New event
       setEventSummary('');
@@ -359,6 +387,8 @@ export function Calendar() {
       setEventEnd('');
       setEventLocation('');
       setNewAttendees([]);
+      setMoveStartDateTime('');
+      setMoveDurationMinutes(60);
     }
     
     setEventDialogOpen(true);
@@ -372,11 +402,19 @@ export function Calendar() {
     setNewAttendees([]);
     setTransferTargetEmail('');
     setTransferDeleteOriginal(false);
+    setMoveStartDateTime('');
+    setMoveDurationMinutes(60);
+    setMoveDateAnchor(null);
   };
 
   const handleAddAttendee = () => {
-    if (newAttendeeEmail.trim() && !newAttendees.includes(newAttendeeEmail.trim())) {
-      setNewAttendees([...newAttendees, newAttendeeEmail.trim()]);
+    const normalizedAttendee = extractEmailCandidate(newAttendeeEmail);
+    if (!normalizedAttendee) {
+      setSnackbar({ open: true, message: 'Enter a valid attendee email address.', severity: 'error' });
+      return;
+    }
+    if (!newAttendees.includes(normalizedAttendee)) {
+      setNewAttendees([...newAttendees, normalizedAttendee]);
       setNewAttendeeEmail('');
     }
   };
@@ -386,32 +424,46 @@ export function Calendar() {
   };
 
   const handleSaveEvent = async () => {
-    if (!userEmail || !selectedCalendarId) return;
+    if (!normalizedUserEmail || !selectedCalendarId) return;
 
     try {
       if (editMode === 'addAttendees' && selectedEvent) {
         // Add attendees only
         const attendees = newAttendees.map(email => ({ email }));
         await apiClient.post(
-          `/calendar/${encodeURIComponent(userEmail)}/events/${selectedEvent.id}/attendees?calendarId=${selectedCalendarId}`,
+          `/calendar/${encodeURIComponent(normalizedUserEmail)}/events/${selectedEvent.id}/attendees?calendarId=${selectedCalendarId}`,
           { attendees }
         );
         setSnackbar({ open: true, message: 'Attendees added successfully', severity: 'success' });
       } else if (editMode === 'move' && selectedEvent) {
         // Move event
-        if (!eventStart || !eventEnd) {
-          setSnackbar({ open: true, message: 'Start and end times are required', severity: 'error' });
+        if (!moveStartDateTime.trim()) {
+          setSnackbar({ open: true, message: 'Start date/time is required', severity: 'error' });
           return;
         }
+        if (!Number.isFinite(moveDurationMinutes) || moveDurationMinutes < 15) {
+          setSnackbar({ open: true, message: 'Duration must be at least 15 minutes.', severity: 'error' });
+          return;
+        }
+        const moveStart = new Date(moveStartDateTime);
+        if (Number.isNaN(moveStart.getTime())) {
+          setSnackbar({ open: true, message: 'Enter a valid start date/time.', severity: 'error' });
+          return;
+        }
+        const moveEnd = new Date(moveStart.getTime() + moveDurationMinutes * 60000);
         await apiClient.post(
-          `/calendar/${encodeURIComponent(userEmail)}/events/${selectedEvent.id}/move?calendarId=${selectedCalendarId}`,
-          { newStart: eventStart, newEnd: eventEnd, timeZone: 'America/New_York' }
+          `/calendar/${encodeURIComponent(normalizedUserEmail)}/events/${selectedEvent.id}/move?calendarId=${selectedCalendarId}`,
+          { newStart: moveStart.toISOString(), newEnd: moveEnd.toISOString(), timeZone: 'America/New_York' }
         );
         setSnackbar({ open: true, message: 'Event moved successfully', severity: 'success' });
       } else if (editMode === 'edit' && selectedEvent) {
         // Update event
+        if (eventStart && eventEnd && new Date(eventEnd).getTime() <= new Date(eventStart).getTime()) {
+          setSnackbar({ open: true, message: 'End time must be after start time.', severity: 'error' });
+          return;
+        }
         await apiClient.patch(
-          `/calendar/${encodeURIComponent(userEmail)}/events/${selectedEvent.id}?calendarId=${selectedCalendarId}`,
+          `/calendar/${encodeURIComponent(normalizedUserEmail)}/events/${selectedEvent.id}?calendarId=${selectedCalendarId}`,
           {
             summary: eventSummary,
             description: eventDescription,
@@ -436,16 +488,22 @@ export function Calendar() {
   };
 
   const handleTransferEvent = async () => {
-    if (!userEmail || !selectedCalendarId || !selectedEvent || !transferTargetEmail.trim()) {
+    if (!normalizedUserEmail || !selectedCalendarId || !selectedEvent || !transferTargetEmail.trim()) {
       setSnackbar({ open: true, message: 'Please select a target user', severity: 'error' });
+      return;
+    }
+
+    const targetEmail = extractEmailCandidate(transferTargetEmail.trim());
+    if (!targetEmail) {
+      setSnackbar({ open: true, message: 'Enter a valid target email address.', severity: 'error' });
       return;
     }
 
     try {
       await apiClient.post(
-        `/calendar/${encodeURIComponent(userEmail)}/events/${selectedEvent.id}/transfer?calendarId=${selectedCalendarId}`,
+        `/calendar/${encodeURIComponent(normalizedUserEmail)}/events/${selectedEvent.id}/transfer?calendarId=${selectedCalendarId}`,
         {
-          targetEmail: transferTargetEmail.trim(),
+          targetEmail,
           targetCalendarId: 'primary',
           deleteOriginal: transferDeleteOriginal,
         }
@@ -472,7 +530,7 @@ export function Calendar() {
 
     try {
       await apiClient.delete(
-        `/calendar/${encodeURIComponent(userEmail)}/events/${event.id}?calendarId=${selectedCalendarId}`
+        `/calendar/${encodeURIComponent(normalizedUserEmail)}/events/${event.id}?calendarId=${selectedCalendarId}`
       );
       setSnackbar({ open: true, message: 'Event deleted successfully', severity: 'success' });
       fetchEvents();
@@ -505,9 +563,13 @@ export function Calendar() {
     const calendarEvent = (event as any).resource as CalendarEvent;
     const s = asCalendarDate(start);
     const e = asCalendarDate(end);
+    if (e.getTime() <= s.getTime()) {
+      setSnackbar({ open: true, message: 'End time must be after start time.', severity: 'error' });
+      return;
+    }
     try {
       await apiClient.post(
-        `/calendar/${encodeURIComponent(userEmail)}/events/${calendarEvent.id}/move?calendarId=${selectedCalendarId}`,
+        `/calendar/${encodeURIComponent(normalizedUserEmail)}/events/${calendarEvent.id}/move?calendarId=${selectedCalendarId}`,
         {
           newStart: s.toISOString(),
           newEnd: e.toISOString(),
@@ -550,6 +612,25 @@ export function Calendar() {
     } catch {
       return '';
     }
+  };
+
+  const getMoveDatePart = () => moveStartDateTime.split('T')[0] || '';
+  const getMoveTimePart = () => {
+    const raw = moveStartDateTime.split('T')[1] || '';
+    return raw ? raw.slice(0, 5) : '09:00';
+  };
+
+  const setMoveDatePart = (datePart: string) => {
+    if (!datePart) {
+      setMoveStartDateTime('');
+      return;
+    }
+    setMoveStartDateTime(`${datePart}T${getMoveTimePart()}`);
+  };
+
+  const setMoveTimePart = (timePart: string) => {
+    const datePart = getMoveDatePart() || format(new Date(), 'yyyy-MM-dd');
+    setMoveStartDateTime(`${datePart}T${timePart}`);
   };
 
   const rbcCalendarSx = useMemo(
@@ -772,7 +853,7 @@ export function Calendar() {
           getOptionLabel={(option) =>
             typeof option === 'string' ? option : (option.name?.fullName ? `${option.name.fullName} (${option.primaryEmail})` : option.primaryEmail)
           }
-          value={users.find((u) => u.primaryEmail === userEmail) || null}
+          value={users.find((u) => u.primaryEmail === normalizedUserEmail) || null}
           inputValue={userEmail}
           onInputChange={(_, v) => setUserEmail(v)}
           onChange={(_, newValue) => {
@@ -799,6 +880,23 @@ export function Calendar() {
                       <Search size={18} strokeWidth={1.75} />
                     </Box>
                   </InputAdornment>
+                ),
+                endAdornment: (
+                  <>
+                    {userEmail ? (
+                      <InputAdornment position="end">
+                        <IconButton
+                          size="small"
+                          onClick={() => setUserEmail('')}
+                          aria-label="Clear user search"
+                          sx={{ p: 0.5, color: (t: any) => textTertiary(t) }}
+                        >
+                          <X size={16} strokeWidth={2} />
+                        </IconButton>
+                      </InputAdornment>
+                    ) : null}
+                    {params.InputProps.endAdornment}
+                  </>
                 ),
               }}
             />
@@ -886,8 +984,8 @@ export function Calendar() {
           <span>
             <IconButton
               size="small"
-              onClick={() => userEmail.trim() && fetchEvents()}
-              disabled={!userEmail.trim() || loading}
+              onClick={() => normalizedUserEmail && fetchEvents()}
+              disabled={!normalizedUserEmail || loading}
               aria-label="Refresh data"
               sx={{ color: (t: any) => textSecondary(t) }}
             >
@@ -912,9 +1010,14 @@ export function Calendar() {
               ),
               ...(tableSearchTerm ? { endAdornment: (
                 <InputAdornment position="end">
-                  <Box component="span" onClick={() => setTableSearchTerm('')} sx={{ display: 'flex', cursor: 'pointer', color: (t: any) => textTertiary(t) }}>
+                  <IconButton
+                    size="small"
+                    onClick={() => setTableSearchTerm('')}
+                    aria-label="Clear event search"
+                    sx={{ p: 0.5, color: (t: any) => textTertiary(t) }}
+                  >
                     <X size={16} strokeWidth={2} />
-                  </Box>
+                  </IconButton>
                 </InputAdornment>
               ) } : {}),
             }}
@@ -1180,7 +1283,7 @@ export function Calendar() {
             </Paper>
           )}
 
-          {!loading && events.length === 0 && userEmail && selectedCalendarId && (
+          {!loading && events.length === 0 && normalizedUserEmail && selectedCalendarId && (
             <Paper sx={{ p: 3, textAlign: 'center' }}>
               <Typography color="text.secondary">No events found for the selected calendar</Typography>
             </Paper>
@@ -1432,13 +1535,27 @@ export function Calendar() {
           {editMode === 'addAttendees' && (
             <Box sx={{ mt: 0 }}>
               <Box display="flex" gap={2} mb={2}>
-                <TextField
-                  label="Attendee Email"
+                <Autocomplete
+                  freeSolo
+                  options={directorySuggestions}
                   value={newAttendeeEmail}
-                  onChange={(e) => setNewAttendeeEmail(e.target.value)}
-                  placeholder="attendee@example.com"
+                  inputValue={newAttendeeEmail}
+                  onInputChange={(_, value) => setNewAttendeeEmail(value)}
+                  onChange={(_, value) => setNewAttendeeEmail(typeof value === 'string' ? value : '')}
                   fullWidth
-                  onKeyPress={(e) => e.key === 'Enter' && handleAddAttendee()}
+                  filterOptions={(options, { inputValue }) => {
+                    if (!inputValue.trim()) return options;
+                    const search = inputValue.toLowerCase().trim();
+                    return options.filter((option) => option.toLowerCase().includes(search));
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Attendee Email"
+                      placeholder="Type name/email (e.g. ops)"
+                      onKeyPress={(e) => e.key === 'Enter' && handleAddAttendee()}
+                    />
+                  )}
                 />
                 <Button variant="outlined" onClick={handleAddAttendee}>
                   Add
@@ -1467,42 +1584,74 @@ export function Calendar() {
           {editMode === 'move' && (
             <Box sx={{ mt: 0 }}>
               <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
+                <Grid item xs={12} sm={8}>
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<CalendarIcon size={16} strokeWidth={1.75} />}
+                      onClick={(e) => setMoveDateAnchor(e.currentTarget)}
+                      sx={{ fontFamily: T.font, textTransform: 'none', justifyContent: 'flex-start', flex: 1 }}
+                    >
+                      {getMoveDatePart() || 'Select date'}
+                    </Button>
+                    <FormControl size="small" sx={{ minWidth: 130 }}>
+                      <Select
+                        value={getMoveTimePart()}
+                        onChange={(e) => setMoveTimePart(String(e.target.value))}
+                        displayEmpty
+                      >
+                        {Array.from({ length: 96 }, (_, idx) => {
+                          const hours = String(Math.floor(idx / 4)).padStart(2, '0');
+                          const minutes = String((idx % 4) * 15).padStart(2, '0');
+                          const time = `${hours}:${minutes}`;
+                          return (
+                            <MenuItem key={time} value={time}>
+                              {time}
+                            </MenuItem>
+                          );
+                        })}
+                      </Select>
+                    </FormControl>
+                    <Popover
+                      open={Boolean(moveDateAnchor)}
+                      anchorEl={moveDateAnchor}
+                      onClose={() => setMoveDateAnchor(null)}
+                      anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                      transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                      PaperProps={{ sx: { minWidth: 280 } }}
+                    >
+                      <Box sx={{ p: 2 }}>
+                        <DateRangeCalendar
+                          mode="single-or-range"
+                          value={{ from: getMoveDatePart(), to: getMoveDatePart() }}
+                          onChange={(v) => {
+                            const selected = typeof v === 'string' ? v : v.from;
+                            setMoveDatePart(selected);
+                          }}
+                          onClose={() => setMoveDateAnchor(null)}
+                        />
+                      </Box>
+                    </Popover>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={4}>
                   <TextField
-                    label="New Start Time"
-                    type="datetime-local"
-                    value={formatDateTimeForInput(eventStart)}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        const date = new Date(e.target.value);
-                        setEventStart(date.toISOString());
-                      } else {
-                        setEventStart('');
-                      }
-                    }}
+                    label="Duration (minutes)"
+                    type="number"
+                    value={moveDurationMinutes}
+                    onChange={(e) => setMoveDurationMinutes(Math.max(15, Number(e.target.value) || 15))}
                     fullWidth
-                    InputLabelProps={{ shrink: true }}
+                    inputProps={{ min: 15, step: 15 }}
                     required
                   />
                 </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    label="New End Time"
-                    type="datetime-local"
-                    value={formatDateTimeForInput(eventEnd)}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        const date = new Date(e.target.value);
-                        setEventEnd(date.toISOString());
-                      } else {
-                        setEventEnd('');
-                      }
-                    }}
-                    fullWidth
-                    InputLabelProps={{ shrink: true }}
-                    required
-                  />
-                </Grid>
+                {moveStartDateTime && (
+                  <Grid item xs={12}>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t) }}>
+                      Ends at {new Date(new Date(moveStartDateTime).getTime() + moveDurationMinutes * 60000).toLocaleString()}
+                    </Typography>
+                  </Grid>
+                )}
               </Grid>
             </Box>
           )}
@@ -1512,30 +1661,28 @@ export function Calendar() {
               <Typography variant="body2" color="text.secondary" paragraph>
                 Transfer this event to another user's calendar. The event will be copied to the target user's primary calendar.
               </Typography>
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel>Target User</InputLabel>
-                <Select
-                  value={transferTargetEmail}
-                  onChange={(e) => setTransferTargetEmail(e.target.value)}
-                  label="Target User"
-                >
-                  {users
-                    .filter(u => u.primaryEmail !== userEmail)
-                    .map((user) => (
-                      <MenuItem key={user.id} value={user.primaryEmail}>
-                        {user.name.fullName} ({user.primaryEmail})
-                      </MenuItem>
-                    ))}
-                </Select>
-              </FormControl>
-              <TextField
-                label="Or enter email manually"
+              <Autocomplete
+                freeSolo
+                options={transferSuggestions}
                 value={transferTargetEmail}
-                onChange={(e) => setTransferTargetEmail(e.target.value)}
-                placeholder="user@domain.com"
-                fullWidth
+                inputValue={transferTargetEmail}
+                onInputChange={(_, value) => setTransferTargetEmail(value)}
+                onChange={(_, value) => setTransferTargetEmail(typeof value === 'string' ? value : '')}
+                filterOptions={(options, { inputValue }) => {
+                  if (!inputValue.trim()) return options;
+                  const search = inputValue.toLowerCase().trim();
+                  return options.filter((option) => option.toLowerCase().includes(search));
+                }}
+                  fullWidth
                 sx={{ mb: 2 }}
-                helperText="Select from dropdown above or enter email address"
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Target User"
+                    placeholder="Type name/email (e.g. joe)"
+                    helperText="Search by name/email or type an email address"
+                  />
+                )}
               />
               <FormControlLabel
                 control={

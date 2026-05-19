@@ -17,7 +17,7 @@ router.use(authenticateSession);
  */
 router.get('/files', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const maxResults = parseInt(req.query.maxResults as string) || 1000;
+    const maxResults = parseInt(req.query.maxResults as string) || 10000;
     
     const filter: any = {};
     if (req.query.domain) filter.domain = req.query.domain as string;

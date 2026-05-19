@@ -1,9 +1,9 @@
 import { apiClient } from './api.client';
-import { isDemoMode } from '../data/demoData';
 
 export interface User {
   email: string;
   name: string;
+  picture?: string;
 }
 
 class AuthService {
@@ -14,12 +14,6 @@ class AuthService {
     // Load tokens from localStorage on initialization
     this.sessionToken = localStorage.getItem('sessionToken');
     this.refreshToken = localStorage.getItem('refreshToken');
-    
-    // DEMO MODE: Set a fake token for UI preview
-    if (isDemoMode() && !this.sessionToken) {
-      this.sessionToken = 'demo-token';
-      localStorage.setItem('sessionToken', 'demo-token');
-    }
   }
 
   /**
@@ -92,10 +86,6 @@ class AuthService {
    * Check if user is authenticated
    */
   isAuthenticated(): boolean {
-    // DEMO MODE: Always return true for UI preview
-    if (isDemoMode()) {
-      return true;
-    }
     return !!this.sessionToken;
   }
 

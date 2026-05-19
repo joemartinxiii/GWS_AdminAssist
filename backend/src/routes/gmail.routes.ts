@@ -10,11 +10,26 @@ import { JSDOM } from 'jsdom';
 import fs from 'fs';
 import path from 'path';
 
-// Initialize DOMPurify with jsdom for server-side usage
-const window = new JSDOM('').window;
-const DOMPurifyServer = DOMPurify(window);
+let DOMPurifyServer: any;
+
+// Lazy initialization to avoid top-level ESM/CJS issues during module load
+function getDOMPurify() {
+  if (!DOMPurifyServer) {
+    const window = new JSDOM('').window;
+    DOMPurifyServer = DOMPurify(window);
+  }
+  return DOMPurifyServer;
+}
 
 const router = Router();
+
+function normalizeEmailParam(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return trimmed;
+  const inParens = trimmed.match(/\(([^\s@]+@[^\s@]+\.[^\s@]+)\)\s*$/)?.[1];
+  return inParens || '';
+}
 
 // --- Template persistence ---
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
@@ -81,7 +96,7 @@ router.post(
       }
 
       // Sanitize HTML to prevent XSS
-      const sanitizedHtml = DOMPurifyServer.sanitize(html, {
+      const sanitizedHtml = getDOMPurify().sanitize(html, {
         ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'a', 'img', 'div', 'span'],
         ALLOWED_ATTR: ['href', 'src', 'alt', 'style', 'target'],
         ALLOW_DATA_ATTR: false
@@ -141,9 +156,11 @@ router.post(
  */
 router.get('/:email/delegations', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeEmailParam(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
     const delegations = await gmailService.getDelegations(
       req.user!.email,
-      req.params.email
+      targetEmail
     );
     res.json(delegations);
   } catch (error: any) {
@@ -158,7 +175,9 @@ router.get('/:email/delegations', requireAnyAdmin, async (req: AuthRequest, res:
  */
 router.post('/:email/delegations', requirePermission('gmail.delegation.manage'), auditLog('gmail.delegation.create', 'gmail'), async (req: AuthRequest, res: Response) => {
   try {
-    const { delegateEmail } = req.body;
+    const sourceEmail = normalizeEmailParam(req.params.email);
+    if (!sourceEmail) return res.status(400).json({ error: 'Invalid source email' });
+    const delegateEmail = normalizeEmailParam(String(req.body.delegateEmail || ''));
 
     // Validate email format
     const emailValidation = validateEmail(delegateEmail);
@@ -167,14 +186,14 @@ router.post('/:email/delegations', requirePermission('gmail.delegation.manage'),
     }
 
     // Validate domain restrictions
-    const domainValidation = validateDelegationDomain(req.params.email, delegateEmail);
+    const domainValidation = validateDelegationDomain(sourceEmail, delegateEmail);
     if (!domainValidation.valid) {
       return res.status(400).json({ error: domainValidation.error });
     }
 
     await gmailService.addDelegation(
       req.user!.email,
-      req.params.email,
+      sourceEmail,
       delegateEmail
     );
 
@@ -191,10 +210,13 @@ router.post('/:email/delegations', requirePermission('gmail.delegation.manage'),
  */
 router.delete('/:email/delegations/:delegateEmail', requirePermission('gmail.delegation.manage'), auditLog('gmail.delegation.delete', 'gmail'), async (req: AuthRequest, res: Response) => {
   try {
+    const sourceEmail = normalizeEmailParam(req.params.email);
+    const delegateEmail = normalizeEmailParam(req.params.delegateEmail);
+    if (!sourceEmail || !delegateEmail) return res.status(400).json({ error: 'Invalid email parameter' });
     await gmailService.removeDelegation(
       req.user!.email,
-      req.params.email,
-      req.params.delegateEmail
+      sourceEmail,
+      delegateEmail
     );
     res.json({ message: 'Delegation removed successfully' });
   } catch (error: any) {
@@ -279,9 +301,11 @@ router.post('/delegations/export/selected/drive', requireSuperAdmin, async (req:
  */
 router.get('/:email/send-as', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeEmailParam(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
     const sendAsList = await gmailService.getSendAsSettings(
       req.user!.email,
-      req.params.email
+      targetEmail
     );
     res.json(sendAsList);
   } catch (error: any) {
@@ -296,13 +320,15 @@ router.get('/:email/send-as', requireAnyAdmin, async (req: AuthRequest, res: Res
  */
 router.post('/:email/send-as', requirePermission('gmail.sendas.manage'), auditLog('gmail.sendas.create', 'gmail'), async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeEmailParam(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
     const { sendAsEmail, displayName, replyToAddress } = req.body;
 
     if (!sendAsEmail) {
       return res.status(400).json({ error: 'Missing required field: sendAsEmail' });
     }
 
-    await gmailService.createSendAs(req.user!.email, req.params.email, {
+    await gmailService.createSendAs(req.user!.email, targetEmail, {
       sendAsEmail,
       displayName,
       replyToAddress,
@@ -321,10 +347,12 @@ router.post('/:email/send-as', requirePermission('gmail.sendas.manage'), auditLo
  */
 router.patch('/:email/send-as/:sendAsEmail', requirePermission('gmail.sendas.manage'), auditLog('gmail.sendas.update', 'gmail'), async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeEmailParam(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
     const updates = req.body;
     await gmailService.updateSendAs(
       req.user!.email,
-      req.params.email,
+      targetEmail,
       req.params.sendAsEmail,
       updates
     );
@@ -341,9 +369,11 @@ router.patch('/:email/send-as/:sendAsEmail', requirePermission('gmail.sendas.man
  */
 router.delete('/:email/send-as/:sendAsEmail', requirePermission('gmail.sendas.manage'), auditLog('gmail.sendas.delete', 'gmail'), async (req: AuthRequest, res: Response) => {
   try {
+    const targetEmail = normalizeEmailParam(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid target email' });
     await gmailService.deleteSendAs(
       req.user!.email,
-      req.params.email,
+      targetEmail,
       req.params.sendAsEmail
     );
     res.json({ message: 'Send-as alias deleted successfully' });

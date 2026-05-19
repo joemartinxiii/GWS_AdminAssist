@@ -1,17 +1,7 @@
 /**
- * Central demo data for the entire application.
- * All pages and services that need demo/placeholder data should import from here.
- * Controlled by VITE_DEMO_MODE; when false, this module is not used for UI data
- * (auth/permissions may still check isDemoMode() for bypass behavior).
+ * Static fixtures for local MSW mocks only (`VITE_USE_MSW=true`).
+ * Not imported by production UI code.
  */
-
-// ---------------------------------------------------------------------------
-// Demo mode flag – single source of truth
-// ---------------------------------------------------------------------------
-
-export function isDemoMode(): boolean {
-  return (import.meta as unknown as { env?: { VITE_DEMO_MODE?: string } }).env?.VITE_DEMO_MODE === 'true';
-}
 
 // ---------------------------------------------------------------------------
 // Users (Users page, Calendar user list, etc.)
@@ -184,7 +174,7 @@ export interface DemoCalendarEvent {
   status?: string;
 }
 
-export function getDemoCalendarEvents(userEmail: string): DemoCalendarEvent[] {
+export function getMockCalendarEvents(userEmail: string): DemoCalendarEvent[] {
   const now = new Date();
   const currentYear = now.getFullYear();
   const createDate = (month: number, day: number, hour = 10, minute = 0) =>
@@ -260,7 +250,7 @@ const defaultMembers = [
   { id: '3', email: 'user3@example.com', role: 'MEMBER' as const, type: 'USER' as const, status: 'ACTIVE' },
 ];
 
-export function getDemoGroupMembers(groupEmail: string): typeof engineeringMembers {
+export function getMockGroupMembers(groupEmail: string): typeof engineeringMembers {
   return groupEmail.toLowerCase() === 'engineering@example.com' ? engineeringMembers : defaultMembers;
 }
 

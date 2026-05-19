@@ -10,6 +10,14 @@ import { convertToCSV, generateExportFilename } from '../utils/csv';
 
 const router = Router();
 
+function normalizeEmailParam(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return trimmed;
+  const inParens = trimmed.match(/\(([^\s@]+@[^\s@]+\.[^\s@]+)\)\s*$/)?.[1];
+  return inParens || '';
+}
+
 // All routes require authentication
 router.use(authenticateSession);
 
@@ -401,7 +409,9 @@ router.post('/', requirePermission('users.create'), auditLog('user.create', 'use
  */
 router.get('/:email/groups', requirePermission('users.view'), async (req: AuthRequest, res: Response) => {
   try {
-    const groups = await groupsService.getGroupsForUser(req.user!.email, req.params.email);
+    const targetEmail = normalizeEmailParam(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid user email' });
+    const groups = await groupsService.getGroupsForUser(req.user!.email, targetEmail);
     res.json(groups);
   } catch (error: any) {
     console.error('Error getting user groups:', error);
@@ -415,7 +425,9 @@ router.get('/:email/groups', requirePermission('users.view'), async (req: AuthRe
  */
 router.get('/:email/third-party-apps', requirePermission('users.view'), async (req: AuthRequest, res: Response) => {
   try {
-    const apps = await userService.getThirdPartyApps(req.user!.email, req.params.email);
+    const targetEmail = normalizeEmailParam(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid user email' });
+    const apps = await userService.getThirdPartyApps(req.user!.email, targetEmail);
     res.json(apps);
   } catch (error: any) {
     console.error('Error getting third-party apps:', error);
@@ -429,7 +441,9 @@ router.get('/:email/third-party-apps', requirePermission('users.view'), async (r
  */
 router.delete('/:email/third-party-apps/:clientId', requirePermission('users.update'), auditLog('user.revokeApp', 'user'), async (req: AuthRequest, res: Response) => {
   try {
-    await userService.revokeThirdPartyApp(req.user!.email, req.params.email, req.params.clientId);
+    const targetEmail = normalizeEmailParam(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid user email' });
+    await userService.revokeThirdPartyApp(req.user!.email, targetEmail, req.params.clientId);
     res.json({ message: 'Third-party app revoked successfully' });
   } catch (error: any) {
     console.error('Error revoking third-party app:', error);
@@ -443,7 +457,9 @@ router.delete('/:email/third-party-apps/:clientId', requirePermission('users.upd
  */
 router.delete('/:email/third-party-apps', requirePermission('users.update'), auditLog('user.revokeAllApps', 'user'), async (req: AuthRequest, res: Response) => {
   try {
-    const revokedCount = await userService.revokeAllThirdPartyApps(req.user!.email, req.params.email);
+    const targetEmail = normalizeEmailParam(req.params.email);
+    if (!targetEmail) return res.status(400).json({ error: 'Invalid user email' });
+    const revokedCount = await userService.revokeAllThirdPartyApps(req.user!.email, targetEmail);
     res.json({ message: `Successfully revoked ${revokedCount} third-party app(s)` });
   } catch (error: any) {
     console.error('Error revoking all third-party apps:', error);
@@ -457,7 +473,7 @@ router.delete('/:email/third-party-apps', requirePermission('users.update'), aud
  */
 router.get('/:email', requireAnyAdmin, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const email = req.params.email;
+    const email = normalizeEmailParam(req.params.email);
     const emailValidation = validateEmail(email);
     if (!emailValidation.valid) {
       return res.status(400).json({ error: emailValidation.error || 'Invalid email format' });
@@ -480,7 +496,7 @@ router.get('/:email', requireAnyAdmin, async (req: AuthRequest, res: Response, n
  */
 router.patch('/:email', requirePermission('users.update'), auditLog('user.update', 'user'), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const email = req.params.email;
+    const email = normalizeEmailParam(req.params.email);
     const emailValidation = validateEmail(email);
     if (!emailValidation.valid) {
       return res.status(400).json({ error: emailValidation.error || 'Invalid email format' });

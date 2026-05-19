@@ -114,8 +114,15 @@ export class AuditLogService {
 
       return entries.map(entry => {
         const data = entry.data as any;
+        const timestampObj = entry.metadata.timestamp;
+        const timestamp = timestampObj 
+          ? (typeof timestampObj === 'string' 
+              ? timestampObj 
+              : new Date(timestampObj as any).toISOString())
+          : new Date().toISOString();
+        
         return {
-          timestamp: entry.metadata.timestamp || new Date().toISOString(),
+          timestamp,
           userId: data.userId || '',
           userEmail: data.userEmail || '',
           userName: data.userName || '',

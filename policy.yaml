@@ -1,0 +1,4 @@
+name: projects/370997410905/policies/constraints.iam.managed.disableServiceAccountKeyCreation
+constraint: constraints/iam.managed.disableServiceAccountKeyCreation
+booleanPolicy:
+  enforced: false

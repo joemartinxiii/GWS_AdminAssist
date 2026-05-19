@@ -31,11 +31,6 @@ import { ListShell, ListHeaderRow, ListDataRow } from './ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from './ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from './ui/dialogListSort';
 import { DotLabel } from './StatusDot';
-import {
-  isDemoMode,
-  thirdPartyApps as demoThirdPartyApps,
-  userGroups as demoUserGroups,
-} from '../data/demoData';
 
 export interface User {
   id: string;
@@ -194,7 +189,7 @@ export function EditUserDialog({
       const response = await apiClient.get(`/users/${email}/third-party-apps`);
       setThirdPartyApps(response.data);
     } catch {
-      if (isDemoMode()) setThirdPartyApps(demoThirdPartyApps);
+      setThirdPartyApps([]);
     } finally {
       setLoadingApps(false);
     }
@@ -206,8 +201,7 @@ export function EditUserDialog({
       const response = await apiClient.get(`/users/${email}/groups`);
       setUserGroups(response.data);
     } catch {
-      if (isDemoMode()) setUserGroups(demoUserGroups);
-      else setUserGroups([]);
+      setUserGroups([]);
     } finally {
       setLoadingGroups(false);
     }
@@ -221,7 +215,7 @@ export function EditUserDialog({
       if (editingUser.name?.familyName !== user.name.familyName) updates.familyName = editingUser.name?.familyName;
       if (editingUser.suspended !== undefined && editingUser.suspended !== user.suspended) updates.suspended = editingUser.suspended;
       if (editingUser.orgUnitPath && editingUser.orgUnitPath !== user.orgUnitPath) updates.orgUnitPath = editingUser.orgUnitPath;
-      if (editingUser.department && editingUser.department !== user.department) updates.department = editingUser.department;
+      if ((editingUser.department ?? '') !== (user.department ?? '')) updates.department = editingUser.department ?? '';
       if (editingUser.location && editingUser.location !== user.location) updates.location = editingUser.location;
       if (editingUser.phone && editingUser.phone !== user.phone) updates.phone = editingUser.phone;
       if (editingUser.notes !== undefined && editingUser.notes !== user.notes) updates.notes = editingUser.notes;

@@ -68,6 +68,7 @@ router.get('/me', authenticateSession, async (req: any, res: Response) => {
     res.json({
       email: req.user?.email,
       name: req.user?.name,
+      picture: req.user?.picture,
     });
   } catch (error) {
     console.error('Error getting user info:', error);

@@ -12,6 +12,7 @@ import {
   MenuItem,
   Select,
   FormControl,
+  Autocomplete,
   IconButton,
   Button,
   Tooltip,
@@ -42,7 +43,6 @@ import {
 import { apiClient } from '../services/api.client';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
-import { isDemoMode, driveFiles as DEMO_FILES, externalSharingReports, externalSharingStatistics } from '../data/demoData';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
@@ -56,6 +56,14 @@ import { useTheme } from '@mui/material/styles';
 
 const DRIVE_STATIC_SORT = { key: '_', direction: 'asc' as const };
 const driveNoopSort = () => {};
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeEmailInput(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (EMAIL_RE.test(trimmed)) return trimmed;
+  const inParens = trimmed.match(/\(([^\s@]+@[^\s@]+\.[^\s@]+)\)\s*$/)?.[1];
+  return inParens || '';
+}
 
 interface DriveFile {
   id: string;
@@ -139,7 +147,7 @@ const FILE_ROLE_LABEL: Record<string, string> = Object.fromEntries(FILE_PERMISSI
 // Owner is not editable; show as-is.
 const getFileRoleLabel = (role: string) => (role === 'owner' ? 'Owner' : FILE_ROLE_LABEL[role] || role);
 
-const WORKSPACE_DOMAIN = (import.meta as unknown as { env?: { VITE_WORKSPACE_DOMAIN?: string } }).env?.VITE_WORKSPACE_DOMAIN || 'example.com';
+const WORKSPACE_DOMAIN = import.meta.env.VITE_WORKSPACE_DOMAIN || 'example.com';
 function isPermissionExternal(perm: { type: string; domain?: string; emailAddress?: string }): boolean {
   if (perm.type === 'anyone') return true;
   if (perm.type === 'domain' && perm.domain) return perm.domain.toLowerCase() !== WORKSPACE_DOMAIN.toLowerCase();
@@ -205,6 +213,8 @@ export function Drive() {
   const [newPermissionRole, setNewPermissionRole] = useState<'reader' | 'commenter' | 'writer'>('reader');
   const [newPermissionEmail, setNewPermissionEmail] = useState('');
   const [newPermissionDomain, setNewPermissionDomain] = useState('');
+  const [directorySuggestions, setDirectorySuggestions] = useState<string[]>([]);
+  const [loadingDirectoryUsers, setLoadingDirectoryUsers] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({
     open: false,
     message: '',
@@ -223,6 +233,32 @@ export function Drive() {
     const max = Math.max(0, Math.ceil(n / filePermissionsRowsPerPage) - 1);
     setFilePermissionsPage((p) => Math.min(p, max));
   }, [selectedFile?.permissions?.length, selectedFile?.id, filePermissionsRowsPerPage]);
+
+  useEffect(() => {
+    if (!addPermissionDialogOpen || newPermissionType !== 'user' || loadingDirectoryUsers || directorySuggestions.length > 0) return;
+    const fetchDirectoryUsers = async () => {
+      try {
+        setLoadingDirectoryUsers(true);
+        const response = await apiClient.get('/users?maxResults=500');
+        const uniqueByEmail = new Map<string, string>();
+        if (Array.isArray(response.data)) {
+          for (const user of response.data) {
+            const email = String(user?.primaryEmail || '').trim();
+            if (!EMAIL_RE.test(email)) continue;
+            const fullName = String(user?.name?.fullName || '').trim();
+            uniqueByEmail.set(email, fullName ? `${fullName} (${email})` : email);
+          }
+        }
+        setDirectorySuggestions(Array.from(uniqueByEmail.values()).sort((a, b) => a.localeCompare(b)));
+      } catch (error) {
+        console.error('Error fetching users for Drive permission suggestions:', error);
+        setDirectorySuggestions([]);
+      } finally {
+        setLoadingDirectoryUsers(false);
+      }
+    };
+    void fetchDirectoryUsers();
+  }, [addPermissionDialogOpen, newPermissionType, loadingDirectoryUsers, directorySuggestions.length]);
 
   useEffect(() => {
     if (tabValue === 0) {
@@ -289,16 +325,22 @@ export function Drive() {
     try {
       setExternalSharingLoading(true);
       const response = await apiClient.get('/audit/external-sharing');
-      setExternalSharingData(response.data);
-    } catch (error) {
-      console.error('Error fetching external sharing audit:', error);
-      // In demo mode, use central demo data
-      if (isDemoMode()) {
-        setExternalSharingData({
-          reports: externalSharingReports,
-          statistics: externalSharingStatistics,
-        });
+      const payload = response.data;
+      if (Array.isArray(payload)) {
+        setExternalSharingData({ reports: payload, statistics: {} });
+      } else if (payload && Array.isArray(payload.reports)) {
+        setExternalSharingData(payload);
+      } else {
+        setExternalSharingData({ reports: [], statistics: {} });
       }
+    } catch (error: any) {
+      console.error('Error fetching external sharing audit:', error);
+      setExternalSharingData({ reports: [], statistics: {} });
+      setSnackbar({
+        open: true,
+        message: error?.response?.data?.error || 'Failed to load external sharing data.',
+        severity: 'error',
+      });
     } finally {
       setExternalSharingLoading(false);
     }
@@ -314,124 +356,10 @@ export function Drive() {
     return params.toString();
   };
 
-  /** Derive location label from file path: "My Drive" or shared drive name */
+  /** Admin-centric full path from backend. */
   const getFileLocationLabel = (file: DriveFile): string => {
-    const path = file.path?.trim() || '/My Drive';
-    const segments = path.split('/').filter(Boolean);
-    if (segments.length === 0) return 'My Drive';
-    if (segments[0] === 'My Drive') return 'My Drive';
-    if (segments[0] === 'Shared Drive' && segments.length > 1) return segments[1];
-    return segments[0];
-  };
-
-  const getExternalSharingInfo = (file: DriveFile) => {
-    const externalDomains: string[] = [];
-    const externalEmails: string[] = [];
-    
-    file.permissions.forEach(perm => {
-      if (perm.type === 'domain' && perm.domain) {
-        externalDomains.push(perm.domain);
-      } else if (perm.type === 'user' && perm.emailAddress) {
-        const emailDomain = perm.emailAddress.split('@')[1];
-        externalEmails.push(perm.emailAddress);
-        if (!externalDomains.includes(emailDomain)) {
-          externalDomains.push(emailDomain);
-        }
-      }
-    });
-    
-    return { externalDomains, externalEmails };
-  };
-
-  const applyFiltersToFiles = (filesToFilter: DriveFile[]): DriveFile[] => {
-    return filesToFilter.filter(file => {
-      // Name contains filter
-      if (filters.nameContains && !file.name.toLowerCase().includes(filters.nameContains.toLowerCase())) {
-        return false;
-      }
-
-      // Owner filter
-      if (filters.owner) {
-        const ownerEmails = file.owners.map(o => o.emailAddress.toLowerCase());
-        if (!ownerEmails.some(email => email.includes(filters.owner.toLowerCase()))) {
-          return false;
-        }
-      }
-
-      // MIME type filter
-      if (filters.mimeType && !file.mimeType.toLowerCase().includes(filters.mimeType.toLowerCase())) {
-        return false;
-      }
-
-      // Path contains filter
-      if (filters.pathContains && file.path && !file.path.toLowerCase().includes(filters.pathContains.toLowerCase())) {
-        return false;
-      }
-
-      // Size filters
-      if (filters.minSize) {
-        const minSize = parseInt(filters.minSize);
-        const fileSize = parseInt(file.size || '0');
-        if (fileSize < minSize) {
-          return false;
-        }
-      }
-      if (filters.maxSize) {
-        const maxSize = parseInt(filters.maxSize);
-        const fileSize = parseInt(file.size || '0');
-        if (fileSize > maxSize) {
-          return false;
-        }
-      }
-
-      // Created date filter (single or range via from/to)
-      if ((filters.createdFrom || filters.createdTo) && file.createdTime) {
-        const startStr = filters.createdFrom || filters.createdTo;
-        const endStr = filters.createdTo || filters.createdFrom;
-        const start = new Date(startStr); start.setHours(0, 0, 0, 0);
-        const end = new Date(endStr); end.setHours(23, 59, 59, 999);
-        const t = new Date(file.createdTime);
-        if (t < start || t > end) return false;
-      }
-      // Modified date filter (single or range via from/to)
-      if ((filters.modifiedFrom || filters.modifiedTo) && file.modifiedTime) {
-        const startStr = filters.modifiedFrom || filters.modifiedTo;
-        const endStr = filters.modifiedTo || filters.modifiedFrom;
-        const start = new Date(startStr); start.setHours(0, 0, 0, 0);
-        const end = new Date(endStr); end.setHours(23, 59, 59, 999);
-        const t = new Date(file.modifiedTime);
-        if (t < start || t > end) return false;
-      }
-
-      // Shared filter
-      if (filters.shared !== '') {
-        const isShared = filters.shared === 'true';
-        if (file.shared !== isShared) {
-          return false;
-        }
-      }
-
-      // External sharing filter
-      if (filters.externallyShared !== '') {
-        const { externalDomains, externalEmails } = getExternalSharingInfo(file);
-        const hasExternalSharing = externalDomains.length > 0 || externalEmails.length > 0;
-        const shouldHaveExternal = filters.externallyShared === 'true';
-        if (hasExternalSharing !== shouldHaveExternal) {
-          return false;
-        }
-      }
-
-      // Domain filter
-      if (filters.domain) {
-        const { externalDomains } = getExternalSharingInfo(file);
-        const domainLower = filters.domain.toLowerCase();
-        if (!externalDomains.some(d => d.toLowerCase().includes(domainLower))) {
-          return false;
-        }
-      }
-
-      return true;
-    });
+    const path = file.path?.trim();
+    return path || 'Unresolved';
   };
 
   const filteredExternalReports = useMemo(() => {
@@ -454,16 +382,24 @@ export function Drive() {
     try {
       setLoading(true);
       const queryParams = buildQueryParams();
-      const url = queryParams ? `/drive/files?${queryParams}` : '/drive/files';
+      const url = queryParams ? `/drive/files?${queryParams}&maxResults=10000` : '/drive/files?maxResults=10000';
       const response = await apiClient.get(url);
-      setFiles(response.data);
-    } catch (error) {
-      console.error('Error fetching files:', error);
-      // In demo mode, show sample data (same DEMO_FILES as External Shares Permissions dialog)
-      if (isDemoMode()) {
-        const filteredFiles = applyFiltersToFiles(DEMO_FILES as DriveFile[]);
-        setFiles(filteredFiles);
+      const payload = response.data;
+      if (Array.isArray(payload)) {
+        setFiles(payload);
+      } else if (payload && Array.isArray(payload.files)) {
+        setFiles(payload.files);
+      } else {
+        setFiles([]);
       }
+    } catch (error: any) {
+      console.error('Error fetching files:', error);
+      setFiles([]);
+      setSnackbar({
+        open: true,
+        message: error?.response?.data?.error || 'Failed to load Drive files.',
+        severity: 'error',
+      });
     } finally {
       setLoading(false);
     }
@@ -530,41 +466,6 @@ export function Drive() {
     const f = report.file ?? {};
     const fileId = f.id;
     if (!fileId) return;
-
-    // In demo mode, use the same file (with full permissions) as All Files so dialog matches
-    if (isDemoMode()) {
-      const fileWithPermissions = (DEMO_FILES as DriveFile[]).find((file) => file.id === fileId) ?? files.find((file) => file.id === fileId);
-      if (fileWithPermissions) {
-        setSelectedFile(fileWithPermissions);
-        setSelectedPermission(null);
-        setPermissionDialogOpen(true);
-        return;
-      }
-      // Fallback if file id not in demo list: build from report with synthetic permissions
-      const domains = report.externalDomains ?? [];
-      const emails = report.externalEmails ?? [];
-      const permissions = [
-        ...domains.map((d: string, i: number) => ({ id: `ext-domain-${i}`, type: 'domain' as const, role: 'reader', domain: d })),
-        ...emails.map((e: string, i: number) => ({ id: `ext-user-${i}`, type: 'user' as const, role: 'reader', emailAddress: e })),
-      ];
-      const file: DriveFile = {
-        id: fileId,
-        name: f.name ?? '',
-        mimeType: f.mimeType ?? '',
-        path: f.path ?? '/My Drive',
-        owners: Array.isArray(f.owners) ? f.owners : [],
-        permissions,
-        webViewLink: f.webViewLink ?? '',
-        modifiedTime: f.modifiedTime ?? '',
-        createdTime: f.createdTime ?? '',
-        size: f.size,
-        shared: true,
-      };
-      setSelectedFile(file);
-      setSelectedPermission(null);
-      setPermissionDialogOpen(true);
-      return;
-    }
 
     try {
       const response = await apiClient.get(`/drive/files/${fileId}`);
@@ -637,52 +538,6 @@ export function Drive() {
     }
   };
 
-  /** Build CSV from current files (used for demo fallback and selected export) */
-  const buildFilesCSV = (filesToExport: DriveFile[]) => {
-    const workspaceDomain = '';
-    const csvData = filesToExport.map((file) => {
-      const externalDomains: string[] = [];
-      const externalEmails: string[] = [];
-      for (const perm of file.permissions || []) {
-        if (perm.type === 'domain' && perm.domain && perm.domain !== workspaceDomain) externalDomains.push(perm.domain);
-        else if (perm.type === 'user' && perm.emailAddress) {
-          const emailDomain = perm.emailAddress.split('@')[1];
-          if (emailDomain !== workspaceDomain) {
-            externalEmails.push(perm.emailAddress);
-            if (!externalDomains.includes(emailDomain)) externalDomains.push(emailDomain);
-          }
-        }
-      }
-      return {
-        'File Name': file.name,
-        'File ID': file.id,
-        'File Path': file.path || '/My Drive',
-        'File Type': file.mimeType,
-        'Owner': file.owners?.map((o: any) => o.emailAddress).join('; ') || '',
-        'Created Date': file.createdTime ? new Date(file.createdTime).toISOString() : '',
-        'Modified Date': file.modifiedTime ? new Date(file.modifiedTime).toISOString() : '',
-        'Size (bytes)': file.size || '',
-        'Shared': file.shared ? 'Yes' : 'No',
-        'External Domains': externalDomains.join('; '),
-        'External Emails': externalEmails.join('; '),
-        'Link': file.webViewLink,
-      };
-    });
-    const headers = Object.keys(csvData[0] || {});
-    return [
-      headers.join(','),
-      ...csvData.map((row) =>
-        headers
-          .map((h) => {
-            const v = row[h as keyof typeof row];
-            const s = v === null || v === undefined ? '' : String(v);
-            return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
-          })
-          .join(',')
-      ),
-    ].join('\n');
-  };
-
   const handleExportCSV = async () => {
     try {
       const queryParams = buildQueryParams();
@@ -700,21 +555,6 @@ export function Drive() {
       window.URL.revokeObjectURL(downloadUrl);
       setSnackbar({ open: true, message: 'CSV downloading now.', severity: 'success' });
     } catch (error) {
-      // In demo mode (or when API returns 401), export current page data as CSV
-      if (isDemoMode() && files.length > 0) {
-        const csv = buildFilesCSV(files);
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = `drive-files-${new Date().toISOString().split('T')[0]}.csv`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(downloadUrl);
-        setSnackbar({ open: true, message: 'CSV downloading now.', severity: 'success' });
-        return;
-      }
       console.error('Error exporting CSV:', error);
       setSnackbar({ open: true, message: 'Export failed. Please try again.', severity: 'error' });
     }
@@ -778,7 +618,8 @@ export function Drive() {
 
   const handleAddFilePermission = async () => {
     if (!selectedFile) return;
-    if (newPermissionType === 'user' && !newPermissionEmail.trim()) {
+    const normalizedPermissionEmail = normalizeEmailInput(newPermissionEmail);
+    if (newPermissionType === 'user' && !normalizedPermissionEmail) {
       setSnackbar({ open: true, message: 'Enter an email for user permission', severity: 'warning' });
       return;
     }
@@ -790,7 +631,7 @@ export function Drive() {
       await apiClient.post(`/drive/files/${selectedFile.id}/permissions`, {
         type: newPermissionType,
         role: newPermissionRole,
-        ...(newPermissionType === 'user' && { emailAddress: newPermissionEmail.trim() }),
+        ...(newPermissionType === 'user' && { emailAddress: normalizedPermissionEmail }),
         ...(newPermissionType === 'domain' && { domain: newPermissionDomain.trim() }),
       });
       await refreshSelectedFilePermissions();
@@ -872,46 +713,6 @@ export function Drive() {
       window.URL.revokeObjectURL(downloadUrl);
       setSnackbar({ open: true, message: 'CSV downloading now.', severity: 'success' });
     } catch (error) {
-      // In demo mode, export current external sharing data as CSV
-      const reports = externalSharingData?.reports;
-      if (isDemoMode() && Array.isArray(reports) && reports.length > 0) {
-        const csvData = reports.map((report: any) => ({
-          'File Name': report.file?.name ?? '',
-          'File ID': report.file?.id ?? '',
-          'File Path': report.file?.path || '/My Drive',
-          'File Type': report.file?.mimeType ?? '',
-          'Owner': report.file?.owners?.map((o: any) => o.emailAddress).join('; ') ?? '',
-          'Created Date': report.file?.createdTime ? new Date(report.file.createdTime).toISOString() : '',
-          'Modified Date': report.file?.modifiedTime ? new Date(report.file.modifiedTime).toISOString() : '',
-          'Size (bytes)': report.file?.size ?? '',
-          'External Domains': (report.externalDomains || []).join('; '),
-          'External Emails': (report.externalEmails || []).join('; '),
-          'Link': report.file?.webViewLink ?? '',
-        }));
-        const headers = Object.keys(csvData[0] || {});
-        const csv = [
-          headers.join(','),
-          ...csvData.map((row: Record<string, string>) =>
-            headers
-              .map((h) => {
-                const s = row[h] === null || row[h] === undefined ? '' : String(row[h]);
-                return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
-              })
-              .join(',')
-          ),
-        ].join('\n');
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = `external-sharing-report-${new Date().toISOString().split('T')[0]}.csv`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(downloadUrl);
-        setSnackbar({ open: true, message: 'CSV downloading now.', severity: 'success' });
-        return;
-      }
       console.error('Error exporting external sharing report:', error);
       setSnackbar({ open: true, message: 'Export failed. Please try again.', severity: 'error' });
     }
@@ -1714,12 +1515,13 @@ export function Drive() {
                     <Box sx={{ width: 42, mr: 0.5, flexShrink: 0 }} />
                   )}
                   <ColumnHeader label="Type" columnId="dt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} />
-                  <ColumnHeader label="Email/Domain" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} />
+                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="24%" />
+                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} />
                   <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="28%" />
                   <ColumnHeader label="External" columnId="dx" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} align="center" />
                   <ColumnHeader label="Remove" columnId="drm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="center" />
                 </ListHeaderRow>
-                {(selectedFile.permissions ?? []).filter((p) => p.role !== 'owner').length === 0 && !addPermissionDialogOpen && (
+                {(selectedFile.permissions ?? []).length === 0 && !addPermissionDialogOpen && (
                   <Box sx={{ py: 4, textAlign: 'center' }}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>No permissions found</Typography>
                   </Box>
@@ -1742,13 +1544,18 @@ export function Drive() {
                       <Box sx={{ width: 72, flexShrink: 0 }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{permission.type}</Typography>
                       </Box>
+                      <Box sx={{ width: '24%', minWidth: 0 }}>
+                        <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), wordBreak: 'break-word' }}>
+                          {permission.type === 'anyone'
+                            ? 'Anyone with link'
+                            : permission.displayName || '—'}
+                        </Typography>
+                      </Box>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), wordBreak: 'break-word' }}>
                           {permission.type === 'anyone'
-                            ? 'Anyone'
-                            : permission.type === 'domain' && permission.domain?.toLowerCase() === WORKSPACE_DOMAIN.toLowerCase()
-                              ? `${permission.domain} (entire org)`
-                              : permission.emailAddress || permission.domain || permission.displayName || '—'}
+                            ? 'Anyone with link'
+                            : permission.emailAddress || permission.domain || permission.id || '—'}
                         </Typography>
                       </Box>
                       <Box sx={{ width: '28%', minWidth: 120 }}>
@@ -1852,13 +1659,28 @@ export function Drive() {
                           sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
                         />
                       ) : (
-                        <TextField
-                          size="small"
-                          placeholder="user@domain.com"
+                        <Autocomplete
+                          freeSolo
+                          options={directorySuggestions}
                           value={newPermissionEmail}
-                          onChange={(e) => setNewPermissionEmail(e.target.value)}
+                          inputValue={newPermissionEmail}
+                          onInputChange={(_, value) => setNewPermissionEmail(value)}
+                          onChange={(_, value) => setNewPermissionEmail(typeof value === 'string' ? value : '')}
+                          loading={loadingDirectoryUsers}
+                          filterOptions={(options, { inputValue }) => {
+                            if (!inputValue.trim()) return options;
+                            const search = inputValue.toLowerCase().trim();
+                            return options.filter((option) => option.toLowerCase().includes(search));
+                          }}
                           fullWidth
-                          sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              size="small"
+                              placeholder="Type name/email (e.g. ops)"
+                              sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
+                            />
+                          )}
                         />
                       )}
                     </Box>
@@ -1885,7 +1707,7 @@ export function Drive() {
                           size="small"
                           color="primary"
                           onClick={handleAddFilePermission}
-                          disabled={!((newPermissionType === 'user' && newPermissionEmail.trim()) || (newPermissionType === 'domain' && newPermissionDomain.trim()) || newPermissionType === 'anyone')}
+                          disabled={!((newPermissionType === 'user' && normalizeEmailInput(newPermissionEmail)) || (newPermissionType === 'domain' && newPermissionDomain.trim()) || newPermissionType === 'anyone')}
                           aria-label="Add"
                         >
                           <Check size={18} strokeWidth={1.75} />

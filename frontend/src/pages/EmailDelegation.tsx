@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import {
   Box,
   TextField,
+  Autocomplete,
   CircularProgress,
   Dialog,
   DialogTitle,
@@ -23,7 +24,6 @@ import {
 } from '@mui/material';
 import type { AlertColor } from '@mui/material';
 import { Plus, Search, Trash2, RefreshCw, ListFilter, X } from 'lucide-react';
-import { isDemoMode, emailDelegations as demoEmailDelegations } from '../data/demoData';
 import { apiClient } from '../services/api.client';
 import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
@@ -39,6 +39,15 @@ interface AllDelegation {
   userEmail: string;
   delegateEmail: string;
   verificationStatus: string;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeEmailInput(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (EMAIL_RE.test(trimmed)) return trimmed;
+  const inParens = trimmed.match(/\(([^\s@]+@[^\s@]+\.[^\s@]+)\)\s*$/)?.[1];
+  return inParens || '';
 }
 
 function delegationKey(d: AllDelegation) {
@@ -63,6 +72,8 @@ export function EmailDelegation() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newDelegateEmail, setNewDelegateEmail] = useState('');
+  const [directorySuggestions, setDirectorySuggestions] = useState<string[]>([]);
+  const [loadingDirectoryUsers, setLoadingDirectoryUsers] = useState(false);
   const [selectedDelegations, setSelectedDelegations] = useState<Set<string>>(new Set());
   const [removing, setRemoving] = useState(false);
   const [filtersVisible, setFiltersVisible] = useState(false);
@@ -84,6 +95,8 @@ export function EmailDelegation() {
 
   const exportAllCSVRef = useRef<() => void>(() => {});
   const exportSelectedCSVRef = useRef<() => void>(() => {});
+  const normalizedNewUserEmail = useMemo(() => normalizeEmailInput(newUserEmail), [newUserEmail]);
+  const normalizedNewDelegateEmail = useMemo(() => normalizeEmailInput(newDelegateEmail), [newDelegateEmail]);
 
   const handleFilterChange = (key: keyof DelegationFiltersType, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -135,39 +148,82 @@ export function EmailDelegation() {
   const { sortConfig, handleSort } = allDelegationsTable;
 
   useEffect(() => {
-    if (isDemoMode()) {
-      fetchAllDelegations();
-    }
+    fetchAllDelegations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!dialogOpen || directorySuggestions.length > 0 || loadingDirectoryUsers) return;
+    const fetchDirectoryUsers = async () => {
+      try {
+        setLoadingDirectoryUsers(true);
+        const response = await apiClient.get('/users?maxResults=500');
+        const uniqueByEmail = new Map<string, string>();
+        if (Array.isArray(response.data)) {
+          for (const user of response.data) {
+            const email = String(user?.primaryEmail || '').trim();
+            if (!EMAIL_RE.test(email)) continue;
+            const fullName = String(user?.name?.fullName || '').trim();
+            uniqueByEmail.set(email, fullName ? `${fullName} (${email})` : email);
+          }
+        }
+        const uniqueSorted = Array.from(uniqueByEmail.values()).sort((a, b) => a.localeCompare(b));
+        setDirectorySuggestions(uniqueSorted);
+      } catch (error) {
+        console.error('Error fetching users for delegation suggestions:', error);
+        setDirectorySuggestions([]);
+      } finally {
+        setLoadingDirectoryUsers(false);
+      }
+    };
+    void fetchDirectoryUsers();
+  }, [dialogOpen, directorySuggestions.length, loadingDirectoryUsers]);
 
   const fetchAllDelegations = async () => {
     try {
       setLoading(true);
       const response = await apiClient.get('/gmail/delegations');
-      setAllDelegations(response.data);
-    } catch (error) {
-      console.error('Error fetching all delegations:', error);
-      if (isDemoMode()) {
-        setAllDelegations(demoEmailDelegations);
+      const payload = response.data;
+      if (Array.isArray(payload)) {
+        setAllDelegations(payload);
+      } else if (payload && Array.isArray(payload.delegations)) {
+        setAllDelegations(payload.delegations);
+      } else {
+        setAllDelegations([]);
       }
+    } catch (error: any) {
+      console.error('Error fetching all delegations:', error);
+      setAllDelegations([]);
+      showSnackbar(error?.response?.data?.error || 'Failed to load delegations.', 'error');
     } finally {
       setLoading(false);
     }
   };
 
   const handleAddDelegation = async () => {
-    if (!newUserEmail.trim() || !newDelegateEmail.trim()) return;
+    if (!normalizedNewUserEmail || !normalizedNewDelegateEmail) return;
+    if (!EMAIL_RE.test(normalizedNewUserEmail) || !EMAIL_RE.test(normalizedNewDelegateEmail)) {
+      showSnackbar('Enter valid user and delegate email addresses.', 'error');
+      return;
+    }
     try {
-      await apiClient.post(`/gmail/${encodeURIComponent(newUserEmail)}/delegations`, {
-        delegateEmail: newDelegateEmail,
+      await apiClient.post(`/gmail/${encodeURIComponent(normalizedNewUserEmail)}/delegations`, {
+        delegateEmail: normalizedNewDelegateEmail,
       });
       setNewUserEmail('');
       setNewDelegateEmail('');
       setDialogOpen(false);
       fetchAllDelegations();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding delegation:', error);
+      const backendMessage = error?.response?.data?.error as string | undefined;
+      if (backendMessage) {
+        showSnackbar(backendMessage, 'error');
+      } else if (error?.response?.status === 403) {
+        showSnackbar('Delegation was denied by Google Workspace. Confirm super admin access and Gmail delegation scopes.', 'error');
+      } else {
+        showSnackbar('Failed to add delegation.', 'error');
+      }
     }
   };
 
@@ -585,23 +641,43 @@ export function EmailDelegation() {
         </DialogTitle>
         <DialogContent sx={{ pt: '20px !important' }}>
           <Box sx={{ '& .MuiTextField-root': { mb: 1.5 } }}>
-            <TextField
-              size="small"
-              label="User email"
+            <Autocomplete
+              freeSolo
+              options={directorySuggestions}
               value={newUserEmail}
-              onChange={(e) => setNewUserEmail(e.target.value)}
-              placeholder="user@domain.com"
-              fullWidth
-              helperText="Email to delegate from"
+              inputValue={newUserEmail}
+              onInputChange={(_, value) => setNewUserEmail(value)}
+              onChange={(_, value) => setNewUserEmail(typeof value === 'string' ? value : '')}
+              loading={loadingDirectoryUsers}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  size="small"
+                  label="User email"
+                  placeholder="Type name/email (e.g. joe)"
+                  fullWidth
+                  helperText={loadingDirectoryUsers ? 'Loading user suggestions…' : 'Email to delegate from'}
+                />
+              )}
             />
-            <TextField
-              size="small"
-              label="Delegate email"
+            <Autocomplete
+              freeSolo
+              options={directorySuggestions}
               value={newDelegateEmail}
-              onChange={(e) => setNewDelegateEmail(e.target.value)}
-              placeholder="delegate@domain.com"
-              fullWidth
-              helperText="Email that will receive delegation access"
+              inputValue={newDelegateEmail}
+              onInputChange={(_, value) => setNewDelegateEmail(value)}
+              onChange={(_, value) => setNewDelegateEmail(typeof value === 'string' ? value : '')}
+              loading={loadingDirectoryUsers}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  size="small"
+                  label="Delegate email"
+                  placeholder="Type name/email (e.g. ops)"
+                  fullWidth
+                  helperText="Email that will receive delegation access"
+                />
+              )}
             />
           </Box>
         </DialogContent>
@@ -612,7 +688,7 @@ export function EmailDelegation() {
           <Button
             variant="contained"
             onClick={handleAddDelegation}
-            disabled={!newUserEmail.trim() || !newDelegateEmail.trim()}
+            disabled={!normalizedNewUserEmail || !normalizedNewDelegateEmail}
             sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover }, px: 2.5 }}
           >
             Add Delegation

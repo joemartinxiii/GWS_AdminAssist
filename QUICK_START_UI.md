@@ -2,33 +2,27 @@
 
 For **design system** conventions (tokens, lists, dialogs), see **[docs/ui.md](./docs/ui.md)**.
 
-## Option A: Demo mode (recommended)
+## Option A: Mock API (MSW) — no backend
 
-⚠️ **SECURITY WARNING**: Demo mode bypasses authentication and grants all permissions for UI preview. **Never enable `VITE_DEMO_MODE=true` in production** or expose demo instances publicly.
+Use this to build and test UI locally **without** Google sign-in or a running API. The app loads **[MSW](https://mswjs.io/)** in development and returns fixture data from `frontend/src/mocks/` (not shipped in production builds).
 
-Use **demo mode** to browse the app **without** a running backend or Google sign-in. Data comes from `frontend/src/data/demoData.ts`.
-
-1. Create **`frontend/.env.local`**:
+1. From **`frontend/`**:
 
    ```bash
-   cd frontend
-   echo "VITE_DEMO_MODE=true" > .env.local
+   npm run dev:msw
    ```
 
-2. Install and run:
+   Or from the repo root: `npm run dev:frontend:msw`
 
-   ```bash
-   npm install
-   npm run dev
-   ```
+   Alternatively add to **`frontend/.env.local`**: `VITE_USE_MSW=true` and run `npm run dev`.
 
-3. Open **http://localhost:3000** — `ProtectedRoute` skips auth when `VITE_DEMO_MODE=true`.
+2. Open **http://localhost:3000** — you get a dev session token and mocked `/api/*` responses.
 
-If the API is called and fails, the UI still loads; list pages use demo data where wired.
+3. **Do not** set `VITE_USE_MSW=true` in production. The Docker build explicitly disables it.
 
 ## Option B: Full stack (`npm run dev` from repo root)
 
-Runs the backend (default **port 5001**) and frontend (**3000**) together. The Vite dev server proxies `/api` to `http://localhost:5001`. Sign in with Google when not in demo mode.
+Runs the backend (default **port 5001**) and frontend (**3000**) together. The Vite dev server proxies `/api` to `http://localhost:5001`. Sign in with Google.
 
 ## Routes (no separate dashboard)
 
@@ -47,26 +41,7 @@ The default authenticated landing route is **`/` → `/users`**. There is **no**
 | `/email-signatures` | Email signatures |
 | `/audit` | Security audit (GWS hardening checklist) |
 
-## Optional: bypass auth in code
-
-Instead of demo mode, you can temporarily change **`frontend/src/components/ProtectedRoute.tsx`** (not recommended for anything other than local UI debugging).
-
 ## What you’ll see
 
 - **Layout**: Sidebar (labels match the app: **People**, **Groups**, **Calendar**, etc.), light/dark theme, Plus Jakarta Sans.
 - **Data views**: Mostly **flex list** surfaces (`ListShell`, `ColumnHeader`, `ListDataRow`) with pagination; some areas still use MUI **`Table`** or **`TablePagination`**.
-- **Dialogs**, **filter drawer**, **export** menus where implemented.
-
-## Troubleshooting
-
-**Dependencies:**
-
-```bash
-cd frontend
-rm -rf node_modules package-lock.json
-npm install
-```
-
-**Port 3000 in use:** Vite is configured with `strictPort: true` — free port 3000 or change `server.port` in `frontend/vite.config.mjs`.
-
-**API URL:** See **[frontend/ENV_SETUP.md](./frontend/ENV_SETUP.md)**. Local dev defaults to **`http://localhost:5001/api`** unless `VITE_API_URL` is set (e.g. Docker Compose exposes the backend on **5000**).

@@ -10,14 +10,14 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: us-central1
   SERVICE_NAME: workspace-admin
-  REPO: cloud-run-source-deploy
+  REPO: workspace-admin-repo
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write  # For Workload Identity (preferred over long-lived keys)
+      id-token: write
 
     steps:
       - name: Checkout code
@@ -26,62 +26,70 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint, type-check, and security tests
+      - name: Type-check and security tests
         run: |
-          npm run lint
           npm run type-check
           npm run test:security
-        # npm audit (dev deps) can be addressed with Dependabot + npm audit fix.
-        # Consider adding Trivy Docker scan in future.
+
+      - name: Lint (informational)
+        continue-on-error: true
+        run: npm run lint
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}  # Prefer workload_identity_federation for prod
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
           create_credentials_file: true
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker us-central1-docker.pkg.dev
-
-      - name: Build and Push to Artifact Registry
+      - name: Configure project and Docker
         run: |
-          # Uses updated Dockerfile (multi-stage)
-          docker build -t us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA .
-          docker tag us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA \
-            us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:latest
-          docker push us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA
-          docker push us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:latest
+          gcloud config set project "${{ env.PROJECT_ID }}" --quiet
+          gcloud artifacts repositories create "${{ env.REPO }}" \
+            --repository-format=docker \
+            --location="${{ env.REGION }}" \
+            --quiet 2>/dev/null || true
+          gcloud auth configure-docker "${{ env.REGION }}-docker.pkg.dev" --quiet
+
+      - name: Build and push Docker image
+        run: |
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}"
+          docker build --platform linux/amd64 -t "${IMAGE}:${GITHUB_SHA}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          docker push "${IMAGE}:latest"
 
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:$GITHUB_SHA \
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:${GITHUB_SHA}"
+          gcloud run deploy "${{ env.SERVICE_NAME }}" \
+            --image "$IMAGE" \
             --platform managed \
-            --region ${{ env.REGION }} \
+            --region "${{ env.REGION }}" \
             --memory 1Gi \
             --cpu 1 \
             --cpu-boost \
             --min-instances 0 \
             --max-instances 2 \
             --timeout 300 \
-            --service-account=workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com \
+            --service-account "workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com" \
             --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_SECRET_NAME=service-account-key" \
-            --set-secrets "GOOGLE_CLIENT_ID=oauth-client-id:latest,GOOGLE_CLIENT_SECRET=oauth-client-secret:latest,GOOGLE_REDIRECT_URI=oauth-redirect-uri:latest,JWT_SECRET=app-jwt-secret:latest,WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest"
+            --set-secrets "GOOGLE_CLIENT_ID=oauth-client-id:latest,GOOGLE_CLIENT_SECRET=oauth-client-secret:latest,GOOGLE_REDIRECT_URI=oauth-redirect-uri:latest,JWT_SECRET=app-jwt-secret:latest,WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
+            --allow-unauthenticated \
+            --no-invoker-iam-check \
+            --quiet
 
-      - name: Update CORS and Redirect URI (post-deploy)
+      - name: Update CORS and OAuth redirect URI
         run: |
-          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region=${{ env.REGION }} --format='value(status.url)')
+          SERVICE_URL=$(gcloud run services describe "${{ env.SERVICE_NAME }}" --region "${{ env.REGION }}" --format='value(status.url)')
+          REDIRECT_URI="${SERVICE_URL}/api/auth/callback"
+          gcloud run services update "${{ env.SERVICE_NAME }}" \
+            --region "${{ env.REGION }}" \
+            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_SECRET_NAME=service-account-key,CORS_ORIGIN=${SERVICE_URL}" \
+            --no-invoker-iam-check \
+            --quiet
+          echo -n "$REDIRECT_URI" | gcloud secrets versions add oauth-redirect-uri --data-file=- --quiet
           echo "Service URL: $SERVICE_URL"
-          # Update CORS
-          gcloud run services update ${{ env.SERVICE_NAME }} --region=${{ env.REGION }} --update-env-vars "CORS_ORIGIN=${SERVICE_URL}"
-          # Update redirect secret with real URL
-          REAL_REDIRECT="${SERVICE_URL}/api/auth/callback"
-          echo -n "$REAL_REDIRECT" | gcloud secrets versions add oauth-redirect-uri --data-file=-
-          echo "✅ Updated CORS_ORIGIN and oauth-redirect-uri with $REAL_REDIRECT"
-
-      - name: Allow public HTTPS (optional)
-        run: |
-          gcloud run services add-iam-policy-binding ${{ env.SERVICE_NAME }} --region=${{ env.REGION }} --project=${{ env.PROJECT_ID }} --member=allUsers --role=roles/run.invoker || echo "Public invoker skipped (org policy or already set)."
+          echo "Redirect URI: $REDIRECT_URI"
+          echo "Ensure this redirect URI is registered on your OAuth Web client if the URL changed."

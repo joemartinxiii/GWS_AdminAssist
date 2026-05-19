@@ -41,6 +41,7 @@ import { Permission } from '../services/permissions.service';
 import { ThemeContext } from '../App';
 import { T } from '../theme/designTokens';
 import { FontLinks } from './FontLinks';
+import { Chip } from '@mui/material';
 
 const LU = 1.75;
 const ICON_SZ = 22;
@@ -77,9 +78,11 @@ export function Layout({ children }: LayoutProps) {
   const [mobileOverlayOpen, setMobileOverlayOpen] = useState(false);
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string; picture?: string } | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const { hasPermission } = usePermissions();
+  const permissions = usePermissions(); // Full hook for role display + hasPermission
+  const { hasPermission, isSuperAdmin, isDelegatedAdmin } = permissions;
   const { mode, toggleColorMode } = useContext(ThemeContext);
 
   const muiTheme = useTheme();
@@ -122,6 +125,32 @@ export function Layout({ children }: LayoutProps) {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [toggleColorMode]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadCurrentUser = async () => {
+      try {
+        const user = await authService.getCurrentUser();
+        if (mounted) setCurrentUser(user);
+      } catch {
+        if (mounted) setCurrentUser(null);
+      }
+    };
+    if (authService.isAuthenticated()) {
+      void loadCurrentUser();
+    }
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const avatarLabel = useMemo(() => {
+    const source = (currentUser?.name || currentUser?.email || '').trim();
+    if (!source) return isSuperAdmin ? 'S' : 'A';
+    const words = source.split(/\s+/).filter(Boolean);
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return words.slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  }, [currentUser?.name, currentUser?.email, isSuperAdmin]);
 
   const drawer = (collapsed: boolean) => (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -276,13 +305,32 @@ export function Layout({ children }: LayoutProps) {
             })}
           </Box>
           <IconButton onClick={handleMenuClick} sx={{ p: 0 }}>
-            <Avatar sx={{ width: 32, height: 32 }}>A</Avatar>
+            <Avatar
+              src={currentUser?.picture}
+              alt={currentUser?.name || currentUser?.email || 'User'}
+              sx={{ width: 32, height: 32, bgcolor: isSuperAdmin ? '#2e7d32' : '#ed6c02' }}
+            >
+              {avatarLabel}
+            </Avatar>
           </IconButton>
           <Menu
             anchorEl={anchorEl}
             open={Boolean(anchorEl)}
             onClose={handleMenuClose}
           >
+            <MenuItem disabled sx={{ opacity: 1, cursor: 'default' }}>
+              <Chip
+                label={isSuperAdmin 
+                  ? 'Super Admin (Full Access)' 
+                  : isDelegatedAdmin 
+                    ? 'Delegated Admin (View Only)' 
+                    : 'No Admin Privileges'
+                }
+                color={isSuperAdmin ? 'success' : isDelegatedAdmin ? 'warning' : 'default'}
+                size="small"
+                sx={{ fontFamily: T.font }}
+              />
+            </MenuItem>
             <MenuItem onClick={handleLogout}>
               <ListItemIcon>
                 <LogOut size={18} strokeWidth={LU} />

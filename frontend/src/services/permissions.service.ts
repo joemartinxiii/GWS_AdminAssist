@@ -1,5 +1,4 @@
 import { apiClient } from './api.client';
-import { isDemoMode } from '../data/demoData';
 
 export type Permission = 
   | 'users.create'
@@ -34,26 +33,6 @@ class PermissionsService {
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   async fetchPermissions(): Promise<UserPermissions> {
-    // DEMO MODE: Return all permissions as Super Admin
-    if (isDemoMode()) {
-      const allPermissions: Permission[] = [
-        'users.create', 'users.update', 'users.delete', 'users.view',
-        'groups.create', 'groups.update', 'groups.delete', 'groups.view',
-        'drive.permissions.manage', 'drive.view', 'gmail.view',
-        'gmail.delegation.manage', 'gmail.sendas.manage',
-        'calendar.resources.manage', 'calendar.view',
-        'audit.view', 'audit.export',
-      ];
-      this.permissions = allPermissions;
-      this.isSuperAdmin = true;
-      this.isDelegatedAdmin = false;
-      return {
-        permissions: allPermissions,
-        isSuperAdmin: true,
-        isDelegatedAdmin: false,
-      };
-    }
-
     // Check cache
     if (this.permissions && Date.now() < this.cacheExpiry) {
       return {
@@ -71,9 +50,15 @@ class PermissionsService {
       this.cacheExpiry = Date.now() + this.CACHE_TTL;
       
       return response.data;
-    } catch (error) {
-      console.error('Error fetching permissions:', error);
-      // Return empty permissions on error (will hide UI elements)
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || error.message || 'Unknown error';
+      console.error('Error fetching permissions:', errorMsg);
+      console.warn(
+        'Permission fetch error (common in prod): If mentions Secret Manager, delegation, or admin roles, ' +
+        'verify SA IAM, domain-wide delegation scopes (SECURITY.md), and run setup-secrets.sh/deploy.sh. ' +
+        'User may be delegated admin (view-only).'
+      );
+      // Return empty permissions on error (UI shows view-only / disabled actions)
       return {
         permissions: [],
         isSuperAdmin: false,
@@ -83,28 +68,16 @@ class PermissionsService {
   }
 
   hasPermission(permission: Permission): boolean {
-    // DEMO MODE: Always return true
-    if (isDemoMode()) {
-      return true;
-    }
     if (!this.permissions) return false;
     return this.permissions.includes(permission);
   }
 
   hasAnyPermission(...permissions: Permission[]): boolean {
-    // DEMO MODE: Always return true
-    if (isDemoMode()) {
-      return true;
-    }
     if (!this.permissions) return false;
     return permissions.some(p => this.permissions!.includes(p));
   }
 
   hasAllPermissions(...permissions: Permission[]): boolean {
-    // DEMO MODE: Always return true
-    if (isDemoMode()) {
-      return true;
-    }
     if (!this.permissions) return false;
     return permissions.every(p => this.permissions!.includes(p));
   }

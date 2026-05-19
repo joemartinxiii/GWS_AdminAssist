@@ -106,6 +106,10 @@ for SECRET_NAME in oauth-client-id oauth-client-secret oauth-redirect-uri app-jw
   echo "    --role=\"roles/secretmanager.secretAccessor\""
   echo ""
 done
+echo "  gcloud projects add-iam-policy-binding $PROJECT_ID \\"
+echo "    --member=\"serviceAccount:workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com\" \\"
+echo "    --role=\"roles/logging.logWriter\""
+echo ""
 echo "2. Run ./deploy.sh $PROJECT_ID us-central1 (it will update redirect/CORS with real URL)"
 echo "3. After deploy, verify the production redirect URI in OAuth console matches the service URL."
 echo ""

@@ -33,6 +33,7 @@ import {
   ArrowUp,
   ArrowDown,
 } from 'lucide-react';
+import type { AxiosError } from 'axios';
 import { apiClient } from '../services/api.client';
 import { usePermissions } from '../hooks/usePermissions';
 import { ExportButton } from '../components/ExportButton';
@@ -47,13 +48,6 @@ import { shortcut } from '../utils/keyboard';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import {
-  isDemoMode,
-  users as demoUsers,
-  orgUnits as demoOrgUnits,
-  usersWithout2FAData as demoUsersWithout2FAData,
-} from '../data/demoData';
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -116,6 +110,47 @@ function isWorkspaceAdmin(u: User): boolean {
   return u.isAdmin === true || u.isDelegatedAdmin === true;
 }
 
+/** Directory API sometimes omits name parts; avoid runtime errors on People. */
+function normalizeWorkspaceUser(raw: unknown): User {
+  const u = raw as Record<string, unknown>;
+  const nameObj = (u?.name as Record<string, unknown>) || {};
+  const given = String(nameObj.givenName ?? '');
+  const family = String(nameObj.familyName ?? '');
+  const fullRaw = String(nameObj.fullName ?? '').trim();
+  const full =
+    fullRaw || [given, family].filter(Boolean).join(' ') || String(u?.primaryEmail ?? 'Unknown');
+  return {
+    id: String(u?.id ?? ''),
+    primaryEmail: String(u?.primaryEmail ?? ''),
+    name: { givenName: given, familyName: family, fullName: full },
+    isAdmin: u?.isAdmin === true,
+    isDelegatedAdmin: u?.isDelegatedAdmin === true,
+    delegatedAdminPrivileges: Array.isArray(u?.delegatedAdminPrivileges)
+      ? (u.delegatedAdminPrivileges as string[])
+      : undefined,
+    suspended: u?.suspended === true,
+    isEnforcedIn2Sv: u?.isEnforcedIn2Sv === true,
+    isEnrolledIn2Sv: u?.isEnrolledIn2Sv === true,
+    creationTime: u?.creationTime as string | undefined,
+    lastLoginTime: u?.lastLoginTime as string | undefined,
+    orgUnitPath: u?.orgUnitPath as string | undefined,
+    department: u?.department as string | undefined,
+    location: u?.location as string | undefined,
+    phone: u?.phone as string | undefined,
+    notes: u?.notes as string | undefined,
+  };
+}
+
+function apiErrorMessage(e: unknown, fallback: string): string {
+  const err = e as AxiosError<{ error?: string }>;
+  const status = err.response?.status;
+  const data = err.response?.data;
+  const msg = data?.error;
+  if (status === 403) return msg || 'You don\'t have permission to view this data.';
+  if (status === 401) return msg || 'Session expired. Sign in again.';
+  return msg || err.message || fallback;
+}
+
 function formatFilterDateRange(from: string, to: string): string {
   if (!from && !to) return 'Any';
   const fmt = (s: string) => {
@@ -175,16 +210,15 @@ function Initials({ name, suspended }: { name: string; suspended?: boolean }) {
 
 export function Users() {
   const [tab, setTab] = useState(0);
-  const [users, setUsers] = useState<User[]>(() => (isDemoMode() ? (demoUsers as User[]) : []));
+  const [users, setUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(!isDemoMode());
+  const [loading, setLoading] = useState(true);
   const [usersWithout2FAData, setUsersWithout2FAData] = useState<any>(null);
   const [usersWithout2FALoading, setUsersWithout2FALoading] = useState(false);
   const [filters, setFilters] = useState<UserFilters>({
     search: '', status: '', role: '', twoFA: '',
     createdFrom: '', createdTo: '', lastLoginFrom: '', lastLoginTo: '',
   });
-  const [showSampleDataNotice, setShowSampleDataNotice] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -226,10 +260,8 @@ export function Users() {
   }, []);
 
   // -------------------------------------------------------------------------
-  // Data fetching (identical to original)
+  // Data fetching
   // -------------------------------------------------------------------------
-
-  useEffect(() => { fetchUsers(); fetchUsersWithout2FA(); fetchOrganizationalUnits(); }, []);
 
   const organizeOUsHierarchically = (ous: Array<{ orgUnitPath: string; name: string }>) => {
     const rootOU = ous.find((ou) => ou.orgUnitPath === '/');
@@ -260,8 +292,7 @@ export function Users() {
       const r = await apiClient.get('/users/organizational-units');
       setOrganizationalUnits(organizeOUsHierarchically(r.data));
     } catch {
-      if (isDemoMode()) setOrganizationalUnits(organizeOUsHierarchically(demoOrgUnits));
-      else setOrganizationalUnits([{ orgUnitPath: '/', name: 'example.com', displayName: 'example.com', level: 0 }]);
+      setOrganizationalUnits([{ orgUnitPath: '/', name: 'example.com', displayName: 'example.com', level: 0 }]);
     } finally { setLoadingOrgUnits(false); }
   };
 
@@ -269,27 +300,46 @@ export function Users() {
     try {
       setUsersWithout2FALoading(true);
       const r = await apiClient.get('/audit/users-without-2fa');
-      setUsersWithout2FAData(r.data);
-    } catch {
-      if (isDemoMode()) setUsersWithout2FAData(demoUsersWithout2FAData);
+      const d = r.data as {
+        usersWithout2FA?: unknown[];
+        usersEnforcedButNotEnrolled?: unknown[];
+        statistics?: unknown;
+      } | null;
+      if (d && typeof d === 'object') {
+        setUsersWithout2FAData({
+          ...d,
+          usersWithout2FA: Array.isArray(d.usersWithout2FA) ? d.usersWithout2FA.map(normalizeWorkspaceUser) : [],
+          usersEnforcedButNotEnrolled: Array.isArray(d.usersEnforcedButNotEnrolled)
+            ? d.usersEnforcedButNotEnrolled.map(normalizeWorkspaceUser)
+            : [],
+        });
+      } else {
+        setUsersWithout2FAData(null);
+      }
+    } catch (e) {
+      setUsersWithout2FAData(null);
+      showSnackbar(apiErrorMessage(e, 'Could not load 2FA audit data.'), 'error');
     } finally { setUsersWithout2FALoading(false); }
   };
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      setShowSampleDataNotice(false);
       const r = await apiClient.get('/users?maxResults=100');
-      setUsers(Array.isArray(r.data) ? r.data : []);
-    } catch (error: any) {
-      const isUnauth = error?.response?.status === 401;
-      const isNet = error?.code === 'ERR_NETWORK' || !error?.response;
-      if (isDemoMode() || (!isUnauth && isNet)) {
-        setUsers(demoUsers as User[]);
-        setShowSampleDataNotice(!isDemoMode());
-      }
+      const raw = Array.isArray(r.data) ? r.data : [];
+      setUsers(raw.map(normalizeWorkspaceUser));
+    } catch (e) {
+      setUsers([]);
+      showSnackbar(apiErrorMessage(e, 'Could not load people.'), 'error');
     } finally { setLoading(false); }
   };
+
+  useEffect(() => {
+    void fetchUsers();
+    void fetchUsersWithout2FA();
+    void fetchOrganizationalUnits();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // -------------------------------------------------------------------------
   // Filtering & sorting
@@ -450,7 +500,6 @@ export function Users() {
   const handleExportAllCSV = async () => {
     try {
       const filename = generateExportFilename('people-all');
-      if (isDemoMode()) { exportToCSV(users, filename); showSnackbar('CSV downloading now.', 'success'); return; }
       const r = await apiClient.get('/users/export', { responseType: 'blob' });
       const blob = new Blob([r.data], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
@@ -472,7 +521,6 @@ export function Users() {
   const handleExportSelectedCSV = async () => {
     if (!selectedUsers.size) { showSnackbar('Select people first.', 'warning'); return; }
     const filename = generateExportFilename('people-selected');
-    if (isDemoMode()) { exportToCSV(users.filter((u) => selectedUsers.has(u.primaryEmail)), filename); showSnackbar('Selected people exported.', 'success'); return; }
     try {
       const r = await apiClient.post('/users/export/selected', { userEmails: [...selectedUsers] }, { responseType: 'blob' });
       const blob = new Blob([r.data], { type: 'text/csv' });
@@ -496,7 +544,6 @@ export function Users() {
   const handleExportFilteredCSV = async () => {
     if (!filteredUsers.length) { showSnackbar('No results to export.', 'warning'); return; }
     const filename = generateExportFilename('people-filtered');
-    if (isDemoMode()) { exportToCSV(filteredUsers, filename); showSnackbar('Filtered list exported.', 'success'); return; }
     try {
       const r = await apiClient.post('/users/export/filtered', { filters }, { responseType: 'blob' });
       const blob = new Blob([r.data], { type: 'text/csv' });
@@ -640,12 +687,6 @@ export function Users() {
 
   return (
     <Box sx={{ fontFamily: T.font, minHeight: '100vh' }}>
-
-      {showSampleDataNotice && (
-        <Alert severity="info" sx={{ mb: 2, borderRadius: T.radius, fontFamily: T.font }} onClose={() => setShowSampleDataNotice(false)}>
-          Showing sample data \u2014 the backend isn\u2019t reachable right now.
-        </Alert>
-      )}
 
       {/* ================================================================= */}
       {/* PAGE HEADER                                                        */}

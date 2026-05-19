@@ -79,22 +79,23 @@ export class AuthService {
       {
         email: userInfo.email,
         name: userInfo.name,
+        picture: userInfo.picture,
       },
-      jwtSecret as string,
-      { expiresIn: JWT_EXPIRES_IN }
+      jwtSecret,
+      { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions
     );
   }
 
   /**
    * Verify a JWT session token
    */
-  verifySessionToken(token: string): { email: string; name: string } {
+  verifySessionToken(token: string): { email: string; name: string; picture?: string } {
     try {
-      const decoded = jwt.verify(token, jwtSecret as string) as jwt.JwtPayload & { email: string; name: string };
+      const decoded = jwt.verify(token, jwtSecret as string) as jwt.JwtPayload & { email: string; name: string; picture?: string };
       if (!decoded.email || !decoded.name) {
         throw new Error('Invalid token payload');
       }
-      return { email: decoded.email, name: decoded.name };
+      return { email: decoded.email, name: decoded.name, picture: decoded.picture };
     } catch (error) {
       throw new Error('Invalid or expired token');
     }
