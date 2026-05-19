@@ -337,7 +337,7 @@ export class DriveService extends WorkspaceService {
     );
 
     if (!hasPrincipalPermissions) {
-      directPermissions = await this.getFilePermissions(userEmail, driveFile.id);
+      directPermissions = await this.getFilePermissions(userEmail, driveFile.id, !!driveFile.driveId);
     }
 
     if (!driveFile.driveId) {
@@ -561,7 +561,7 @@ export class DriveService extends WorkspaceService {
   /**
    * Get file permissions
    */
-  async getFilePermissions(userEmail: string, fileId: string): Promise<DriveFile['permissions']> {
+  async getFilePermissions(userEmail: string, fileId: string, isSharedDrive = false): Promise<DriveFile['permissions']> {
     await this.initialize(userEmail);
 
     try {
@@ -569,7 +569,9 @@ export class DriveService extends WorkspaceService {
         this.drive.permissions.list({
           fileId,
           supportsAllDrives: true,
-          useDomainAdminAccess: true,
+          // useDomainAdminAccess only applies to Shared Drive files; using it on
+          // My Drive files causes the API to return an empty permissions list.
+          ...(isSharedDrive ? { useDomainAdminAccess: true } : {}),
           fields: 'permissions(id, type, role, emailAddress, domain, displayName, deleted, permissionDetails)',
         })
       );
@@ -577,13 +579,13 @@ export class DriveService extends WorkspaceService {
       return (response.data.permissions || [])
         .filter(perm => !perm.deleted)
         .map(perm => ({
-        id: perm.id || '',
-        type: perm.type || '',
-        role: perm.role || '',
-        emailAddress: perm.emailAddress || undefined,
-        domain: perm.domain || undefined,
-        displayName: perm.displayName || undefined,
-      }));
+          id: perm.id || '',
+          type: perm.type || '',
+          role: perm.role || '',
+          emailAddress: perm.emailAddress || undefined,
+          domain: perm.domain || undefined,
+          displayName: perm.displayName || undefined,
+        }));
     } catch (error) {
       console.error(`Error getting permissions for file ${fileId}:`, error);
       return [];
@@ -606,10 +608,10 @@ export class DriveService extends WorkspaceService {
         })
       );
 
-      const directPermissions = await this.getFilePermissions(userEmail, fileId);
+      const driveId = fileResponse.data.driveId || undefined;
+      const directPermissions = await this.getFilePermissions(userEmail, fileId, !!driveId);
       const filePath = await this.getFilePath(userEmail, fileId, fileResponse.data.parents);
       const ownerEmail = (fileResponse.data.owners || [])[0]?.emailAddress || undefined;
-      const driveId = fileResponse.data.driveId || undefined;
       const adminPath = this.toAdminPath(filePath, ownerEmail, driveId);
       const permissions = driveId
         ? this.mergePermissions(directPermissions, await this.getSharedDrivePermissionsByDriveId(driveId))
@@ -682,19 +684,26 @@ export class DriveService extends WorkspaceService {
     } catch (error: any) {
       const googleMsg: string = error?.response?.data?.error?.message || error?.message || '';
       if (error?.response?.status === 403 && googleMsg.toLowerCase().includes('inherited')) {
-        let driveName = 'a Shared Drive';
         const resolvedDriveId = driveId || (() => {
           try { return error?.response?.data?.error?.errors?.[0]?.location; } catch { return undefined; }
         })();
+        let driveLabel = 'a Shared Drive';
+        let driveRef = 'the Shared Drive';
         if (resolvedDriveId) {
           try {
-            const driveRes = await this.drive.drives.get({ driveId: resolvedDriveId });
-            if (driveRes.data.name) driveName = `"${driveRes.data.name}"`;
-          } catch { /* fall back to generic name */ }
+            const driveRes = await this.drive.drives.get({
+              driveId: resolvedDriveId,
+              useDomainAdminAccess: true,
+            });
+            if (driveRes.data.name) {
+              driveLabel = `the "${driveRes.data.name}" Shared Drive`;
+              driveRef = `"${driveRes.data.name}"`;
+            }
+          } catch { /* fall back to generic labels */ }
         }
         const err: any = new Error(
-          `This permission is inherited from the ${driveName} Shared Drive membership and cannot be removed at the file level. ` +
-          `To restrict access, remove the account from ${driveName} or move the file outside the drive.`
+          `This permission is inherited from ${driveLabel} membership and cannot be removed at the file level. ` +
+          `To restrict access, remove the account from ${driveRef} or move the file outside the drive.`
         );
         err.status = 403;
         err.code = 'INHERITED_PERMISSION';
