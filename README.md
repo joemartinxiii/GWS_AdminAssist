@@ -1,4 +1,4 @@
-# Google Workspace Admin Management UI
+# Google Workspace Admin Management UI (WORK IN PROGRESS)
 
 A comprehensive web-based admin tool for managing Google Workspace tenants, similar to GAM but with a modern UI. Runs entirely on GCP Cloud Run with cost-optimized architecture.
 
