@@ -509,7 +509,7 @@ router.patch('/:email', requirePermission('users.update'), auditLog('user.update
     if (req.body.familyName) updates.familyName = sanitizeText(req.body.familyName);
     if (req.body.department) updates.department = sanitizeText(req.body.department);
     if (req.body.location) updates.location = sanitizeText(req.body.location);
-    if (req.body.notes) updates.notes = sanitizeText(req.body.notes);
+    if (req.body.notes !== undefined) updates.notes = sanitizeText(String(req.body.notes));
 
     // Phone validation (optional) - fixed regex escapes
     if (req.body.phone) {

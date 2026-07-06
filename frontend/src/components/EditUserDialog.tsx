@@ -687,6 +687,7 @@ export function EditUserDialog({
           <Button
             variant="contained"
             onClick={handleSave}
+            data-testid="save-changes"
             sx={{
               ...actionBtnSx,
               bgcolor: T.accent,

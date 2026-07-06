@@ -1,7 +1,7 @@
 #!/bin/bash
-# Professional Cloud Run deployment using local Docker build + Artifact Registry
-# This is the reliable way for complex full-stack apps (avoids Cloud Build context/upload issues)
-# You do it all - service account, perms, secrets, build, deploy
+# Cloud Run deployment via local Docker build + Artifact Registry.
+# Prefer GitHub Actions instead: push to main or run "Deploy to Cloud Run" workflow
+# (see docs/GITHUB_ACTIONS.md) — no local Docker required.
 
 set -e
 

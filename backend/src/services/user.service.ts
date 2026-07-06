@@ -88,7 +88,7 @@ export class UserService extends WorkspaceService {
             department: departmentFromGoogleUser(user),
             location: user.locations?.[0]?.area || user.locations?.[0]?.buildingId || '',
             phone: user.phones?.[0]?.value || '',
-            notes: user.notes?.content || '',
+            notes: user.notes?.value || user.notes?.content || '',
           });
         }
       }
@@ -138,7 +138,7 @@ export class UserService extends WorkspaceService {
         department: departmentFromGoogleUser(user),
         location: user.locations?.[0]?.area || user.locations?.[0]?.buildingId || '',
         phone: user.phones?.[0]?.value || '',
-        notes: user.notes?.content || '',
+        notes: user.notes?.value || user.notes?.content || '',
       };
     } catch (error: any) {
       if (error.status === 404) {
@@ -251,8 +251,8 @@ export class UserService extends WorkspaceService {
     if (updates.phone) {
       requestBody.phones = [{ value: updates.phone, type: 'work' }];
     }
-    if (updates.notes) {
-      requestBody.notes = { content: updates.notes };
+    if (updates.notes !== undefined) {
+      requestBody.notes = { value: updates.notes, contentType: 'text_plain' };
     }
 
     const response = await this.withRetry(() =>
@@ -285,7 +285,7 @@ export class UserService extends WorkspaceService {
       department: departmentFromGoogleUser(user),
       location: user.locations?.[0]?.area || '',
       phone: user.phones?.[0]?.value || '',
-      notes: user.notes?.content || '',
+      notes: user.notes?.value || user.notes?.content || '',
     };
   }
 

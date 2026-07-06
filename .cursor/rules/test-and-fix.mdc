@@ -1,0 +1,70 @@
+---
+description: Run live staging tests and fix failures in a loop
+alwaysApply: false
+---
+
+# Test and Fix
+
+When the user says **"run tests"**, **"fix tests"**, **"test and fix"**, or similar:
+
+## 1. Pre-flight
+
+- Confirm `.env.test` exists (copy from `.env.test.example` if missing). If missing, stop and point to [docs/STAGING_TEST_SETUP.md](docs/STAGING_TEST_SETUP.md).
+- Run `./scripts/smoke-config.sh` for a quick config check.
+
+## 2. Run tests
+
+**Full gate (default):**
+
+```bash
+npm run test:all
+```
+
+Runs: type-check → security → live API (read + mutating) → Playwright E2E (read + mutating).
+
+**Faster tiers:**
+
+```bash
+npm run test:all:read          # type-check + security + live @read only (~3 min)
+npm run test:live:read         # live API read-only
+npm run test:e2e:read          # Playwright page smoke only
+```
+
+Re-run **only the failed suite** after each fix:
+
+```bash
+npm run test:live:read --prefix backend -- --testPathPattern=drive
+dotenv -e .env.test -- playwright test tests/e2e/drive.spec.ts
+dotenv -e .env.test -- playwright test tests/e2e/drive.mutating.spec.ts
+```
+
+## 3. Fix failures
+
+For each failure:
+
+1. Read HTTP status, response body, and stack trace.
+2. Distinguish **code bug** vs **config** (403 from Google = DWD/scope; 401 = JWT/secret).
+3. Apply the **minimal** code fix; match existing patterns.
+4. Re-run the failed test file before moving on.
+
+Live mutating tests require `TEST_MUTATIONS=true` (set automatically by `test:all`).
+
+## 4. Record unfixed issues
+
+Append new production-facing defects to [docs/tech-debt.md](docs/tech-debt.md) under **Deployed Bug Backlog** if not resolved in-session.
+
+## 5. E2E auth and fixtures
+
+If Playwright fails with login redirect or missing auth:
+
+```bash
+npm run test:e2e:auth
+```
+
+If mutating E2E fails on missing tenant IDs:
+
+```bash
+npm run test:e2e:fixtures
+```
+
+Auth state path: `tests/e2e/.auth/session.json`. Tenant fixtures: `tests/e2e/.fixtures/tenant.json`.

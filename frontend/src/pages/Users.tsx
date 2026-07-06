@@ -1079,7 +1079,7 @@ export function Users() {
                       >
                         {canTakeAction && hasPermission('users.update') && (
                           <Tooltip title="Edit">
-                            <IconButton size="small" onClick={() => handleOpenEdit(user)} sx={{ p: 0.5, color: T.accent, '&:hover': { color: T.accentHover } }}>
+                            <IconButton size="small" data-testid="edit-user" onClick={() => handleOpenEdit(user)} sx={{ p: 0.5, color: T.accent, '&:hover': { color: T.accentHover } }}>
                               <Pencil size={16} strokeWidth={1.75} />
                             </IconButton>
                           </Tooltip>

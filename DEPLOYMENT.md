@@ -32,14 +32,25 @@ chmod +x setup-secrets.sh
 
 **Run all the IAM commands the script prints at the end.**
 
-## Step 2: Deploy (5 minutes)
+## Step 2: Deploy
+
+**Recommended: GitHub Actions (no local Docker)**
+
+Secrets `GCP_PROJECT_ID` and `GCP_SA_KEY` are already configured on this repo. To deploy:
+
+1. Commit and push to `main`, **or**
+2. GitHub → **Actions** → **Deploy to Cloud Run** → **Run workflow**
+
+CI builds the Docker image on GitHub’s runner, pushes to Artifact Registry, and deploys Cloud Run — same result as `./deploy.sh`, without Docker on your Mac.
+
+See [docs/GITHUB_ACTIONS.md](./docs/GITHUB_ACTIONS.md) for one-time setup and troubleshooting.
+
+**Alternative: local `./deploy.sh`** (requires Docker Desktop)
 
 ```bash
 chmod +x deploy.sh
 ./deploy.sh admin-assist-492920 us-central1
 ```
-
-(For public access without authentication: `CLOUD_RUN_PUBLIC=1 ./deploy.sh admin-assist-492920 us-central1`)
 
 ## What Happens
 
@@ -50,9 +61,11 @@ The script will:
 - Automatically set CORS_ORIGIN and update the OAuth redirect URI
 - Print the service URL and exact next steps
 
-## GitHub Actions (optional)
+## GitHub Actions (recommended)
 
-After the one-time setup in [docs/GITHUB_ACTIONS.md](./docs/GITHUB_ACTIONS.md), every push to `main` deploys automatically. Use `./deploy.sh` for manual deploys.
+Every push to `main` deploys automatically. Manual trigger: **Actions → Deploy to Cloud Run → Run workflow**.
+
+One-time setup: [docs/GITHUB_ACTIONS.md](./docs/GITHUB_ACTIONS.md) (already done for this repo — `GCP_PROJECT_ID` + `GCP_SA_KEY` secrets).
 
 ## After Deploy
 

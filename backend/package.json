@@ -11,7 +11,9 @@
     "type-check": "tsc --noEmit",
     "test": "jest",
     "test:security": "jest tests/security-validation.test.ts",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "test:live": "jest -c jest.live.config.js --runInBand",
+    "test:live:read": "jest -c jest.live.config.js --runInBand --testNamePattern=@read"
   },
   "dependencies": {
     "@google-cloud/logging": "^11.0.0",

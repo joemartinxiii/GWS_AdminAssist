@@ -451,6 +451,7 @@ export function EmailDelegation() {
           size="small"
           variant="contained"
           onClick={() => setDialogOpen(true)}
+          data-testid="add-delegation"
           startIcon={<Plus size={15} strokeWidth={1.75} />}
           sx={{
             fontFamily: T.font,

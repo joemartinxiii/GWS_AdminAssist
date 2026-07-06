@@ -1,6 +1,8 @@
 # GitHub Actions — Deploy to Cloud Run
 
-Push to `main` (or run the workflow manually) to build and deploy the same way as `./deploy.sh`.
+**This is the recommended way to deploy.** Push to `main` or run the workflow manually — Docker runs on GitHub’s runner, not your laptop.
+
+Local `./deploy.sh` is optional and requires Docker Desktop.
 
 ## One-time setup (~10 minutes)
 
@@ -67,7 +69,9 @@ On push to `main` or manual **Run workflow**:
 3. `gcloud run deploy workspace-admin` with `--no-invoker-iam-check` (matches `deploy.sh`)
 4. Updates `CORS_ORIGIN` and `oauth-redirect-uri` secret
 
-## Manual deploy without CI
+## Manual deploy (optional — requires local Docker)
+
+Only if you cannot use GitHub Actions:
 
 ```bash
 ./deploy.sh admin-assist-492920 us-central1
@@ -84,3 +88,21 @@ On push to `main` or manual **Run workflow**:
 | Workflow fails on lint/tests | Fix locally, commit, push again |
 
 View runs: **GitHub → Actions → Deploy to Cloud Run**.
+
+## Live staging tests (manual)
+
+Workflow: **Test Staging (Live Read-Only)** — trigger via **Actions → Test Staging → Run workflow**.
+
+Required repository secrets (in addition to deploy secrets):
+
+| Secret | Purpose |
+|--------|---------|
+| `TEST_SUPER_ADMIN_EMAIL` | Workspace super admin for live API tests |
+| `TEST_JWT_SECRET` | Same JWT secret as Cloud Run (`app-jwt-secret`) |
+| `TEST_WORKSPACE_DOMAIN` | Primary domain |
+| `TEST_GWS_ALLOWED_DOMAINS` | Optional; defaults to workspace domain |
+| `TEST_GCP_SA_KEY` | Service account JSON (DWD) for live Google API calls |
+| `TEST_GOOGLE_CLIENT_ID` / `TEST_GOOGLE_CLIENT_SECRET` | OAuth web client (backend startup) |
+
+Runs read-only live API tests (`npm run test:live:read`) and E2E UI smoke (`npm run test:e2e:read`). Does not deploy or run mutating tests.
+

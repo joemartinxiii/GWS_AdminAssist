@@ -5,10 +5,12 @@ export function SegmentedControl({
   value,
   options,
   onChange,
+  testIdPrefix = 'segment',
 }: {
   value: number;
   options: string[];
   onChange: (idx: number) => void;
+  testIdPrefix?: string;
 }) {
   return (
     <Box
@@ -24,6 +26,7 @@ export function SegmentedControl({
       {options.map((label, idx) => (
         <Box
           key={label}
+          data-testid={`${testIdPrefix}-${label.toLowerCase().replace(/\s+/g, '-')}`}
           onClick={() => onChange(idx)}
           sx={(theme) => ({
             px: 2,

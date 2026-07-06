@@ -290,6 +290,7 @@ export function EmailSignatures() {
           <Button
             size="small"
             variant="outlined"
+            data-testid="save-signature-template"
             startIcon={templateSaving ? <CircularProgress size={14} color="inherit" /> : <Save size={15} strokeWidth={1.75} />}
             onClick={handleSave}
             disabled={templateSaving || templateLoading}

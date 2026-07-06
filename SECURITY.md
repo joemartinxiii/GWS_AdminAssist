@@ -24,7 +24,7 @@ https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/u
 **Google Workspace Admin — domain-wide delegation** (admin.google.com → Security → API controls → Domain-wide delegation). Use the **`client_id`** from the **service account JSON** (not the OAuth web client ID). Scopes must match `backend/src/config/google.config.ts` (`getServiceAccountClient`):
 
 ```
-https://www.googleapis.com/auth/admin.directory.user,https://www.googleapis.com/auth/admin.directory.group,https://www.googleapis.com/auth/admin.directory.orgunit.readonly,https://www.googleapis.com/auth/admin.directory.user.security,https://www.googleapis.com/auth/apps.security,https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/gmail.settings.basic,https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/calendar,https://www.googleapis.com/auth/chrome.management.policy
+https://www.googleapis.com/auth/admin.directory.user,https://www.googleapis.com/auth/admin.directory.group,https://www.googleapis.com/auth/admin.directory.orgunit.readonly,https://www.googleapis.com/auth/admin.directory.user.security,https://www.googleapis.com/auth/apps.security,https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/gmail.settings.basic,https://www.googleapis.com/auth/gmail.settings.sharing,https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/calendar,https://www.googleapis.com/auth/admin.directory.resource.calendar,https://www.googleapis.com/auth/chrome.management.policy
 ```
 
 Enable the Chrome Policy API in GCP if you use the last scope (`gcloud services enable chromepolicy.googleapis.com`).

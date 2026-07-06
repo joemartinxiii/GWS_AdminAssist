@@ -179,6 +179,7 @@ This allows secure cross-domain operations (delegation, sharing) within your tru
 
 ## Documentation
 
+- **[docs/STAGING_TEST_SETUP.md](./docs/STAGING_TEST_SETUP.md)** — Live Workspace staging tests (`npm run test:live`, Playwright E2E)
 - **[SECURITY.md](./SECURITY.md)** — Security features, OAuth setup, domain-wide delegation, and best practices (REQUIRED READING)
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** — Cloud Run deployment and local Docker setup
 - **[docs/ui.md](./docs/ui.md)** — UI design system (tokens, `frontend/src/components/ui/`, patterns)

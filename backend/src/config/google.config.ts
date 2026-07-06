@@ -1,9 +1,34 @@
+import { readFileSync } from 'fs';
 import { google } from 'googleapis';
 import { JWT } from 'google-auth-library';
 import { getSecret } from './gcp.config';
 
 let serviceAccountClient: JWT | null = null;
 let oauth2Client: any = null;
+
+const SERVICE_ACCOUNT_SCOPES = [
+  'https://www.googleapis.com/auth/admin.directory.user',
+  'https://www.googleapis.com/auth/admin.directory.group',
+  'https://www.googleapis.com/auth/admin.directory.orgunit.readonly',
+  'https://www.googleapis.com/auth/admin.directory.user.security',
+  'https://www.googleapis.com/auth/apps.security',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/gmail.settings.basic',
+  'https://www.googleapis.com/auth/gmail.settings.sharing',
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/admin.directory.resource.calendar',
+  'https://www.googleapis.com/auth/chrome.management.policy',
+];
+
+async function loadServiceAccountCredentials(): Promise<{ client_email: string; private_key: string }> {
+  if (process.env.SA_KEY_PATH) {
+    const raw = readFileSync(process.env.SA_KEY_PATH, 'utf8');
+    return JSON.parse(raw);
+  }
+  const secretJson = await getSecret(process.env.SERVICE_ACCOUNT_SECRET_NAME || 'service-account-key');
+  return JSON.parse(secretJson);
+}
 
 export interface GoogleConfig {
   clientId: string;
@@ -27,29 +52,13 @@ export async function getServiceAccountClient(): Promise<JWT> {
   }
 
   try {
-    const secretJson = await getSecret('service-account-key');
-    const credentials = JSON.parse(secretJson);
-    
+    const credentials = await loadServiceAccountCredentials();
+
     serviceAccountClient = new google.auth.JWT({
       email: credentials.client_email,
       key: credentials.private_key,
-      scopes: [
-        'https://www.googleapis.com/auth/admin.directory.user',
-        'https://www.googleapis.com/auth/admin.directory.group',
-        // Needed for listing org units in Directory API.
-        'https://www.googleapis.com/auth/admin.directory.orgunit.readonly',
-        // Needed for reading OAuth token/app grants (third-party apps panel).
-        'https://www.googleapis.com/auth/admin.directory.user.security',
-        'https://www.googleapis.com/auth/apps.security',
-        'https://www.googleapis.com/auth/drive',
-        'https://www.googleapis.com/auth/gmail.settings.basic',
-        // Required for delegation APIs (users.settings.delegates.*)
-        'https://www.googleapis.com/auth/gmail.settings.sharing',
-        'https://www.googleapis.com/auth/gmail.send',
-        'https://www.googleapis.com/auth/calendar',
-        'https://www.googleapis.com/auth/chrome.management.policy',
-      ],
-      subject: undefined, // Will be set per-request for domain-wide delegation
+      scopes: SERVICE_ACCOUNT_SCOPES,
+      subject: undefined,
     });
 
     return serviceAccountClient;

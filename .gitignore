@@ -5,6 +5,11 @@ node_modules/
 
 # Testing
 coverage/
+test-results/
+playwright-report/
+playwright/.cache/
+tests/e2e/.auth/
+tests/e2e/.fixtures/
 
 # Production
 build/
@@ -16,6 +21,7 @@ frontend/.vite/
 
 # Environment variables
 .env
+.env.test
 .env.local
 .env.development.local
 .env.test.local

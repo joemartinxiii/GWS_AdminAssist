@@ -1,0 +1,76 @@
+name: Test Staging (Live Read-Only)
+
+on:
+  workflow_dispatch:
+
+env:
+  NODE_ENV: development
+
+jobs:
+  test-staging:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write .env.test from secrets
+        env:
+          TEST_SUPER_ADMIN_EMAIL: ${{ secrets.TEST_SUPER_ADMIN_EMAIL }}
+          JWT_SECRET: ${{ secrets.TEST_JWT_SECRET }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          WORKSPACE_DOMAIN: ${{ secrets.TEST_WORKSPACE_DOMAIN }}
+          GWS_ALLOWED_DOMAINS: ${{ secrets.TEST_GWS_ALLOWED_DOMAINS }}
+          SERVICE_ACCOUNT_SECRET_NAME: service-account-key
+          SA_KEY_PATH: /tmp/sa-key.json
+          GOOGLE_CLIENT_ID: ${{ secrets.TEST_GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REDIRECT_URI: http://localhost:5001/api/auth/callback
+          CORS_ORIGIN: http://localhost:3000
+          TEST_MUTATIONS: 'false'
+        run: |
+          if [ -z "$TEST_SUPER_ADMIN_EMAIL" ] || [ -z "$JWT_SECRET" ]; then
+            echo "Configure GitHub secrets: TEST_SUPER_ADMIN_EMAIL, TEST_JWT_SECRET, GCP_PROJECT_ID, TEST_WORKSPACE_DOMAIN, TEST_GCP_SA_KEY"
+            exit 1
+          fi
+          echo "${{ secrets.TEST_GCP_SA_KEY }}" > /tmp/sa-key.json
+          {
+            echo "TEST_SUPER_ADMIN_EMAIL=${TEST_SUPER_ADMIN_EMAIL}"
+            echo "JWT_SECRET=${JWT_SECRET}"
+            echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}"
+            echo "WORKSPACE_DOMAIN=${WORKSPACE_DOMAIN}"
+            echo "GWS_ALLOWED_DOMAINS=${GWS_ALLOWED_DOMAINS:-$WORKSPACE_DOMAIN}"
+            echo "SERVICE_ACCOUNT_SECRET_NAME=service-account-key"
+            echo "SA_KEY_PATH=/tmp/sa-key.json"
+            echo "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}"
+            echo "GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}"
+            echo "GOOGLE_REDIRECT_URI=http://localhost:5001/api/auth/callback"
+            echo "CORS_ORIGIN=http://localhost:3000"
+            echo "TEST_MUTATIONS=false"
+            echo "PORT=5001"
+          } > .env.test
+
+      - name: Type-check and security tests
+        run: |
+          npm run type-check
+          npm run test:security
+
+      - name: Live read-only API tests
+        run: npm run test:live:read
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: E2E read-only UI tests
+        run: npm run test:e2e:read
