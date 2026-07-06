@@ -862,7 +862,7 @@ export function Calendar() {
           getOptionLabel={(option) =>
             typeof option === 'string' ? option : (option.name?.fullName ? `${option.name.fullName} (${option.primaryEmail})` : option.primaryEmail)
           }
-          value={users.find((u) => u.primaryEmail === normalizedUserEmail) || null}
+          value={users.find((u) => u.primaryEmail === normalizedUserEmail)}
           inputValue={userEmail}
           onInputChange={(_, v) => setUserEmail(v)}
           onChange={(_, newValue) => {
