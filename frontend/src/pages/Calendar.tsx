@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -152,6 +152,7 @@ export function Calendar() {
   const [transferTargetEmail, setTransferTargetEmail] = useState('');
   const [transferDeleteOriginal, setTransferDeleteOriginal] = useState(false);
   const [users, setUsers] = useState<Array<{ id: string; primaryEmail: string; name: { fullName: string } }>>([]);
+  const initialUserApplied = useRef(false);
   const normalizedUserEmail = useMemo(() => extractEmailCandidate(userEmail), [userEmail]);
   const directorySuggestions = useMemo(
     () =>
@@ -174,10 +175,17 @@ export function Calendar() {
   }, []);
 
   useEffect(() => {
-    if (!userEmail.trim() && users.length > 0) {
+    if (!initialUserApplied.current && users.length > 0) {
       setUserEmail(users[0].primaryEmail);
+      initialUserApplied.current = true;
     }
-  }, [users, userEmail]);
+  }, [users]);
+
+  const handleClearUserSearch = () => {
+    setUserEmail('');
+    setEvents([]);
+    setFilteredEvents([]);
+  };
 
   const fetchUsers = async () => {
     try {
@@ -849,6 +857,7 @@ export function Calendar() {
         <Autocomplete
           size="small"
           freeSolo
+          disableClearable
           options={users}
           getOptionLabel={(option) =>
             typeof option === 'string' ? option : (option.name?.fullName ? `${option.name.fullName} (${option.primaryEmail})` : option.primaryEmail)
@@ -887,7 +896,8 @@ export function Calendar() {
                       <InputAdornment position="end">
                         <IconButton
                           size="small"
-                          onClick={() => setUserEmail('')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={handleClearUserSearch}
                           aria-label="Clear user search"
                           sx={{ p: 0.5, color: (t: any) => textTertiary(t) }}
                         >
