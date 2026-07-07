@@ -1,4 +1,6 @@
+import { google } from 'googleapis';
 import { WorkspaceService } from './workspace.service';
+import { getDelegatedAuthClient } from '../config/google.config';
 import { mapWithConcurrency } from '../utils/concurrency';
 
 const GMAIL_SCAN_CONCURRENCY = Number(process.env.GMAIL_SCAN_CONCURRENCY) || 10;
@@ -18,15 +20,32 @@ export interface SendAsSettings {
 
 export class GmailService extends WorkspaceService {
   /**
+   * Build a Gmail client impersonating the mailbox owner.
+   *
+   * Gmail user-settings (delegates, send-as, signatures) can only be managed on
+   * the mailbox of the impersonated user, always addressed as `userId: 'me'`.
+   * Impersonating the calling admin and passing another user's address as
+   * `userId` fails with 403 unless the admin happens to be that same user — which
+   * is why delegation previously only worked "from" the signed-in admin.
+   *
+   * Returns a fresh, local client (does not mutate shared instance state) so it
+   * is safe to call concurrently for different mailboxes.
+   */
+  private async gmailForMailbox(mailboxEmail: string) {
+    const auth = await getDelegatedAuthClient(mailboxEmail);
+    return google.gmail({ version: 'v1', auth });
+  }
+
+  /**
    * Get email delegations for a user
    */
-  async getDelegations(userEmail: string, targetEmail: string): Promise<EmailDelegation[]> {
-    await this.initialize(userEmail);
+  async getDelegations(_adminEmail: string, targetEmail: string): Promise<EmailDelegation[]> {
+    const gmail = await this.gmailForMailbox(targetEmail);
 
     try {
       const response = await this.withRetry(() =>
-        this.gmail.users.settings.delegates.list({
-          userId: targetEmail,
+        gmail.users.settings.delegates.list({
+          userId: 'me',
         })
       );
 
@@ -53,15 +72,15 @@ export class GmailService extends WorkspaceService {
    * Add email delegation
    */
   async addDelegation(
-    userEmail: string,
+    _adminEmail: string,
     targetEmail: string,
     delegateEmail: string
   ): Promise<void> {
-    await this.initialize(userEmail);
+    const gmail = await this.gmailForMailbox(targetEmail);
 
     await this.withRetry(() =>
-      this.gmail.users.settings.delegates.create({
-        userId: targetEmail,
+      gmail.users.settings.delegates.create({
+        userId: 'me',
         requestBody: {
           delegateEmail,
         },
@@ -73,15 +92,15 @@ export class GmailService extends WorkspaceService {
    * Remove email delegation
    */
   async removeDelegation(
-    userEmail: string,
+    _adminEmail: string,
     targetEmail: string,
     delegateEmail: string
   ): Promise<void> {
-    await this.initialize(userEmail);
+    const gmail = await this.gmailForMailbox(targetEmail);
 
     await this.withRetry(() =>
-      this.gmail.users.settings.delegates.delete({
-        userId: targetEmail,
+      gmail.users.settings.delegates.delete({
+        userId: 'me',
         delegateEmail,
       })
     );
@@ -144,13 +163,13 @@ export class GmailService extends WorkspaceService {
   /**
    * Get send-as settings for a user
    */
-  async getSendAsSettings(userEmail: string, targetEmail: string): Promise<SendAsSettings[]> {
-    await this.initialize(userEmail);
+  async getSendAsSettings(_adminEmail: string, targetEmail: string): Promise<SendAsSettings[]> {
+    const gmail = await this.gmailForMailbox(targetEmail);
 
     try {
       const response = await this.withRetry(() =>
-        this.gmail.users.settings.sendAs.list({
-          userId: targetEmail,
+        gmail.users.settings.sendAs.list({
+          userId: 'me',
         })
       );
 
@@ -180,7 +199,7 @@ export class GmailService extends WorkspaceService {
    * Create send-as alias
    */
   async createSendAs(
-    userEmail: string,
+    _adminEmail: string,
     targetEmail: string,
     sendAs: {
       sendAsEmail: string;
@@ -188,11 +207,11 @@ export class GmailService extends WorkspaceService {
       replyToAddress?: string;
     }
   ): Promise<void> {
-    await this.initialize(userEmail);
+    const gmail = await this.gmailForMailbox(targetEmail);
 
     await this.withRetry(() =>
-      this.gmail.users.settings.sendAs.create({
-        userId: targetEmail,
+      gmail.users.settings.sendAs.create({
+        userId: 'me',
         requestBody: {
           sendAsEmail: sendAs.sendAsEmail,
           displayName: sendAs.displayName,
@@ -206,7 +225,7 @@ export class GmailService extends WorkspaceService {
    * Update send-as settings
    */
   async updateSendAs(
-    userEmail: string,
+    _adminEmail: string,
     targetEmail: string,
     sendAsEmail: string,
     updates: {
@@ -216,11 +235,11 @@ export class GmailService extends WorkspaceService {
       signature?: string;
     }
   ): Promise<void> {
-    await this.initialize(userEmail);
+    const gmail = await this.gmailForMailbox(targetEmail);
 
     await this.withRetry(() =>
-      this.gmail.users.settings.sendAs.patch({
-        userId: targetEmail,
+      gmail.users.settings.sendAs.patch({
+        userId: 'me',
         sendAsEmail,
         requestBody: updates,
       })
@@ -246,6 +265,10 @@ export class GmailService extends WorkspaceService {
   ): Promise<{ succeeded: string[]; failed: Array<{ email: string; error: string }> }> {
     const succeeded: string[] = [];
     const failed: Array<{ email: string; error: string }> = [];
+
+    // Directory reads below use admin impersonation; the per-user send-as calls
+    // build their own mailbox-scoped clients and don't mutate `this.admin`.
+    await this.initialize(adminEmail);
 
     for (const targetEmail of userEmails) {
       try {
@@ -296,15 +319,15 @@ export class GmailService extends WorkspaceService {
    * Delete send-as alias
    */
   async deleteSendAs(
-    userEmail: string,
+    _adminEmail: string,
     targetEmail: string,
     sendAsEmail: string
   ): Promise<void> {
-    await this.initialize(userEmail);
+    const gmail = await this.gmailForMailbox(targetEmail);
 
     await this.withRetry(() =>
-      this.gmail.users.settings.sendAs.delete({
-        userId: targetEmail,
+      gmail.users.settings.sendAs.delete({
+        userId: 'me',
         sendAsEmail,
       })
     );

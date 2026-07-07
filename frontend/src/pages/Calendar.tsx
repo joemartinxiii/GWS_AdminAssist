@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -15,8 +15,6 @@ import {
   Alert,
   Snackbar,
   Popover,
-  Checkbox,
-  FormControlLabel,
   FormControl,
   Select,
   MenuItem,
@@ -153,9 +151,7 @@ export function Calendar() {
 
   // Transfer state
   const [transferTargetEmail, setTransferTargetEmail] = useState('');
-  const [transferDeleteOriginal, setTransferDeleteOriginal] = useState(false);
   const [users, setUsers] = useState<Array<{ id: string; primaryEmail: string; name: { fullName: string } }>>([]);
-  const initialUserApplied = useRef(false);
   const normalizedUserEmail = useMemo(() => extractEmailCandidate(userEmail), [userEmail]);
   const directorySuggestions = useMemo(
     () =>
@@ -176,13 +172,6 @@ export function Calendar() {
     void fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (!initialUserApplied.current && users.length > 0) {
-      setUserEmail(users[0].primaryEmail);
-      initialUserApplied.current = true;
-    }
-  }, [users]);
 
   const handleClearUserSearch = () => {
     setUserEmail('');
@@ -414,7 +403,6 @@ export function Calendar() {
     setNewAttendeeEmail('');
     setNewAttendees([]);
     setTransferTargetEmail('');
-    setTransferDeleteOriginal(false);
     setMoveStartDateTime('');
     setMoveDurationMinutes(60);
     setMoveDateAnchor(null);
@@ -518,12 +506,11 @@ export function Calendar() {
         {
           targetEmail,
           targetCalendarId: 'primary',
-          deleteOriginal: transferDeleteOriginal,
         }
       );
       setSnackbar({
         open: true,
-        message: `Event transferred successfully${transferDeleteOriginal ? ' and original deleted' : ''}`,
+        message: `Event ownership transferred to ${targetEmail}`,
         severity: 'success',
       });
       handleCloseEventDialog();
@@ -1301,6 +1288,12 @@ export function Calendar() {
             </Paper>
           )}
 
+          {!loading && !normalizedUserEmail && (
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography color="text.secondary">Search and select a user to view their calendar</Typography>
+            </Paper>
+          )}
+
           {!loading && events.length === 0 && normalizedUserEmail && selectedCalendarId && (
             <Paper sx={{ p: 3, textAlign: 'center' }}>
               <Typography color="text.secondary">No events found for the selected calendar</Typography>
@@ -1659,7 +1652,7 @@ export function Calendar() {
           {editMode === 'transfer' && (
             <Box sx={{ mt: 0 }}>
               <Typography variant="body2" color="text.secondary" paragraph>
-                Transfer this event to another user's calendar. The event will be copied to the target user's primary calendar.
+                Transfer ownership of this event to another user. The event moves off {normalizedUserEmail || "the current user"}&rsquo;s calendar onto the new owner&rsquo;s calendar, and they become the organizer. Only non-recurring events can be transferred.
               </Typography>
               <Autocomplete
                 freeSolo
@@ -1678,20 +1671,11 @@ export function Calendar() {
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="Target User"
+                    label="New owner"
                     placeholder="Type name/email (e.g. joe)"
                     helperText="Search by name/email or type an email address"
                   />
                 )}
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={transferDeleteOriginal}
-                    onChange={(e) => setTransferDeleteOriginal(e.target.checked)}
-                  />
-                }
-                label="Delete original event after transfer"
               />
             </Box>
           )}
@@ -1706,7 +1690,7 @@ export function Calendar() {
               onClick={handleTransferEvent} disabled={!transferTargetEmail.trim()}
               sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, px: 2.5 }}
             >
-              Transfer Event
+              Transfer ownership
             </Button>
           )}
           {editMode !== 'view' && editMode !== 'transfer' && (

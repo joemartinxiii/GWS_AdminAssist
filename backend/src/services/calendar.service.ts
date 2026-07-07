@@ -438,7 +438,16 @@ export class CalendarService extends WorkspaceService {
   }
 
   /**
-   * Transfer an event from one user's calendar to another
+   * Transfer ownership of an event to another user.
+   *
+   * Uses the Calendar API `events.move`, which changes the event's organizer by
+   * moving it from the source calendar to the destination calendar. This is a
+   * true ownership hand-off (used for OOO/offboarding), not a copy: the event
+   * leaves the source calendar and the destination user becomes the organizer.
+   *
+   * We impersonate the source (current organizer) because only the organizer can
+   * move an event. Note: Google only allows moving single, non-recurring events
+   * between calendars in the same domain.
    */
   async transferEvent(
     userEmail: string,
@@ -446,33 +455,27 @@ export class CalendarService extends WorkspaceService {
     targetEmail: string,
     sourceCalendarId: string,
     targetCalendarId: string,
-    eventId: string,
-    deleteOriginal: boolean = false
+    eventId: string
   ): Promise<any> {
-    // Get the original event
-    const originalEvent = await this.getEvent(userEmail, sourceEmail, sourceCalendarId, eventId);
+    await this.initialize(userEmail);
 
-    // Create the event in the target user's calendar
-    const newEvent = await this.createEvent(
-      userEmail,
-      targetEmail,
-      targetCalendarId,
-      {
-        summary: originalEvent.summary || '',
-        description: originalEvent.description,
-        start: originalEvent.start || { dateTime: new Date().toISOString() },
-        end: originalEvent.end || { dateTime: new Date().toISOString() },
-        attendees: originalEvent.attendees,
-        location: originalEvent.location,
-      }
+    // Impersonate the current organizer to hand off ownership.
+    await this.initialize(sourceEmail);
+
+    // The destination calendar id for a user's primary calendar is their email.
+    const destination =
+      !targetCalendarId || targetCalendarId === 'primary' ? targetEmail : targetCalendarId;
+
+    const response = await this.withRetry(() =>
+      this.calendar.events.move({
+        calendarId: sourceCalendarId || 'primary',
+        eventId,
+        destination,
+        sendUpdates: 'all',
+      })
     );
 
-    // Optionally delete the original event
-    if (deleteOriginal) {
-      await this.deleteEvent(userEmail, sourceEmail, sourceCalendarId, eventId, 'all');
-    }
-
-    return newEvent;
+    return response.data;
   }
 }
 

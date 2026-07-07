@@ -329,27 +329,25 @@ router.post('/:email/events/:eventId/transfer', requirePermission('calendar.reso
     if (!sourceEmail) return res.status(400).json({ error: 'Invalid source email' });
 
     const sourceCalendarId = (req.query.calendarId as string) || 'primary';
-    const { targetEmail, targetCalendarId, deleteOriginal } = req.body;
+    const { targetEmail, targetCalendarId } = req.body;
 
     const normalizedTarget = normalizeCalendarEmail(String(targetEmail || ''));
     if (!normalizedTarget) {
       return res.status(400).json({ error: 'Missing or invalid required field: targetEmail' });
     }
 
-    const newEvent = await calendarService.transferEvent(
+    const movedEvent = await calendarService.transferEvent(
       req.user!.email,
       sourceEmail,
       normalizedTarget,
       sourceCalendarId,
       targetCalendarId || 'primary',
-      req.params.eventId,
-      deleteOriginal === true
+      req.params.eventId
     );
 
     res.json({
-      message: 'Event transferred successfully',
-      event: newEvent,
-      deletedOriginal: deleteOriginal === true,
+      message: 'Event ownership transferred successfully',
+      event: movedEvent,
     });
   } catch (error: any) {
     sendApiError(res, error, 'Failed to transfer event', 'calendar.event.transfer');
