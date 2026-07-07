@@ -10,6 +10,21 @@ log() { echo "==> $*"; }
 warn() { echo "WARNING: $*" >&2; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 
+# In Cloud Shell, gcloud prints benign chatter to stderr that alarms first-time
+# users but has no effect on any command: a context-aware-access lookup that
+# 404s ("Regional Access Boundary HTTP request failed ... Account not found")
+# and an environment-tag nag ("[environment: untagged] ... project-env-tag").
+# Wrap gcloud to strip ONLY those exact lines, preserving stdout, real errors,
+# warnings, and the true exit code. Set GWS_SHOW_GCLOUD_NOISE=1 to see them.
+_GCLOUD_NOISE_RE='Regional Access Boundary HTTP request failed|\[environment: untagged\]'
+gcloud() {
+  if [[ "${GWS_SHOW_GCLOUD_NOISE:-0}" == "1" ]]; then
+    command gcloud "$@"
+  else
+    command gcloud "$@" 2> >(grep -vE "$_GCLOUD_NOISE_RE" >&2)
+  fi
+}
+
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
 }
