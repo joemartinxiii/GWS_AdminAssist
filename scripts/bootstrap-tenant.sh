@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Cloud Shell one-command new-tenant bootstrap wizard.
 #
-# Usage:
+# Zero-flag usage (recommended) — the wizard prompts for everything with
+# auto-detected defaults (your account, domain, billing, a new project):
+#   bash scripts/bootstrap-tenant.sh
+#
+# Or pre-fill any/all values with flags to skip the matching prompts:
 #   bash scripts/bootstrap-tenant.sh --domain yourcompany.com --project your-gcp-project --admin you@yourcompany.com
 #
 # Options:
@@ -47,13 +51,16 @@ usage() {
   cat <<EOF
 Cloud Shell bootstrap wizard for Google Workspace Admin Assist.
 
-Usage:
+Usage (zero-flag, recommended — prompts for everything with smart defaults):
+  bash scripts/bootstrap-tenant.sh
+
+Usage (pre-filled — any flag skips its prompt):
   bash scripts/bootstrap-tenant.sh --domain DOMAIN --project PROJECT_ID --admin ADMIN_EMAIL [options]
 
-Required:
-  --domain DOMAIN        Primary Workspace domain (e.g. yourcompany.com)
-  --project PROJECT_ID   GCP project ID (existing or new with --create-project)
-  --admin EMAIL          Workspace super admin email for DWD verification
+Prompted-or-flags (interactive mode fills these in for you):
+  --domain DOMAIN        Primary Workspace domain (default: from admin email)
+  --project PROJECT_ID   GCP project ID (interactive: create new or pick existing)
+  --admin EMAIL          Workspace super admin email (default: active gcloud account)
 
 Options:
   --create-project       Create the GCP project before provisioning
@@ -67,9 +74,8 @@ Options:
   --non-interactive      No prompts (requires --billing-account for new projects)
   -h, --help             Show this help
 
-Example:
-  git clone <YOUR_REPO_URL> && cd GWS_AdminAssist && \\
-    bash scripts/bootstrap-tenant.sh --domain yourcompany.com --project your-gcp-project --admin you@yourcompany.com
+Example (one command, no editing required):
+  git clone <YOUR_REPO_URL> && cd GWS_AdminAssist && bash scripts/bootstrap-tenant.sh
 EOF
 }
 
@@ -92,37 +98,107 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$PROJECT_ID" ]] || die "Missing --project"
-[[ -n "$WORKSPACE_DOMAIN" ]] || die "Missing --domain"
-[[ -n "$ADMIN_EMAIL" ]] || die "Missing --admin"
-
 require_cmd gcloud
 require_cmd openssl
 require_cmd curl
 
+# Phase 0 — Preflight (auth needed before we can auto-detect anything)
+if ! gcloud auth print-access-token &>/dev/null; then
+  die "gcloud not authenticated. Run: gcloud auth login"
+fi
+
+ACTIVE_ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -1)"
+
+# --- Resolve required inputs -------------------------------------------------
+# In interactive mode (the default), prompt for anything not passed as a flag,
+# auto-detecting sensible defaults so a plain `bash scripts/bootstrap-tenant.sh`
+# with zero flags just works. --non-interactive requires all values up front.
+if [[ "$NON_INTERACTIVE" == "true" ]]; then
+  [[ -n "$PROJECT_ID" ]] || die "Missing --project (required with --non-interactive)"
+  [[ -n "$WORKSPACE_DOMAIN" ]] || die "Missing --domain (required with --non-interactive)"
+  [[ -n "$ADMIN_EMAIL" ]] || die "Missing --admin (required with --non-interactive)"
+else
+  echo ""
+  echo "=============================================="
+  echo "  Workspace Admin Assist — Setup Wizard"
+  echo "=============================================="
+  echo "  Answer a few questions. Press Enter to accept each [default]."
+  echo "  Signed in as: ${ACTIVE_ACCOUNT}"
+  echo "=============================================="
+  echo ""
+
+  if [[ -z "$ADMIN_EMAIL" ]]; then
+    ADMIN_EMAIL="$(prompt_default "Workspace super-admin email" "$ACTIVE_ACCOUNT")"
+  fi
+
+  if [[ -z "$WORKSPACE_DOMAIN" ]]; then
+    WORKSPACE_DOMAIN="$(prompt_default "Primary Workspace domain" "${ADMIN_EMAIL##*@}")"
+  fi
+
+  if [[ -z "$PROJECT_ID" ]]; then
+    echo ""
+    echo "GCP project:"
+    echo "  1) Create a NEW project  (recommended for first-time setup)"
+    echo "  2) Use an EXISTING project"
+    PROJECT_CHOICE="$(prompt_default "Choose 1 or 2" "1")"
+    if [[ "$PROJECT_CHOICE" == "2" ]]; then
+      echo ""
+      echo "Your projects:"
+      gcloud projects list --format='table(projectId,name)' 2>/dev/null || true
+      echo ""
+      PROJECT_ID="$(prompt_default "Existing project ID" "")"
+      [[ -n "$PROJECT_ID" ]] || die "Project ID is required"
+    else
+      RAND="${RANDOM}${RANDOM}"
+      PROJECT_ID="$(prompt_default "New project ID (lowercase, 6-30 chars, globally unique)" "gws-admin-${RAND:0:6}")"
+      CREATE_PROJECT=true
+    fi
+  fi
+
+  # Billing is required to create a project / deploy to Cloud Run.
+  if [[ "$CREATE_PROJECT" == "true" && -z "$BILLING_ACCOUNT" ]]; then
+    mapfile -t OPEN_BILLING < <(gcloud billing accounts list --filter='open=true' --format='value(name)' 2>/dev/null | sed 's#billingAccounts/##')
+    if [[ "${#OPEN_BILLING[@]}" -eq 1 ]]; then
+      BILLING_ACCOUNT="${OPEN_BILLING[0]}"
+      log "Using your billing account: ${BILLING_ACCOUNT}"
+    elif [[ "${#OPEN_BILLING[@]}" -gt 1 ]]; then
+      echo ""
+      echo "Open billing accounts:"
+      gcloud billing accounts list --filter='open=true' --format='table(name,displayName)' 2>/dev/null || true
+      echo ""
+      BILLING_ACCOUNT="$(prompt_default "Billing account ID" "${OPEN_BILLING[0]}")"
+    else
+      warn "No open billing account found. Create one: https://console.cloud.google.com/billing"
+      BILLING_ACCOUNT="$(prompt_default "Billing account ID (leave blank to skip)" "")"
+    fi
+  fi
+fi
+
+[[ -n "$PROJECT_ID" ]] || die "Missing project"
+[[ -n "$WORKSPACE_DOMAIN" ]] || die "Missing domain"
+[[ -n "$ADMIN_EMAIL" ]] || die "Missing admin email"
+
+if [[ "$ADMIN_EMAIL" != *"@$WORKSPACE_DOMAIN" ]]; then
+  warn "Admin email (${ADMIN_EMAIL}) domain does not match ${WORKSPACE_DOMAIN}"
+fi
+
 echo ""
 echo "=============================================="
-echo "  Workspace Admin Assist — Bootstrap Wizard"
+echo "  Ready to bootstrap"
 echo "=============================================="
-echo "  Project:  ${PROJECT_ID}"
+echo "  Project:  ${PROJECT_ID}$([[ "$CREATE_PROJECT" == "true" ]] && echo "  (will be created)")"
 echo "  Domain:   ${WORKSPACE_DOMAIN}"
 echo "  Admin:    ${ADMIN_EMAIL}"
 echo "  Region:   ${REGION}"
 echo "=============================================="
 echo ""
 
-# Phase 0 — Preflight
-log "Phase 0: Preflight"
-if ! gcloud auth print-access-token &>/dev/null; then
-  die "gcloud not authenticated. Run: gcloud auth login"
+if [[ "$NON_INTERACTIVE" != "true" ]]; then
+  confirm "Proceed with these settings?" "y" || die "Aborted by user"
+  echo ""
 fi
 
-ACTIVE_ACCOUNT="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -1)"
 log "Active gcloud account: ${ACTIVE_ACCOUNT}"
-
-if [[ "$ADMIN_EMAIL" != *"@$WORKSPACE_DOMAIN"* && "$ADMIN_EMAIL" != *"@$WORKSPACE_DOMAIN" ]]; then
-  warn "Admin email domain may not match --domain (${WORKSPACE_DOMAIN})"
-fi
 
 provision_project "$PROJECT_ID" "$CREATE_PROJECT" "$BILLING_ACCOUNT" "$ORG_ID" "$FOLDER_ID"
 

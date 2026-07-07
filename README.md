@@ -114,10 +114,10 @@ npm run test:security
 
 Cloud Run is the primary way to run this app. Full guide: **[docs/DEPLOY.md](./docs/DEPLOY.md)**.
 
-**First-time / greenfield** — one command in Cloud Shell provisions GCP, guides the OAuth + domain-wide-delegation console steps, and deploys:
+**First-time / greenfield** — one command in Cloud Shell. It auto-detects your account, offers to create the project, links billing, provisions GCP, guides the OAuth + domain-wide-delegation console steps, and deploys. No flags to edit — just answer the prompts:
 
 ```bash
-bash scripts/bootstrap-tenant.sh --domain yourcompany.com --project your-gcp-project --admin you@yourcompany.com
+git clone <YOUR_REPO_URL> && cd GWS_AdminAssist && bash scripts/bootstrap-tenant.sh
 ```
 
 **Ongoing deploys** — push to `main` or run GitHub Actions **Deploy to Cloud Run**. See [docs/DEPLOY.md](./docs/DEPLOY.md#2-ongoing-deploys--github-actions-recommended).

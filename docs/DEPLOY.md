@@ -26,17 +26,24 @@ A local-Docker fallback (`deploy.sh`) exists but is not required.
 
 The wizard automates GCP provisioning, guides the manual OAuth + DWD console steps with deep links, validates delegation with a live API call, and deploys. Budget ~20–30 min (10–15 min is unavoidable manual console work).
 
-Open Cloud Shell and run:
+Open Cloud Shell and run this **single command** — no editing required. The wizard prompts for everything with smart defaults (your signed-in account becomes the admin, the domain is derived from it, it offers to create a new project, and it auto-selects your billing account):
 
 ```bash
-git clone <YOUR_REPO_URL> && cd GWS_AdminAssist
+git clone <YOUR_REPO_URL> && cd GWS_AdminAssist && bash scripts/bootstrap-tenant.sh
+```
+
+Just press **Enter** to accept each `[default]`, or type a new value. That's it.
+
+**Prefer to pre-fill values and skip the prompts?** Any flag you pass skips its question:
+
+```bash
 bash scripts/bootstrap-tenant.sh \
   --domain yourcompany.com \
   --project your-gcp-project \
   --admin you@yourcompany.com
 ```
 
-Create a brand-new GCP project at the same time:
+Create a brand-new GCP project non-interactively:
 
 ```bash
 bash scripts/bootstrap-tenant.sh \
@@ -51,7 +58,8 @@ bash scripts/bootstrap-tenant.sh \
 
 | Step | Automated? | Where |
 |------|------------|-------|
-| Link billing | Conditional | `--billing-account` or prompt |
+| Create project | Yes | Offered in the wizard (or `--create-project`) |
+| Link billing | Yes | Auto-detects your billing account (or `--billing-account`) |
 | Enable APIs | Yes | `gcloud services enable` |
 | `workspace-admin-sa` + `github-deploy-sa` (keys → Secret Manager) | Yes | IAM |
 | Secret Manager secrets + IAM bindings | Yes | — |
