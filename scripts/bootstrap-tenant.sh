@@ -249,6 +249,13 @@ else
   CLIENT_SECRET="${OAUTH_CREDS[1]}"
 fi
 
+# Trim stray whitespace and fail loudly if either value is empty, so a bad
+# paste never silently skips secret creation.
+CLIENT_ID="$(printf '%s' "$CLIENT_ID" | tr -d '[:space:]')"
+CLIENT_SECRET="$(printf '%s' "$CLIENT_SECRET" | tr -d '[:space:]')"
+[[ -n "$CLIENT_ID" ]] || die "OAuth Web Client ID was empty — re-run and paste the Client ID"
+[[ -n "$CLIENT_SECRET" ]] || die "OAuth Web Client Secret was empty — re-run and paste the Client secret"
+
 provision_secrets "$PROJECT_ID" "$CLIENT_ID" "$CLIENT_SECRET" "$WORKSPACE_DOMAIN" "$WORKSPACE_DOMAIN" ""
 verify_secrets "$PROJECT_ID"
 

@@ -36,7 +36,9 @@ prompt_oauth_credentials() {
   local client_id client_secret
   read -r -p "Paste OAuth Web Client ID: " client_id
   read -r -s -p "Paste OAuth Web Client Secret: " client_secret
-  echo ""
+  # Cosmetic newline after the hidden secret input must go to stderr,
+  # otherwise it is captured by the caller's mapfile as a phantom first value.
+  echo "" >&2
   echo "$client_id"
   echo "$client_secret"
 }
