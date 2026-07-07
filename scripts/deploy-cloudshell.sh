@@ -77,13 +77,20 @@ gcloud run deploy "$SERVICE_NAME" \
 SERVICE_URL="$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --format='value(status.url)')"
 REDIRECT_URI="${SERVICE_URL}/api/auth/callback"
 
+# The redirect URI isn't known until the service has a URL, so the first
+# revision above was created with the placeholder secret value. Persist the
+# real redirect URI, then roll ONE more revision that reads it. Pin the explicit
+# version — re-referencing ":latest" can be treated as a no-op and skip the
+# rollout, leaving the running revision stuck on the placeholder.
+echo -n "$REDIRECT_URI" | gcloud secrets versions add oauth-redirect-uri --data-file=- --quiet
+REDIRECT_VER="$(gcloud secrets versions list oauth-redirect-uri --filter='state:enabled' --sort-by=~createTime --format='value(name)' --limit=1)"
+
 gcloud run services update "$SERVICE_NAME" \
   --region "$REGION" \
   --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=${RUNTIME_SA_EMAIL},CORS_ORIGIN=${SERVICE_URL}" \
+  --update-secrets "GOOGLE_REDIRECT_URI=oauth-redirect-uri:${REDIRECT_VER}" \
   --no-invoker-iam-check \
   --quiet
-
-echo -n "$REDIRECT_URI" | gcloud secrets versions add oauth-redirect-uri --data-file=- --quiet 2>/dev/null || true
 
 # Optional durable storage for the org signature template (survives redeploys).
 # Enable by exporting SIGNATURE_TEMPLATE_BUCKET before running this script; the

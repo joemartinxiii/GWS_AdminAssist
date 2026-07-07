@@ -77,14 +77,19 @@ SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --
 REDIRECT_URI="${SERVICE_URL}/api/auth/callback"
 
 echo "Updating configuration with full environment variables..."
+# Persist the real redirect URI first, then roll one revision that reads it.
+# Pin the explicit version so the rollout is not skipped as a no-op, which would
+# leave the running revision stuck on the placeholder redirect URI.
+echo -n "$REDIRECT_URI" | gcloud secrets versions add oauth-redirect-uri --data-file=- --quiet
+REDIRECT_VER="$(gcloud secrets versions list oauth-redirect-uri --filter='state:enabled' --sort-by=~createTime --format='value(name)' --limit=1)"
+
 # Must include ALL critical vars - --set-env-vars replaces previous ones
 gcloud run services update "$SERVICE_NAME" \
   --region "$REGION" \
   --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com,CORS_ORIGIN=${SERVICE_URL}" \
+  --update-secrets "GOOGLE_REDIRECT_URI=oauth-redirect-uri:${REDIRECT_VER}" \
   --no-invoker-iam-check \
   --quiet
-
-echo -n "$REDIRECT_URI" | gcloud secrets versions add oauth-redirect-uri --data-file=- --quiet 2>/dev/null || true
 
 echo "Public browser access: --no-invoker-iam-check (org iam.allowedPolicyMemberDomains blocks allUsers IAM binding)."
 echo "If a redeploy drops it: gcloud run services update $SERVICE_NAME --region=$REGION --project=$PROJECT_ID --no-invoker-iam-check"
