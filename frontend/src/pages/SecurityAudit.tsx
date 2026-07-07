@@ -18,7 +18,7 @@ import {
   DialogActions,
   TextField,
 } from '@mui/material';
-import { Download, CloudUpload, FileText, ChevronDown, Play, EyeOff, RotateCcw, Pencil } from 'lucide-react';
+import { Download, CloudUpload, FileText, ChevronDown, ChevronRight, Play, EyeOff, RotateCcw, Pencil, ExternalLink } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
@@ -343,7 +343,9 @@ export function SecurityAudit() {
   const [auditTab, setAuditTab] = useState(0);
   const [ignoredIds, setIgnoredIds] = useState<Set<string>>(loadIgnoredIdsFromStorage);
   const [waiveReasons, setWaiveReasons] = useState<Record<string, string>>(loadWaiveReasonsFromStorage);
-  const [waiveDialog, setWaiveDialog] = useState<{ open: boolean; checkId: string | null; reason: string }>({ open: false, checkId: null, reason: '' });
+  const [detailCheckId, setDetailCheckId] = useState<string | null>(null);
+  const [reasonEditing, setReasonEditing] = useState(false);
+  const [reasonDraft, setReasonDraft] = useState('');
   const [lastRunAt, setLastRunAt] = useState<Date | null>(null);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({ open: false, message: '', severity: 'success' });
   const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' = 'success') => setSnackbar({ open: true, message, severity });
@@ -453,19 +455,22 @@ export function SecurityAudit() {
     });
   }, [hardeningData]);
 
-  // Open the waive dialog (also used to edit the reason on an already-waived check).
-  const openWaiveDialog = useCallback((checkId: string) => {
-    setWaiveDialog({ open: true, checkId, reason: waiveReasons[checkId] ?? '' });
+  // Open/close the per-check detail modal.
+  const openDetail = useCallback((checkId: string) => {
+    setDetailCheckId(checkId);
+    setReasonEditing(false);
+    setReasonDraft(waiveReasons[checkId] ?? '');
   }, [waiveReasons]);
 
-  const closeWaiveDialog = useCallback(() => {
-    setWaiveDialog({ open: false, checkId: null, reason: '' });
+  const closeDetail = useCallback(() => {
+    setDetailCheckId(null);
+    setReasonEditing(false);
+    setReasonDraft('');
   }, []);
 
-  const confirmWaive = useCallback(() => {
-    const checkId = waiveDialog.checkId;
-    if (!checkId) return;
-    const reason = waiveDialog.reason.trim();
+  // Waive a check (or update its reason). Empty reason = waived with no note.
+  const applyWaive = useCallback((checkId: string, reason: string) => {
+    const trimmed = reason.trim();
     setIgnoredIds((prev) => {
       const next = new Set(prev);
       next.add(checkId);
@@ -474,13 +479,12 @@ export function SecurityAudit() {
     });
     setWaiveReasons((prev) => {
       const next = { ...prev };
-      if (reason) next[checkId] = reason;
+      if (trimmed) next[checkId] = trimmed;
       else delete next[checkId];
       persistWaiveReasons(next);
       return next;
     });
-    closeWaiveDialog();
-  }, [waiveDialog, closeWaiveDialog]);
+  }, []);
 
   // Un-waive: track the check again and drop any saved reason.
   const untrackWaive = useCallback((checkId: string) => {
@@ -567,107 +571,41 @@ export function SecurityAudit() {
     );
   };
 
-  const actionCell = (check: HardeningCheck) => {
-    const waived = ignoredIds.has(check.id);
-    return (
-      <Box sx={{ width: 188, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-        {check.adminConsoleUrl && (
-          <Button
-            size="small"
-            variant="outlined"
-            href={check.adminConsoleUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem' }}
-          >
-            Configure
-          </Button>
-        )}
-        {waived ? (
-          <>
-            <Tooltip title={check.recommendation ? 'Edit waive reason' : 'Add waive reason'}>
-              <IconButton
-                size="small"
-                onClick={() => openWaiveDialog(check.id)}
-                aria-label="Edit waive reason"
-                sx={{ color: (t) => textSecondary(t) }}
-              >
-                <Pencil size={16} strokeWidth={1.75} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Track again — include in score">
-              <IconButton
-                size="small"
-                onClick={() => untrackWaive(check.id)}
-                aria-label="Track again"
-                sx={{ color: (t) => textSecondary(t) }}
-              >
-                <RotateCcw size={16} strokeWidth={1.75} />
-              </IconButton>
-            </Tooltip>
-          </>
-        ) : (
-          <Tooltip title="Waive — exclude from compliance score">
-            <IconButton
-              size="small"
-              onClick={() => openWaiveDialog(check.id)}
-              aria-label="Waive check"
-              sx={{ color: (t) => textSecondary(t) }}
-            >
-              <EyeOff size={16} strokeWidth={1.75} />
-            </IconButton>
-          </Tooltip>
-        )}
-      </Box>
-    );
-  };
-
-  // Single "Recommended" cell: the short target state on top, with the
-  // actionable guidance beneath it (only when it adds detail). Replaces the
-  // old redundant "Recommended" + "Recommendation" pair of columns.
-  const recommendedBlock = (check: HardeningCheck) => {
+  // Compact "Recommended" cell for the high-level list: short target only.
+  // Full guidance now lives in the detail modal.
+  const recommendedTargetInline = (check: HardeningCheck) => {
     const target = check.recommendedValue != null ? String(check.recommendedValue).trim() : '';
-    const guidance = (check.recommendation ?? '').trim();
-    const showGuidance = guidance && guidance.toLowerCase() !== target.toLowerCase();
     return (
-      <Box sx={{ minWidth: 0 }}>
-        {target && (
-          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa') }}>
-            {target}
-          </Typography>
-        )}
-        {showGuidance && (
-          <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t), mt: target ? 0.25 : 0 }}>
-            {guidance}
-          </Typography>
-        )}
-        {!target && !showGuidance && (
-          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>—</Typography>
-        )}
-      </Box>
+      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (th) => pick(th, T.text, '#fafafa') }}>
+        {target || '—'}
+      </Typography>
     );
   };
 
-  const checkNameBlock = (check: HardeningCheck) => (
-    <Box sx={{ minWidth: 0, pr: 1 }}>
-      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa') }}>{check.name}</Typography>
-      <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t), display: 'block', mt: 0.25 }}>{check.description}</Typography>
-      {check.issues && check.issues.length > 0 && (
-        <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-          {check.issues.map((issue, i) => (
-            <DotLabel key={i} dotColor={T.warning} dotTooltip={issue}>
-              {issue}
-            </DotLabel>
-          ))}
-        </Box>
-      )}
-      {ignoredIds.has(check.id) && waiveReasons[check.id] && (
-        <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', fontStyle: 'italic', color: (t) => textTertiary(t), display: 'block', mt: 0.75 }}>
-          Waive reason: {waiveReasons[check.id]}
-        </Typography>
-      )}
+  // Trailing chevron affordance that signals the row opens a detail modal.
+  const chevronCell = () => (
+    <Box sx={{ width: 40, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', color: (t) => textTertiary(t) }}>
+      <ChevronRight size={18} strokeWidth={1.75} />
     </Box>
   );
+
+  // High-level list rows carry the check name only; detail moves to the modal.
+  const checkNameBlock = (check: HardeningCheck) => (
+    <Box sx={{ minWidth: 0, pr: 1 }}>
+      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa') }} noWrap>{check.name}</Typography>
+    </Box>
+  );
+
+  const detailCheck = detailCheckId && hardeningData
+    ? hardeningData.checks.find((c) => c.id === detailCheckId) ?? null
+    : null;
+  const detailWaived = detailCheck ? ignoredIds.has(detailCheck.id) : false;
+  const detailStatusColor = (status: HardeningCheck['status']) =>
+    status === 'pass' ? T.success
+    : status === 'warning' ? T.warning
+    : status === 'fail' ? T.danger
+    : status === 'info' ? T.accent
+    : textTertiary(theme);
 
   return (
     <>
@@ -872,7 +810,7 @@ export function SecurityAudit() {
                           <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
                           <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="16%" />
                           <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} />
-                          <ColumnHeader label="Action" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={200} align="right" />
+                          <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={40} align="right" />
                         </ListHeaderRow>
                         {categoryChecks.map((check, idx) => {
                           const waived = ignoredIds.has(check.id);
@@ -883,14 +821,14 @@ export function SecurityAudit() {
                                 opacity: waived ? 0.72 : 1,
                               }}
                             >
-                              <ListDataRow last={idx === categoryChecks.length - 1}>
+                              <ListDataRow last={idx === categoryChecks.length - 1} onClick={() => openDetail(check.id)}>
                                 <Box sx={{ width: '26%', minWidth: 0 }}>{checkNameBlock(check)}</Box>
                                 {statusCell(check, true)}
                                 <Box sx={{ width: '16%', minWidth: 0 }}>
-                                  <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{String(check.currentValue ?? 'N/A')}</Typography>
+                                  <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{String(check.currentValue ?? 'N/A')}</Typography>
                                 </Box>
-                                <Box sx={{ flex: 1, minWidth: 0 }}>{recommendedBlock(check)}</Box>
-                                {actionCell(check)}
+                                <Box sx={{ flex: 1, minWidth: 0 }}>{recommendedTargetInline(check)}</Box>
+                                {chevronCell()}
                               </ListDataRow>
                             </Box>
                           );
@@ -914,20 +852,20 @@ export function SecurityAudit() {
                         <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
                         <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="14%" />
                         <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} />
-                        <ColumnHeader label="Action" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={200} align="right" />
+                        <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={40} align="right" />
                       </ListHeaderRow>
                       {passingChecks.map((check, idx) => (
-                        <ListDataRow key={check.id} last={idx === passingChecks.length - 1}>
+                        <ListDataRow key={check.id} last={idx === passingChecks.length - 1} onClick={() => openDetail(check.id)}>
                           <Box sx={{ width: '20%', minWidth: 0 }}>{checkNameBlock(check)}</Box>
                           <Box sx={{ width: 120, flexShrink: 0 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{check.category}</Typography>
+                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{check.category}</Typography>
                           </Box>
                           {statusCell(check, false)}
                           <Box sx={{ width: '14%', minWidth: 0 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{String(check.currentValue ?? 'N/A')}</Typography>
+                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{String(check.currentValue ?? 'N/A')}</Typography>
                           </Box>
-                          <Box sx={{ flex: 1, minWidth: 0 }}>{recommendedBlock(check)}</Box>
-                          {actionCell(check)}
+                          <Box sx={{ flex: 1, minWidth: 0 }}>{recommendedTargetInline(check)}</Box>
+                          {chevronCell()}
                         </ListDataRow>
                       ))}
                     </ListShell>
@@ -949,20 +887,20 @@ export function SecurityAudit() {
                         <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
                         <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="14%" />
                         <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} />
-                        <ColumnHeader label="Action" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={200} align="right" />
+                        <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={40} align="right" />
                       </ListHeaderRow>
                       {failingChecks.map((check, idx) => (
-                        <ListDataRow key={check.id} last={idx === failingChecks.length - 1}>
+                        <ListDataRow key={check.id} last={idx === failingChecks.length - 1} onClick={() => openDetail(check.id)}>
                           <Box sx={{ width: '20%', minWidth: 0 }}>{checkNameBlock(check)}</Box>
                           <Box sx={{ width: 120, flexShrink: 0 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{check.category}</Typography>
+                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{check.category}</Typography>
                           </Box>
                           {statusCell(check, false)}
                           <Box sx={{ width: '14%', minWidth: 0 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{String(check.currentValue ?? 'N/A')}</Typography>
+                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{String(check.currentValue ?? 'N/A')}</Typography>
                           </Box>
-                          <Box sx={{ flex: 1, minWidth: 0 }}>{recommendedBlock(check)}</Box>
-                          {actionCell(check)}
+                          <Box sx={{ flex: 1, minWidth: 0 }}>{recommendedTargetInline(check)}</Box>
+                          {chevronCell()}
                         </ListDataRow>
                       ))}
                     </ListShell>
@@ -986,20 +924,20 @@ export function SecurityAudit() {
                         <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
                         <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="14%" />
                         <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} />
-                        <ColumnHeader label="Action" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={200} align="right" />
+                        <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={40} align="right" />
                       </ListHeaderRow>
                       {ignoredChecks.map((check, idx) => (
-                        <ListDataRow key={check.id} last={idx === ignoredChecks.length - 1}>
+                        <ListDataRow key={check.id} last={idx === ignoredChecks.length - 1} onClick={() => openDetail(check.id)}>
                           <Box sx={{ width: '20%', minWidth: 0 }}>{checkNameBlock(check)}</Box>
                           <Box sx={{ width: 120, flexShrink: 0 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{check.category}</Typography>
+                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{check.category}</Typography>
                           </Box>
                           {statusCell(check, true)}
                           <Box sx={{ width: '14%', minWidth: 0 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{String(check.currentValue ?? 'N/A')}</Typography>
+                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{String(check.currentValue ?? 'N/A')}</Typography>
                           </Box>
-                          <Box sx={{ flex: 1, minWidth: 0 }}>{recommendedBlock(check)}</Box>
-                          {actionCell(check)}
+                          <Box sx={{ flex: 1, minWidth: 0 }}>{recommendedTargetInline(check)}</Box>
+                          {chevronCell()}
                         </ListDataRow>
                       ))}
                     </ListShell>
@@ -1009,38 +947,187 @@ export function SecurityAudit() {
             </>
           ) : null}
     </Box>
-      <Dialog open={waiveDialog.open} onClose={closeWaiveDialog} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontFamily: T.font, fontWeight: 700 }}>
-          {waiveDialog.checkId && ignoredIds.has(waiveDialog.checkId) ? 'Edit waive reason' : 'Waive check'}
-        </DialogTitle>
-        <DialogContent>
-          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mb: 2 }}>
-            Waived checks are excluded from the compliance score. Add a note so future audits capture why (optional).
-          </Typography>
-          <TextField
-            autoFocus
-            fullWidth
-            multiline
-            minRows={2}
-            maxRows={6}
-            placeholder="e.g. Mail delegation required for shared support inbox — approved by IT, 2026-07"
-            value={waiveDialog.reason}
-            onChange={(e) => setWaiveDialog((d) => ({ ...d, reason: e.target.value }))}
-            InputProps={{ sx: { fontFamily: T.font, fontSize: '0.875rem' } }}
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={closeWaiveDialog} sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, color: (t) => textSecondary(t) }}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={confirmWaive}
-            sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
-          >
-            {waiveDialog.checkId && ignoredIds.has(waiveDialog.checkId) ? 'Save reason' : 'Waive'}
-          </Button>
-        </DialogActions>
+      <Dialog open={Boolean(detailCheck)} onClose={closeDetail} maxWidth="sm" fullWidth>
+        {detailCheck && (
+          <>
+            <DialogTitle sx={{ fontFamily: T.font, fontWeight: 700, pr: 6 }}>
+              {detailCheck.name}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1, flexWrap: 'wrap' }}>
+                <DotLabel dotColor={detailStatusColor(detailCheck.status)} dotTooltip={detailCheck.status.toUpperCase()}>
+                  {detailCheck.status.toUpperCase()}
+                </DotLabel>
+                <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
+                  {detailCheck.category}
+                </Typography>
+                {detailCheck.source === 'manual' && (
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
+                    · Manual review
+                  </Typography>
+                )}
+                {detailWaived && (
+                  <DotLabel dotColor={textTertiary(theme)} dotTooltip="Excluded from compliance score">
+                    Waived
+                  </DotLabel>
+                )}
+              </Box>
+            </DialogTitle>
+            <DialogContent dividers>
+              {detailCheck.description && (
+                <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t), mb: 2.5 }}>
+                  {detailCheck.description}
+                </Typography>
+              )}
+
+              <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap', mb: 2.5 }}>
+                <Box sx={{ minWidth: 120 }}>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 0.5 }}>
+                    Current value
+                  </Typography>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa') }}>
+                    {String(detailCheck.currentValue ?? 'N/A')}
+                  </Typography>
+                </Box>
+                <Box sx={{ minWidth: 120 }}>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 0.5 }}>
+                    Recommended
+                  </Typography>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa') }}>
+                    {detailCheck.recommendedValue != null && String(detailCheck.recommendedValue).trim() ? String(detailCheck.recommendedValue) : '—'}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {(() => {
+                const target = detailCheck.recommendedValue != null ? String(detailCheck.recommendedValue).trim() : '';
+                const guidance = (detailCheck.recommendation ?? '').trim();
+                if (!guidance || guidance.toLowerCase() === target.toLowerCase()) return null;
+                return (
+                  <Box sx={{ mb: 2.5 }}>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 0.5 }}>
+                      Guidance
+                    </Typography>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
+                      {guidance}
+                    </Typography>
+                  </Box>
+                );
+              })()}
+
+              {detailCheck.issues && detailCheck.issues.length > 0 && (
+                <Box sx={{ mb: 2.5 }}>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 0.75 }}>
+                    Findings
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                    {detailCheck.issues.map((issue, i) => (
+                      <DotLabel key={i} dotColor={T.warning} dotTooltip={issue}>
+                        {issue}
+                      </DotLabel>
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
+              {/* Waive controls — mirror the list behaviour: a button reveals the reason field. */}
+              <Box sx={(th) => ({ mt: 1, pt: 2, borderTop: `1px solid ${pick(th, T.borderSubtle, '#27272a')}` })}>
+                {detailWaived && !reasonEditing ? (
+                  <Box>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mb: 0.5 }}>
+                      Waived — excluded from the compliance score.
+                    </Typography>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontStyle: waiveReasons[detailCheck.id] ? 'italic' : 'normal', color: (t) => textTertiary(t), mb: 1.5 }}>
+                      {waiveReasons[detailCheck.id] ? `Reason: ${waiveReasons[detailCheck.id]}` : 'No reason recorded.'}
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<Pencil size={15} strokeWidth={1.75} />}
+                        onClick={() => { setReasonDraft(waiveReasons[detailCheck.id] ?? ''); setReasonEditing(true); }}
+                        sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius }}
+                      >
+                        {waiveReasons[detailCheck.id] ? 'Edit reason' : 'Add reason'}
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<RotateCcw size={15} strokeWidth={1.75} />}
+                        onClick={() => untrackWaive(detailCheck.id)}
+                        sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius }}
+                      >
+                        Track again
+                      </Button>
+                    </Box>
+                  </Box>
+                ) : reasonEditing ? (
+                  <Box>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mb: 1 }}>
+                      Add a note so future audits capture why this is waived (optional).
+                    </Typography>
+                    <TextField
+                      autoFocus
+                      fullWidth
+                      multiline
+                      minRows={2}
+                      maxRows={6}
+                      placeholder="e.g. Mail delegation required for shared support inbox — approved by IT, 2026-07"
+                      value={reasonDraft}
+                      onChange={(e) => setReasonDraft(e.target.value)}
+                      InputProps={{ sx: { fontFamily: T.font, fontSize: '0.875rem' } }}
+                    />
+                    <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => { applyWaive(detailCheck.id, reasonDraft); setReasonEditing(false); }}
+                        sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
+                      >
+                        {detailWaived ? 'Save reason' : 'Confirm waive'}
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => { setReasonEditing(false); setReasonDraft(waiveReasons[detailCheck.id] ?? ''); }}
+                        sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, color: (t) => textSecondary(t) }}
+                      >
+                        Cancel
+                      </Button>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<EyeOff size={15} strokeWidth={1.75} />}
+                    onClick={() => { setReasonDraft(''); setReasonEditing(true); }}
+                    sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius }}
+                  >
+                    Waive — exclude from score
+                  </Button>
+                )}
+              </Box>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              {detailCheck.adminConsoleUrl && (
+                <Button
+                  href={detailCheck.adminConsoleUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  startIcon={<ExternalLink size={15} strokeWidth={1.75} />}
+                  sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, color: T.accent, mr: 'auto' }}
+                >
+                  Open in Admin console
+                </Button>
+              )}
+              <Button
+                variant="contained"
+                onClick={closeDetail}
+                sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
+              >
+                Close
+              </Button>
+            </DialogActions>
+          </>
+        )}
       </Dialog>
       <Snackbar
         open={snackbar.open}
