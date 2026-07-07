@@ -215,7 +215,10 @@ provision_apis "$PROJECT_ID"
 provision_runtime_sa "$PROJECT_ID"
 provision_deploy_sa "$PROJECT_ID"
 
-verify_sa_key_policy "$PROJECT_ID" "$RUNTIME_SA" || true
+if ! verify_sa_key_policy "$PROJECT_ID" "$RUNTIME_SA"; then
+  attempt_unblock_sa_keys "$PROJECT_ID" || \
+    die "Service-account key creation is blocked. Follow the steps above, then re-run: bash scripts/bootstrap-tenant.sh (choose 'existing project' → ${PROJECT_ID})"
+fi
 
 create_sa_key "$PROJECT_ID" "$RUNTIME_SA" "$RUNTIME_KEY"
 create_sa_key "$PROJECT_ID" "$DEPLOY_SA" "$DEPLOY_KEY"

@@ -107,6 +107,52 @@ create_sa_key() {
   fi
 }
 
+# If iam.disableServiceAccountKeyCreation is enforced (secure-by-default on new
+# orgs), the app can't get its runtime DWD key. Offer to disable that policy for
+# this project only, then let the caller retry. Returns 0 if keys should now work.
+attempt_unblock_sa_keys() {
+  local project_id="$1"
+
+  warn "Service-account key creation is blocked by org policy (iam.disableServiceAccountKeyCreation)."
+  echo "  This app needs a runtime service-account key for domain-wide delegation."
+  echo "  It can be turned off for THIS project only (recommended for your own org)."
+  echo ""
+
+  if [[ "${NON_INTERACTIVE:-false}" == "true" ]]; then
+    warn "Non-interactive mode: skipping auto-fix."
+    echo "  Run: gcloud resource-manager org-policies disable-enforce iam.disableServiceAccountKeyCreation --project=${project_id}"
+    return 1
+  fi
+
+  if ! confirm "Disable iam.disableServiceAccountKeyCreation for ${project_id}?" "y"; then
+    return 1
+  fi
+
+  log "Disabling org policy for ${project_id}..."
+  if gcloud resource-manager org-policies disable-enforce \
+      iam.disableServiceAccountKeyCreation --project="$project_id" --quiet 2>/dev/null; then
+    log "Policy disabled. Waiting 30s for it to propagate..."
+    sleep 30
+    return 0
+  fi
+
+  # Permission denied — the user needs Organization Policy Administrator.
+  local org_id
+  org_id="$(gcloud projects get-ancestors "$project_id" 2>/dev/null | awk '$2=="organization"{print $1}' | head -1)"
+  warn "Couldn't change the org policy — you need the Organization Policy Administrator role."
+  echo ""
+  echo "  Run these as a Workspace super admin, then re-run this wizard:"
+  echo ""
+  echo "    gcloud organizations add-iam-policy-binding ${org_id:-<ORG_ID>} \\"
+  echo "      --member=\"user:\$(gcloud config get-value account)\" \\"
+  echo "      --role=\"roles/orgpolicy.policyAdmin\""
+  echo ""
+  echo "    gcloud resource-manager org-policies disable-enforce \\"
+  echo "      iam.disableServiceAccountKeyCreation --project=${project_id}"
+  echo ""
+  return 1
+}
+
 grant_secret_access() {
   local project_id="$1"
   local sa_email="${RUNTIME_SA}@${project_id}.iam.gserviceaccount.com"
