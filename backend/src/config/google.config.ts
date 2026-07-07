@@ -20,6 +20,7 @@ const SERVICE_ACCOUNT_SCOPES = [
   'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/admin.directory.resource.calendar',
   'https://www.googleapis.com/auth/chrome.management.policy',
+  'https://www.googleapis.com/auth/cloud-identity.policies.readonly',
 ];
 
 export interface GoogleConfig {
