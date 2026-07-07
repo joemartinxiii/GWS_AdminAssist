@@ -225,6 +225,17 @@ Required environment variables (stored as secrets):
 - `CORS_ORIGIN`: Frontend URL for CORS policy (e.g., https://your-app.a.run.app). In production, if unset the app enforces same-origin.
 - `GWS_ALLOWED_DOMAINS`: Comma-separated list of trusted domains for cross-domain operations. Also enforced by the **login-time gate** — sign-in is rejected unless the user's email domain is in this list (or `WORKSPACE_DOMAIN`) **and** they hold a Workspace admin role.
 - `SIGNATURE_TEMPLATE_BUCKET` *(optional)*: GCS bucket for durable persistence of the org signature template. Without it, the template is stored on ephemeral local disk and is lost on redeploy. The deploy script provisions the bucket and grants the runtime SA `roles/storage.objectAdmin` when this is exported.
+- `SCAN_BUCKET`, `SCAN_JOB_NAME`, `SCAN_REGION`, `SCAN_USER_CONCURRENCY`: External-sharing scan configuration (see below).
+
+### External-sharing scan security
+
+The Drive **External Shares** / **Public Links** audit runs as an on-demand Cloud Run **Job** (`workspace-admin-scan`), not in the request-serving web container. Security properties:
+
+- **Trigger is super-admin only.** `POST /api/audit/external-scan/run` is gated by `requireSuperAdmin`; delegated admins can view cached results but cannot start a scan or remediate.
+- **Runs as the runtime SA.** The job uses the same `workspace-admin-sa` identity and keyless domain-wide delegation as the web app — no new credentials. It impersonates each user only to *list* files and read permissions.
+- **Least-privilege GCS.** Reports are written to `gs://<project>-workspace-admin-scans`; the runtime SA holds `roles/storage.objectAdmin` on that bucket only. The web service holds `roles/run.developer` solely to execute the job.
+- **Metadata only.** The cached report stores file *metadata* (id, name, owner, path, sharing) — never file **contents**. Treat the bucket as sensitive (it enumerates externally shared files) and keep it private (uniform bucket-level access, no public members).
+- **Remediation** (`/api/audit/external-scan/remediate`) is super-admin only and removes only `anyone` and external principals via the shared classifier, skipping owners and internal users.
 
 ## Troubleshooting
 

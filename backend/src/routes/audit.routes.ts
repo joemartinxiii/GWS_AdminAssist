@@ -9,55 +9,286 @@ import { hardeningService } from '../services/hardening.service';
 import { gmailService } from '../services/gmail.service';
 import { sendApiError } from '../utils/apiError';
 import { convertToCSV } from '../utils/csv';
+import { classifyPermissions } from '../utils/externalSharing';
+import { getLatest, getStatus, putStatus, ScanRecord } from '../services/scanStore';
+import { triggerScanJob, isScanJobConfigured } from '../services/scanTrigger';
 
 const router = Router();
 
 // All routes require authentication
 router.use(authenticateSession);
 
+// A scan is considered stale (safe to re-trigger) after this long "running".
+const STALE_RUNNING_MS = 2 * 60 * 60 * 1000;
+
+type ScanCategory = 'public' | 'external' | 'all';
+
+function filterRecords(records: ScanRecord[], category: ScanCategory, search?: string): ScanRecord[] {
+  let recs = records;
+  if (category === 'public') recs = recs.filter((r) => r.exposure === 'public');
+  else if (category === 'external') recs = recs.filter((r) => r.exposure === 'external');
+
+  const q = (search || '').trim().toLowerCase();
+  if (q) {
+    recs = recs.filter((r) =>
+      r.file.name.toLowerCase().includes(q) ||
+      r.file.owner.toLowerCase().includes(q) ||
+      r.file.path.toLowerCase().includes(q) ||
+      r.externalDomains.some((d) => d.toLowerCase().includes(q)) ||
+      r.externalEmails.some((e) => e.toLowerCase().includes(q)) ||
+      r.externalGroups.some((g) => g.toLowerCase().includes(q))
+    );
+  }
+  return recs;
+}
+
+function recordToCsvRow(r: ScanRecord): Record<string, string> {
+  return {
+    'File Name': r.file.name,
+    'Owner': r.file.owner,
+    'Location': r.file.path,
+    'Exposure': r.exposure === 'public' ? 'Public (Anyone with link)' : 'External',
+    'Public Access': r.isPublic ? `Yes (${r.publicRoles.join('/') || 'reader'})` : 'No',
+    'External Domains': r.externalDomains.join('; '),
+    'External Users': r.externalEmails.join('; '),
+    'External Groups': r.externalGroups.join('; '),
+    'Modified': r.file.modifiedTime,
+    'Link': r.file.webViewLink,
+  };
+}
+
 /**
  * GET /api/audit/external-sharing
- * Comprehensive external sharing audit
+ * Cached external-sharing summary (reads the last scan; does not scan live).
  */
-router.get('/external-sharing', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
+router.get('/external-sharing', requireAnyAdmin, async (_req: AuthRequest, res: Response) => {
   try {
-    const domain = req.query.domain as string | undefined;
-    const reports = await driveService.getFilesSharedWithExternalDomains(
-      req.user!.email,
-      domain
-    );
+    const report = await getLatest();
+    if (!report) {
+      return res.json({ status: 'never-scanned', lastScan: null, counts: { public: 0, external: 0, total: 0 } });
+    }
 
-    // Aggregate statistics
-    const stats = {
-      totalFiles: reports.length,
-      uniqueExternalDomains: new Set<string>(),
-      uniqueExternalEmails: new Set<string>(),
-      filesByDomain: {} as Record<string, number>,
-    };
-
-    for (const report of reports) {
-      report.externalDomains.forEach(domain => {
-        stats.uniqueExternalDomains.add(domain);
-        stats.filesByDomain[domain] = (stats.filesByDomain[domain] || 0) + 1;
+    const uniqueDomains = new Set<string>();
+    const uniqueEmails = new Set<string>();
+    const filesByDomain: Record<string, number> = {};
+    for (const r of report.records) {
+      r.externalDomains.forEach((d) => {
+        uniqueDomains.add(d);
+        filesByDomain[d] = (filesByDomain[d] || 0) + 1;
       });
-      report.externalEmails.forEach(email => {
-        stats.uniqueExternalEmails.add(email);
-      });
+      r.externalEmails.forEach((e) => uniqueEmails.add(e));
+      r.externalGroups.forEach((g) => uniqueEmails.add(g));
     }
 
     res.json({
-      reports,
+      status: report.status,
+      lastScan: report.finishedAt || report.startedAt,
+      scanId: report.scanId,
+      coverage: report.coverage,
+      counts: report.counts,
       statistics: {
-        totalFiles: stats.totalFiles,
-        uniqueExternalDomains: Array.from(stats.uniqueExternalDomains),
-        uniqueExternalEmails: Array.from(stats.uniqueExternalEmails),
-        filesByDomain: stats.filesByDomain,
-        totalUniqueDomains: stats.uniqueExternalDomains.size,
-        totalUniqueEmails: stats.uniqueExternalEmails.size,
+        totalFiles: report.counts.total,
+        uniqueExternalDomains: Array.from(uniqueDomains),
+        uniqueExternalEmails: Array.from(uniqueEmails),
+        filesByDomain,
+        totalUniqueDomains: uniqueDomains.size,
+        totalUniqueEmails: uniqueEmails.size,
       },
     });
   } catch (error: any) {
-    sendApiError(res, error, 'Failed to perform audit', 'audit.external');
+    sendApiError(res, error, 'Failed to read external sharing report', 'audit.external');
+  }
+});
+
+/**
+ * POST /api/audit/external-scan/run
+ * Trigger a new full-org external-sharing scan (async Cloud Run Job).
+ */
+router.post('/external-scan/run', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!isScanJobConfigured()) {
+      return res.status(501).json({
+        error:
+          'Asynchronous scanning is not configured on this deployment. See docs/DEPLOY.md (SCAN_JOB_NAME / SCAN_BUCKET).',
+      });
+    }
+
+    const existing = await getStatus();
+    if (existing && existing.status === 'running') {
+      const age = Date.now() - new Date(existing.startedAt).getTime();
+      if (age < STALE_RUNNING_MS) {
+        return res.status(409).json({
+          error: 'A scan is already running.',
+          scanId: existing.scanId,
+          startedAt: existing.startedAt,
+        });
+      }
+    }
+
+    const scanId = `scan-${Date.now()}`;
+    const triggeredBy = req.user!.email;
+
+    // Publish an immediate "running" status so the UI reflects the trigger
+    // before the job container starts writing progress.
+    await putStatus({
+      scanId,
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      triggeredBy,
+      coverage: { usersTotal: 0, usersDone: 0, sharedDrivesTotal: 0, sharedDrivesDone: 0 },
+      counts: { public: 0, external: 0, total: 0 },
+    });
+
+    try {
+      await triggerScanJob({ scanId, triggeredBy });
+    } catch (triggerError: any) {
+      // The job never started, so revert the optimistic "running" status —
+      // otherwise it stays stuck until the stale window expires and blocks
+      // new scans with a 409.
+      await putStatus({
+        scanId,
+        status: 'failed',
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+        triggeredBy,
+        coverage: { usersTotal: 0, usersDone: 0, sharedDrivesTotal: 0, sharedDrivesDone: 0 },
+        counts: { public: 0, external: 0, total: 0 },
+        error: triggerError?.message || 'Failed to start scan job',
+      }).catch(() => {});
+      throw triggerError;
+    }
+
+    res.json({ scanId, status: 'running' });
+  } catch (error: any) {
+    sendApiError(res, error, 'Failed to start external-sharing scan', 'audit.external.scan');
+  }
+});
+
+/**
+ * GET /api/audit/external-scan/status
+ * Progress + last scan time for the UI to poll.
+ */
+router.get('/external-scan/status', requireAnyAdmin, async (_req: AuthRequest, res: Response) => {
+  try {
+    const status = await getStatus();
+    if (!status) {
+      return res.json({ status: 'never-scanned', lastScan: null });
+    }
+    res.json({ ...status, lastScan: status.finishedAt || status.startedAt });
+  } catch (error: any) {
+    sendApiError(res, error, 'Failed to read scan status', 'audit.external.status');
+  }
+});
+
+/**
+ * GET /api/audit/external-scan/report?category=public|external|all&search=&page=&pageSize=
+ * Server-side filtered + paginated view of the cached report.
+ */
+router.get('/external-scan/report', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    // Read both: latest.json holds the records (the last *completed* report),
+    // while status.json is the authoritative live progress document. During an
+    // in-progress scan these disagree, so surface status/coverage/counts from
+    // status.json to avoid flipping the UI from "running" to "completed" and
+    // stopping the progress poll on a report/tab refresh.
+    const [report, status] = await Promise.all([getLatest(), getStatus()]);
+    if (!report && !status) {
+      return res.json({
+        status: 'never-scanned',
+        lastScan: null,
+        records: [],
+        total: 0,
+        page: 1,
+        pageSize: 0,
+        counts: { public: 0, external: 0, total: 0 },
+      });
+    }
+
+    const category = (String(req.query.category || 'all').toLowerCase() as ScanCategory);
+    const search = req.query.search as string | undefined;
+    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+    const pageSize = Math.min(500, Math.max(1, parseInt(String(req.query.pageSize || '50'), 10) || 50));
+
+    const records = report?.records ?? [];
+    const filtered = filterRecords(records, category, search);
+    const start = (page - 1) * pageSize;
+    const pageRecords = filtered.slice(start, start + pageSize);
+
+    // Prefer the live status doc for progress fields; fall back to the report.
+    const live = status ?? report!;
+    res.json({
+      status: live.status,
+      lastScan: live.finishedAt || live.startedAt,
+      scanId: live.scanId,
+      coverage: live.coverage,
+      counts: report?.counts ?? live.counts,
+      total: filtered.length,
+      page,
+      pageSize,
+      records: pageRecords,
+    });
+  } catch (error: any) {
+    sendApiError(res, error, 'Failed to read scan report', 'audit.external.report');
+  }
+});
+
+/**
+ * GET /api/audit/external-scan/report/export?category=public|external|all&search=
+ * Export the (filtered) cached report as CSV.
+ */
+router.get('/external-scan/report/export', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const report = await getLatest();
+    const category = (String(req.query.category || 'all').toLowerCase() as ScanCategory);
+    const search = req.query.search as string | undefined;
+    const records = report ? filterRecords(report.records, category, search) : [];
+    const csv = convertToCSV(records.map(recordToCsvRow));
+    const label = category === 'all' ? 'external-sharing' : `external-sharing-${category}`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${label}-${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csv);
+  } catch (error: any) {
+    sendApiError(res, error, 'Failed to export scan report', 'audit.external.export');
+  }
+});
+
+/**
+ * POST /api/audit/external-scan/report/export/drive
+ * Export the (filtered) cached report to Google Drive as a CSV.
+ */
+router.post('/external-scan/report/export/drive', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const report = await getLatest();
+    const category = (String(req.body?.category || 'all').toLowerCase() as ScanCategory);
+    const search = req.body?.search as string | undefined;
+    const records = report ? filterRecords(report.records, category, search) : [];
+    const csv = convertToCSV(records.map(recordToCsvRow));
+    const label = category === 'all' ? 'external-sharing' : `external-sharing-${category}`;
+    const fileName = `${label}-${new Date().toISOString().split('T')[0]}.csv`;
+    const result = await driveService.uploadFile(req.user!.email, fileName, csv, 'text/csv', req.body?.folderId);
+    res.json({ fileId: result.id, webViewLink: result.webViewLink, message: 'External sharing report exported to Google Drive' });
+  } catch (error: any) {
+    sendApiError(res, error, 'Failed to export scan report to Drive', 'audit.external.export');
+  }
+});
+
+/**
+ * POST /api/audit/external-scan/remediate
+ * Bulk-remediate selected files: strip public and/or external access.
+ * mode: 'public' | 'external' | 'all'
+ */
+router.post('/external-scan/remediate', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { fileIds, mode } = req.body as { fileIds?: string[]; mode?: 'public' | 'external' | 'all' };
+    if (!Array.isArray(fileIds) || fileIds.length === 0) {
+      return res.status(400).json({ error: 'fileIds array is required' });
+    }
+    const remediationMode = mode === 'public' || mode === 'external' ? mode : 'all';
+    const result = await driveService.bulkRemoveExternalShares(req.user!.email, fileIds, remediationMode);
+    res.json(result);
+  } catch (error: any) {
+    sendApiError(res, error, 'Failed to remediate external shares', 'audit.external.remediate');
   }
 });
 
@@ -76,20 +307,22 @@ router.get('/permissions', requireAnyAdmin, async (req: AuthRequest, res: Respon
         return res.status(404).json({ error: 'File not found' });
       }
 
-      const externalPermissions = file.permissions.filter(perm => {
-        if (perm.type === 'domain') {
-          return perm.domain !== process.env.WORKSPACE_DOMAIN;
-        }
-        if (perm.type === 'user' && perm.emailAddress) {
-          const emailDomain = perm.emailAddress.split('@')[1];
-          return emailDomain !== process.env.WORKSPACE_DOMAIN;
-        }
-        return false;
-      });
+      const classification = classifyPermissions(file.permissions);
+      // External collaborators plus any public ("anyone") permissions.
+      const externalPermissions = [
+        ...classification.externalPermissions,
+        ...classification.publicPermissions,
+      ];
 
       res.json({
         file,
         externalPermissions,
+        classification: {
+          isPublic: classification.isPublic,
+          externalDomains: classification.externalDomains,
+          externalEmails: classification.externalEmails,
+          externalGroups: classification.externalGroups,
+        },
         summary: {
           totalPermissions: file.permissions.length,
           externalPermissions: externalPermissions.length,

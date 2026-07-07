@@ -414,13 +414,14 @@ router.post('/files/export/drive', requireSuperAdmin, async (req: AuthRequest, r
  */
 router.post('/files/bulk-remove-external-shares', requirePermission('drive.permissions.manage'), auditLog('drive.bulk.removeExternalShares', 'drive'), async (req: AuthRequest, res: Response) => {
   try {
-    const { fileIds } = req.body;
+    const { fileIds, mode } = req.body as { fileIds?: string[]; mode?: 'public' | 'external' | 'all' };
 
     if (!fileIds || !Array.isArray(fileIds) || fileIds.length === 0) {
       return res.status(400).json({ error: 'fileIds array is required' });
     }
 
-    const result = await driveService.bulkRemoveExternalShares(req.user!.email, fileIds);
+    const remediationMode = mode === 'public' || mode === 'external' ? mode : 'all';
+    const result = await driveService.bulkRemoveExternalShares(req.user!.email, fileIds, remediationMode);
     res.json(result);
   } catch (error: any) {
     sendApiError(res, error, 'Failed to remove external shares', 'drive.files.bulkRemoveExternalShares');

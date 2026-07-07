@@ -34,6 +34,7 @@ Options:
 
 Removes:
   - Cloud Run service (${CLOUD_RUN_SERVICE})
+  - External-sharing scan job (${CLOUD_RUN_SCAN_JOB}) and its report bucket
   - All app Secret Manager secrets
   - Service accounts (${RUNTIME_SA}, ${DEPLOY_SA}) and their keys
   - Artifact Registry repo (${ARTIFACT_REPO})
@@ -80,6 +81,15 @@ gcloud config set project "$PROJECT_ID" --quiet 2>/dev/null || true
 log "Deleting Cloud Run service ${CLOUD_RUN_SERVICE}..."
 gcloud run services delete "$CLOUD_RUN_SERVICE" --region="$REGION" --quiet 2>/dev/null || \
   warn "Cloud Run service not found (already deleted?)"
+
+log "Deleting external-sharing scan job ${CLOUD_RUN_SCAN_JOB}..."
+gcloud run jobs delete "$CLOUD_RUN_SCAN_JOB" --region="$REGION" --quiet 2>/dev/null && echo "  deleted: ${CLOUD_RUN_SCAN_JOB}" || \
+  echo "  skip: ${CLOUD_RUN_SCAN_JOB} (not found)"
+
+SCAN_BUCKET="${SCAN_BUCKET:-${PROJECT_ID}-workspace-admin-scans}"
+log "Deleting scan report bucket gs://${SCAN_BUCKET}..."
+gcloud storage rm --recursive "gs://${SCAN_BUCKET}" --quiet 2>/dev/null && echo "  deleted: gs://${SCAN_BUCKET}" || \
+  echo "  skip: gs://${SCAN_BUCKET} (not found)"
 
 log "Deleting Secret Manager secrets..."
 for secret_name in "${APP_SECRETS[@]}"; do

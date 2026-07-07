@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -39,6 +39,7 @@ import {
   ExternalLink,
   Plus,
   Check,
+  Play,
 } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -58,6 +59,13 @@ import { useTheme } from '@mui/material/styles';
 const DRIVE_STATIC_SORT = { key: '_', direction: 'asc' as const };
 const driveNoopSort = () => {};
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Tab indices for the Drive page.
+const TAB_EXTERNAL = 0;
+const TAB_PUBLIC = 1;
+const TAB_FILES = 2;
+
+const ROLE_LABEL: Record<string, string> = { reader: 'Viewer', commenter: 'Commenter', writer: 'Editor', owner: 'Owner' };
 
 function normalizeEmailInput(raw: string): string {
   const trimmed = String(raw || '').trim();
@@ -86,6 +94,36 @@ interface DriveFile {
     domain?: string;
     displayName?: string;
   }>;
+}
+
+// A single exposed-file record from the cached scan report.
+interface ScanRecord {
+  file: {
+    id: string;
+    name: string;
+    mimeType: string;
+    owner: string;
+    ownerName?: string;
+    path: string;
+    driveId?: string;
+    driveName?: string;
+    webViewLink: string;
+    modifiedTime: string;
+  };
+  exposure: 'public' | 'external';
+  isPublic: boolean;
+  publicRoles: string[];
+  externalDomains: string[];
+  externalEmails: string[];
+  externalGroups: string[];
+}
+
+interface ScanStatus {
+  status: 'never-scanned' | 'running' | 'completed' | 'failed';
+  lastScan: string | null;
+  coverage?: { usersTotal: number; usersDone: number; sharedDrivesTotal: number; sharedDrivesDone: number };
+  counts?: { public: number; external: number; total: number };
+  error?: string;
 }
 
 interface DriveFilters {
@@ -160,6 +198,22 @@ function isPermissionExternal(perm: { type: string; domain?: string; emailAddres
   return false;
 }
 
+// Concise "shared with" summary for an external record: individual principals
+// first, plus any domain-wide shares not already implied by a listed email.
+function sharedWithLabel(record: ScanRecord): string {
+  const principals = [...record.externalEmails, ...record.externalGroups];
+  const coveredDomains = new Set(principals.map((p) => p.split('@')[1]?.toLowerCase()).filter(Boolean));
+  const domains = record.externalDomains.filter((d) => !coveredDomains.has(d.toLowerCase()));
+  const parts = [...principals, ...domains.map((d) => `${d} (domain)`)];
+  return parts.length ? parts.join(', ') : '—';
+}
+
+function publicAccessLabel(record: ScanRecord): string {
+  const roles = (record.publicRoles || []).map((r) => ROLE_LABEL[r] || r);
+  const unique = Array.from(new Set(roles));
+  return unique.length ? `Anyone (${unique.join('/')})` : 'Anyone with link';
+}
+
 export function Drive() {
   const muiTheme = useTheme();
   const isMdUp = useMediaQuery(muiTheme.breakpoints.up('md'));
@@ -172,14 +226,21 @@ export function Drive() {
     '& .MuiDialogContent-root': { pt: 0 },
     '& .MuiTypography-root, & .MuiInputBase-root': { fontFamily: T.font },
   };
-  const [tabValue, setTabValue] = useState(0);
+  const [tabValue, setTabValue] = useState(TAB_EXTERNAL);
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
-  const [externalSharingData, setExternalSharingData] = useState<any>(null);
-  const [externalSharingLoading, setExternalSharingLoading] = useState(false);
+
+  // Cached-scan report state (External Shares + Public Links tabs).
+  const [reportRecords, setReportRecords] = useState<ScanRecord[]>([]);
+  const [reportTotal, setReportTotal] = useState(0);
+  const [reportCounts, setReportCounts] = useState<{ public: number; external: number; total: number }>({ public: 0, external: 0, total: 0 });
+  const [reportLoading, setReportLoading] = useState(false);
+  const [scanStatus, setScanStatus] = useState<ScanStatus | null>(null);
+  const [scanTriggering, setScanTriggering] = useState(false);
+
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [filters, setFilters] = useState<DriveFilters>({
@@ -198,6 +259,7 @@ export function Drive() {
     domain: '',
   });
   const [externalSearchTerm, setExternalSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filtersVisible, setFiltersVisible] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const exportCSVRef = useRef<() => void | Promise<void>>(() => {});
@@ -225,6 +287,10 @@ export function Drive() {
   });
   const [filePermissionsPage, setFilePermissionsPage] = useState(0);
   const [filePermissionsRowsPerPage, setFilePermissionsRowsPerPage] = useState(DIALOG_LIST_PAGE_SIZE);
+
+  const isFilesTab = tabValue === TAB_FILES;
+  const isAuditTab = tabValue === TAB_EXTERNAL || tabValue === TAB_PUBLIC;
+  const auditCategory: 'external' | 'public' = tabValue === TAB_PUBLIC ? 'public' : 'external';
 
   useEffect(() => {
     if (!permissionDialogOpen) return;
@@ -263,23 +329,92 @@ export function Drive() {
     void fetchDirectoryUsers();
   }, [addPermissionDialogOpen, newPermissionType, loadingDirectoryUsers, directorySuggestions.length]);
 
+  const fetchScanStatus = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get('/audit/external-scan/status');
+      setScanStatus(data);
+      return data as ScanStatus;
+    } catch (error) {
+      console.error('Error fetching scan status:', error);
+      return null;
+    }
+  }, []);
+
+  const fetchReport = useCallback(async () => {
+    try {
+      setReportLoading(true);
+      const params = new URLSearchParams({
+        category: auditCategory,
+        page: String(page + 1),
+        pageSize: String(rowsPerPage),
+      });
+      if (debouncedSearch.trim()) params.append('search', debouncedSearch.trim());
+      const { data } = await apiClient.get(`/audit/external-scan/report?${params.toString()}`);
+      setReportRecords(Array.isArray(data.records) ? data.records : []);
+      setReportTotal(data.total || 0);
+      if (data.counts) setReportCounts(data.counts);
+      setScanStatus((prev) => ({
+        status: data.status || prev?.status || 'never-scanned',
+        lastScan: data.lastScan ?? prev?.lastScan ?? null,
+        coverage: data.coverage ?? prev?.coverage,
+        counts: data.counts ?? prev?.counts,
+      }));
+      setLoadError(null);
+    } catch (error: any) {
+      console.error('Error fetching scan report:', error);
+      setReportRecords([]);
+      setReportTotal(0);
+      setLoadError(getApiErrorMessage(error, 'Failed to load external sharing report.'));
+    } finally {
+      setReportLoading(false);
+    }
+  }, [auditCategory, page, rowsPerPage, debouncedSearch]);
+
+  // Debounce the audit search box.
   useEffect(() => {
-    if (tabValue === 0) {
-      // External Shares tab: fetch external sharing data
-      fetchExternalSharing();
-    } else if (tabValue === 1) {
-      // All Files tab: fetch files when empty
-      if (files.length === 0) {
-        fetchFiles();
-      }
+    const id = setTimeout(() => setDebouncedSearch(externalSearchTerm), 400);
+    return () => clearTimeout(id);
+  }, [externalSearchTerm]);
+
+  // Load report/status when on an audit tab, or files on the files tab.
+  useEffect(() => {
+    if (isAuditTab) {
+      void fetchScanStatus();
+      void fetchReport();
+    } else if (files.length === 0) {
+      void fetchFiles();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabValue]);
+  }, [tabValue, page, rowsPerPage, debouncedSearch]);
+
+  // Poll status while a scan is running; refresh the report when it finishes.
+  useEffect(() => {
+    if (scanStatus?.status !== 'running') return;
+    const id = setInterval(async () => {
+      const next = await fetchScanStatus();
+      if (next && next.status !== 'running') {
+        clearInterval(id);
+        if (isAuditTab) void fetchReport();
+        setSnackbar({
+          open: true,
+          message: next.status === 'completed' ? 'Scan completed.' : `Scan ${next.status}.`,
+          severity: next.status === 'completed' ? 'success' : 'error',
+        });
+      }
+    }, 4000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanStatus?.status]);
 
   useEffect(() => {
     // Reset to first page when filters change
     setPage(0);
   }, [filters]);
+
+  useEffect(() => {
+    setPage(0);
+    setSelectedFiles(new Set());
+  }, [debouncedSearch, tabValue]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -291,8 +426,7 @@ export function Drive() {
         e.preventDefault();
         setFiltersVisible((v) => !v);
       }
-      if (tabValue === 0) {
-        // External Shares tab
+      if (isAuditTab) {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
           e.preventDefault();
           e.stopPropagation();
@@ -304,8 +438,7 @@ export function Drive() {
           handleExportExternalSharingDrive();
         }
       }
-      if (tabValue === 1) {
-        // All Files tab
+      if (isFilesTab) {
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
           e.preventDefault();
           e.stopPropagation();
@@ -315,39 +448,34 @@ export function Drive() {
         if ((e.metaKey || e.ctrlKey) && e.key === 'g') {
           e.preventDefault();
           if (selectedFiles.size > 0) handleExportSelectedDrive();
-          else if (hasActiveFilters()) handleExportAllDrive();
           else handleExportAllDrive();
         }
       }
     };
     document.addEventListener('keydown', handleKeyDown, true);
     return () => document.removeEventListener('keydown', handleKeyDown, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabValue, selectedFiles.size]);
 
-  const fetchExternalSharing = async () => {
+  const handleTriggerScan = async () => {
     try {
-      setExternalSharingLoading(true);
-      const response = await apiClient.get('/audit/external-sharing');
-      const payload = response.data;
-      if (Array.isArray(payload)) {
-        setExternalSharingData({ reports: payload, statistics: {} });
-      } else if (payload && Array.isArray(payload.reports)) {
-        setExternalSharingData(payload);
-      } else {
-        setExternalSharingData({ reports: [], statistics: {} });
-      }
-      setLoadError(null);
+      setScanTriggering(true);
+      const { data } = await apiClient.post('/audit/external-scan/run', {});
+      setScanStatus({ status: 'running', lastScan: scanStatus?.lastScan ?? null, coverage: { usersTotal: 0, usersDone: 0, sharedDrivesTotal: 0, sharedDrivesDone: 0 } });
+      setSnackbar({ open: true, message: `Scan started (${data.scanId}). This can take a while for large orgs.`, severity: 'info' });
+      void fetchScanStatus();
     } catch (error: any) {
-      console.error('Error fetching external sharing audit:', error);
-      setExternalSharingData({ reports: [], statistics: {} });
-      setLoadError(getApiErrorMessage(error, 'Failed to load external sharing data.'));
-      setSnackbar({
-        open: true,
-        message: getApiErrorMessage(error, 'Failed to load external sharing data.'),
-        severity: 'error',
-      });
+      const status = error?.response?.status;
+      if (status === 409) {
+        setSnackbar({ open: true, message: 'A scan is already running.', severity: 'info' });
+        void fetchScanStatus();
+      } else if (status === 501) {
+        setSnackbar({ open: true, message: getApiErrorMessage(error, 'Async scanning is not configured on this deployment.'), severity: 'warning' });
+      } else {
+        setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to start scan.'), severity: 'error' });
+      }
     } finally {
-      setExternalSharingLoading(false);
+      setScanTriggering(false);
     }
   };
 
@@ -362,26 +490,10 @@ export function Drive() {
   };
 
   /** Admin-centric full path from backend. */
-  const getFileLocationLabel = (file: DriveFile): string => {
+  const getFileLocationLabel = (file: { path?: string }): string => {
     const path = file.path?.trim();
     return path || 'Unresolved';
   };
-
-  const filteredExternalReports = useMemo(() => {
-    const reports = externalSharingData?.reports ?? [];
-    if (!externalSearchTerm.trim()) return reports;
-    const term = externalSearchTerm.toLowerCase().trim();
-    return reports.filter((report: any) => {
-      const name = (report.file?.name ?? '').toLowerCase();
-      const domains = (report.externalDomains ?? []).join(' ').toLowerCase();
-      const emails = (report.externalEmails ?? []).join(' ').toLowerCase();
-      return name.includes(term) || domains.includes(term) || emails.includes(term);
-    });
-  }, [externalSharingData, externalSearchTerm]);
-
-  useEffect(() => {
-    setPage(0);
-  }, [externalSearchTerm]);
 
   const fetchFiles = async () => {
     try {
@@ -410,6 +522,12 @@ export function Drive() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Refresh whichever dataset the current tab is showing.
+  const refreshCurrent = () => {
+    if (isFilesTab) void fetchFiles();
+    else void fetchReport();
   };
 
   const handleFilterChange = (key: keyof DriveFilters, value: string) => {
@@ -456,24 +574,17 @@ export function Drive() {
     setSelectedFiles(newSelected);
   };
 
-  const paginatedExternalReports = useMemo(() => {
-    const start = page * rowsPerPage;
-    return filteredExternalReports.slice(start, start + rowsPerPage);
-  }, [filteredExternalReports, page, rowsPerPage]);
-
-  const handleSelectAllExternal = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSelectAllReport = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
-      setSelectedFiles(new Set(paginatedExternalReports.map((r: any) => r.file?.id).filter(Boolean)));
+      setSelectedFiles(new Set(reportRecords.map((r) => r.file.id).filter(Boolean)));
     } else {
       setSelectedFiles(new Set());
     }
   };
 
-  const handleOpenPermissionDialogForReport = async (report: any) => {
-    const f = report.file ?? {};
-    const fileId = f.id;
+  const handleOpenPermissionDialogForRecord = async (record: ScanRecord) => {
+    const fileId = record.file?.id;
     if (!fileId) return;
-
     try {
       const response = await apiClient.get(`/drive/files/${fileId}`);
       const data = response.data;
@@ -489,6 +600,7 @@ export function Drive() {
         createdTime: data.createdTime ?? '',
         size: data.size,
         shared: data.shared ?? false,
+        driveId: data.driveId,
       };
       setSelectedFile(file);
       setSelectedPermission(null);
@@ -499,47 +611,30 @@ export function Drive() {
     }
   };
 
-  const handleBulkRemoveExternalShares = async () => {
+  // Per-tab bulk remediation: strip external collaborators or public links.
+  const handleBulkRemediate = async () => {
     if (selectedFiles.size === 0) return;
-
-    if (!confirm(`Are you sure you want to remove all external shares from ${selectedFiles.size} file(s)?`)) {
-      return;
-    }
+    const mode = auditCategory; // 'external' | 'public'
+    const label = mode === 'public' ? 'public (Anyone with link) access' : 'external collaborator access';
+    if (!confirm(`Remove ${label} from ${selectedFiles.size} file(s)? This cannot be undone.`)) return;
 
     try {
       setBulkActionLoading(true);
-      const response = await apiClient.post('/drive/files/bulk-remove-external-shares', {
+      const response = await apiClient.post('/audit/external-scan/remediate', {
         fileIds: Array.from(selectedFiles),
+        mode,
       });
-
       const { success, failed } = response.data;
-      
-      // Refresh files to show updated permissions
-      await fetchFiles();
-      
-      // Clear selection
       setSelectedFiles(new Set());
-
+      void fetchReport();
       if (failed === 0) {
-        setSnackbar({
-          open: true,
-          message: `Successfully removed external shares from ${success} file(s)`,
-          severity: 'success',
-        });
+        setSnackbar({ open: true, message: `Removed ${label} from ${success} file(s).`, severity: 'success' });
       } else {
-        setSnackbar({
-          open: true,
-          message: `Removed external shares from ${success} file(s), ${failed} failed`,
-          severity: 'warning',
-        });
+        setSnackbar({ open: true, message: `Updated ${success} file(s), ${failed} failed (some access may be inherited from a Shared Drive).`, severity: 'warning' });
       }
     } catch (error: any) {
-      console.error('Error removing external shares:', error);
-      setSnackbar({
-        open: true,
-        message: getApiErrorMessage(error, 'Failed to remove external shares'),
-        severity: 'error',
-      });
+      console.error('Error remediating shares:', error);
+      setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to remediate shares.'), severity: 'error' });
     } finally {
       setBulkActionLoading(false);
     }
@@ -591,7 +686,7 @@ export function Drive() {
         `/drive/files/${selectedFile.id}/permissions/${selectedPermission.id}`,
         { role: newRole }
       );
-      if (tabValue === 0) fetchExternalSharing(); else fetchFiles();
+      refreshCurrent();
       setPermissionDialogOpen(false);
     } catch (error) {
       console.error('Error updating permission:', error);
@@ -615,8 +710,7 @@ export function Drive() {
         next.delete(permissionId);
         return next;
       });
-      if (tabValue === 0) fetchExternalSharing();
-      else fetchFiles();
+      refreshCurrent();
     } catch (error: any) {
       console.error('Error deleting permission:', error);
       setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to delete permission. Please try again.'), severity: 'error' });
@@ -656,8 +750,7 @@ export function Drive() {
       setNewPermissionEmail('');
       setNewPermissionDomain('');
       setSnackbar({ open: true, message: 'Permission added successfully', severity: 'success' });
-      if (tabValue === 0) fetchExternalSharing();
-      else fetchFiles();
+      refreshCurrent();
     } catch (error: any) {
       console.error('Error adding permission:', error);
       setSnackbar({
@@ -700,8 +793,7 @@ export function Drive() {
         succeeded.forEach((id) => next.delete(id));
         return next;
       });
-      if (tabValue === 0) fetchExternalSharing();
-      else fetchFiles();
+      refreshCurrent();
     }
 
     if (errors.length > 0) {
@@ -736,42 +828,41 @@ export function Drive() {
     return `${(size / (1024 * 1024)).toFixed(2)} MB`;
   };
 
+  // --- Audit (report) exports -------------------------------------------------
   const handleExportExternalSharing = async () => {
     try {
-      const response = await apiClient.get('/drive/external-sharing/export', { responseType: 'blob' });
+      const params = new URLSearchParams({ category: auditCategory });
+      if (debouncedSearch.trim()) params.append('search', debouncedSearch.trim());
+      const response = await apiClient.get(`/audit/external-scan/report/export?${params.toString()}`, { responseType: 'blob' });
       const blob = new Blob([response.data], { type: 'text/csv' });
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `external-sharing-report-${new Date().toISOString().split('T')[0]}.csv`;
+      link.download = `${auditCategory === 'public' ? 'public-links' : 'external-sharing'}-${new Date().toISOString().split('T')[0]}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(downloadUrl);
       setSnackbar({ open: true, message: 'CSV downloading now.', severity: 'success' });
     } catch (error) {
-      console.error('Error exporting external sharing report:', error);
+      console.error('Error exporting report:', error);
       setSnackbar({ open: true, message: 'Export failed. Please try again.', severity: 'error' });
     }
   };
 
   const handleExportExternalSelectedCSV = async () => {
     if (selectedFiles.size === 0) return;
-    const reports = externalSharingData?.reports ?? [];
-    const selected = reports.filter((r: any) => r.file?.id && selectedFiles.has(r.file.id));
+    const selected = reportRecords.filter((r) => selectedFiles.has(r.file.id));
     if (selected.length === 0) return;
-    const csvData = selected.map((report: any) => ({
-      'File Name': report.file?.name ?? '',
-      'File ID': report.file?.id ?? '',
-      'File Path': report.file?.path || '/My Drive',
-      'File Type': report.file?.mimeType ?? '',
-      'Owner': report.file?.owners?.map((o: any) => o.emailAddress).join('; ') ?? '',
-      'Created Date': report.file?.createdTime ? new Date(report.file.createdTime).toISOString() : '',
-      'Modified Date': report.file?.modifiedTime ? new Date(report.file.modifiedTime).toISOString() : '',
-      'Size (bytes)': report.file?.size ?? '',
-      'External Domains': (report.externalDomains || []).join('; '),
-      'External Emails': (report.externalEmails || []).join('; '),
-      'Link': report.file?.webViewLink ?? '',
+    const csvData = selected.map((r) => ({
+      'File Name': r.file.name,
+      'Owner': r.file.owner,
+      'Location': r.file.path,
+      'Exposure': r.exposure === 'public' ? 'Public (Anyone with link)' : 'External',
+      'Public Access': r.isPublic ? publicAccessLabel(r) : 'No',
+      'Shared With': sharedWithLabel(r),
+      'Modified': r.file.modifiedTime,
+      'Link': r.file.webViewLink,
     }));
     const headers = Object.keys(csvData[0] || {});
     const csv = [
@@ -789,7 +880,7 @@ export function Drive() {
     const downloadUrl = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = downloadUrl;
-    link.download = `external-sharing-selected-${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `${auditCategory === 'public' ? 'public-links' : 'external-sharing'}-selected-${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -800,33 +891,17 @@ export function Drive() {
   const handleExportSelectedCSV = async () => {
     if (selectedFiles.size === 0) return;
     const selected = files.filter((f) => selectedFiles.has(f.id));
-    const workspaceDomain = '';
-    const csvData = selected.map((file) => {
-      const externalDomains: string[] = [];
-      const externalEmails: string[] = [];
-      for (const perm of file.permissions || []) {
-        if (perm.type === 'domain' && perm.domain && perm.domain !== workspaceDomain) externalDomains.push(perm.domain);
-        else if (perm.type === 'user' && perm.emailAddress) {
-          const emailDomain = perm.emailAddress.split('@')[1];
-          if (emailDomain !== workspaceDomain) {
-            externalEmails.push(perm.emailAddress);
-            if (!externalDomains.includes(emailDomain)) externalDomains.push(emailDomain);
-          }
-        }
-      }
-      return {
-        'File Name': file.name,
-        'File ID': file.id,
-        'Owner': file.owners.map((o: any) => o.emailAddress).join('; '),
-        'Created Date': file.createdTime || '',
-        'Modified Date': file.modifiedTime || '',
-        'Size (bytes)': file.size || '',
-        'Shared': file.shared ? 'Yes' : 'No',
-        'External Domains': externalDomains.join('; '),
-        'External Emails': externalEmails.join('; '),
-        'Link': file.webViewLink,
-      };
-    });
+    const csvData = selected.map((file) => ({
+      'File Name': file.name,
+      'File ID': file.id,
+      'Owner': file.owners.map((o: any) => o.emailAddress).join('; '),
+      'Created Date': file.createdTime || '',
+      'Modified Date': file.modifiedTime || '',
+      'Size (bytes)': file.size || '',
+      'Shared': file.shared ? 'Yes' : 'No',
+      'Location': file.path || '',
+      'Link': file.webViewLink,
+    }));
     const headers = Object.keys(csvData[0] || {});
     const csvRows = [
       headers.join(','),
@@ -875,7 +950,10 @@ export function Drive() {
 
   const handleExportExternalSharingDrive = async () => {
     try {
-      const response = await apiClient.post('/drive/external-sharing/export/drive');
+      const response = await apiClient.post('/audit/external-scan/report/export/drive', {
+        category: auditCategory,
+        ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+      });
       if (response.data?.webViewLink) window.open(response.data.webViewLink, '_blank');
       setSnackbar({ open: true, message: 'Report saved to Google Drive.', severity: 'success' });
     } catch (err: any) {
@@ -923,6 +1001,27 @@ export function Drive() {
     return allFilePerms.slice(start, start + filePermissionsRowsPerPage);
   }, [selectedFile?.id, selectedFile?.permissions, fpPageSafe, filePermissionsRowsPerPage]);
 
+  const lastScanLabel = useMemo(() => {
+    if (!scanStatus || scanStatus.status === 'never-scanned' || !scanStatus.lastScan) return 'Never scanned';
+    try {
+      return `Last scan: ${new Date(scanStatus.lastScan).toLocaleString()}`;
+    } catch {
+      return 'Last scan: unknown';
+    }
+  }, [scanStatus]);
+
+  const scanRunning = scanStatus?.status === 'running';
+  const scanProgress = useMemo(() => {
+    const cov = scanStatus?.coverage;
+    if (!cov || !cov.usersTotal) return null;
+    const total = cov.usersTotal + cov.sharedDrivesTotal;
+    const done = cov.usersDone + cov.sharedDrivesDone;
+    if (!total) return null;
+    return Math.min(100, Math.round((done / total) * 100));
+  }, [scanStatus]);
+
+  const bulkRemediateLabel = auditCategory === 'public' ? 'Remove public access' : 'Remove external access';
+
   return (
     <Box sx={{ width: '100%', overflowY: 'auto', overflowX: 'hidden', fontFamily: T.font, minHeight: '100vh' }}>
       {/* PAGE HEADER */}
@@ -931,18 +1030,52 @@ export function Drive() {
           Drive
         </Typography>
         <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-          <SegmentedControl value={tabValue} options={['External Shares', 'All Files']} onChange={(v) => { setTabValue(v); setSelectedFiles(new Set()); setPage(0); }} />
+          <SegmentedControl value={tabValue} options={['External Shares', 'Public Links', 'All Files']} onChange={(v) => { setTabValue(v); setSelectedFiles(new Set()); setPage(0); }} />
         </Box>
       </Box>
+
+      {/* Scan controls (audit tabs) */}
+      {isAuditTab && (
+        <Box sx={(theme: any) => ({
+          display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', mb: 2,
+          p: 1.5, borderRadius: T.radius, border: `1px solid ${pick(theme, T.border, '#3f3f46')}`, bgcolor: pick(theme, T.surface, '#27272a'),
+        })}>
+          <Button
+            size="small"
+            variant="contained"
+            onClick={handleTriggerScan}
+            disabled={scanTriggering || scanRunning}
+            startIcon={scanTriggering || scanRunning ? <CircularProgress size={14} color="inherit" /> : <Play size={15} strokeWidth={1.75} />}
+            sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 32, px: 2, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
+          >
+            {scanRunning ? 'Scanning…' : 'Run scan'}
+          </Button>
+          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+            {scanRunning
+              ? `Scanning… ${scanStatus?.coverage ? `${scanStatus.coverage.usersDone}/${scanStatus.coverage.usersTotal || '?'} users` : ''}`
+              : lastScanLabel}
+          </Typography>
+          {typeof reportCounts.total === 'number' && !scanRunning && scanStatus?.status !== 'never-scanned' && (
+            <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
+              {reportCounts.external} external · {reportCounts.public} public
+            </Typography>
+          )}
+          {scanRunning && (
+            <Box sx={{ flex: 1, minWidth: 160, maxWidth: 300 }}>
+              <LinearProgress variant={scanProgress == null ? 'indeterminate' : 'determinate'} value={scanProgress ?? undefined} />
+            </Box>
+          )}
+        </Box>
+      )}
 
       {/* Toolbar: search + filters + export */}
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           inputRef={searchInputRef}
           size="small"
-          placeholder={tabValue === 0 ? "Search external shares\u2026" : "Search files\u2026"}
-          value={tabValue === 0 ? externalSearchTerm : filters.nameContains}
-          onChange={(e) => tabValue === 0 ? setExternalSearchTerm(e.target.value) : handleFilterChange('nameContains', e.target.value)}
+          placeholder={isAuditTab ? (auditCategory === 'public' ? 'Search public links…' : 'Search external shares…') : 'Search files…'}
+          value={isAuditTab ? externalSearchTerm : filters.nameContains}
+          onChange={(e) => isAuditTab ? setExternalSearchTerm(e.target.value) : handleFilterChange('nameContains', e.target.value)}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -951,9 +1084,9 @@ export function Drive() {
                 </Box>
               </InputAdornment>
             ),
-            ...((tabValue === 0 ? externalSearchTerm : filters.nameContains) ? { endAdornment: (
+            ...((isAuditTab ? externalSearchTerm : filters.nameContains) ? { endAdornment: (
               <InputAdornment position="end">
-                <Box component="span" onClick={() => tabValue === 0 ? setExternalSearchTerm('') : handleFilterChange('nameContains', '')} sx={{ display: 'flex', cursor: 'pointer', color: (t: any) => textTertiary(t) }}>
+                <Box component="span" onClick={() => isAuditTab ? setExternalSearchTerm('') : handleFilterChange('nameContains', '')} sx={{ display: 'flex', cursor: 'pointer', color: (t: any) => textTertiary(t) }}>
                   <X size={16} strokeWidth={2} />
                 </Box>
               </InputAdornment>
@@ -973,7 +1106,7 @@ export function Drive() {
           })}
         />
 
-        {tabValue === 1 && (
+        {isFilesTab && (
           <Tooltip title="Filters">
             <IconButton
               size="small"
@@ -993,10 +1126,7 @@ export function Drive() {
         <Tooltip title="Refresh data">
           <IconButton
             size="small"
-            onClick={() => {
-              if (tabValue === 0) fetchExternalSharing();
-              else fetchFiles();
-            }}
+            onClick={refreshCurrent}
             aria-label="Refresh data"
             sx={{ color: (t: any) => textSecondary(t) }}
           >
@@ -1006,25 +1136,25 @@ export function Drive() {
 
         <Box sx={{ flex: 1 }} />
 
-        {selectedFiles.size > 0 && tabValue === 0 && (
+        {selectedFiles.size > 0 && isAuditTab && (
           <Button
             size="small"
             variant="contained"
             color="error"
-            onClick={handleBulkRemoveExternalShares}
+            onClick={handleBulkRemediate}
             disabled={bulkActionLoading}
             startIcon={bulkActionLoading ? <CircularProgress size={14} color="inherit" /> : <Ban size={15} strokeWidth={1.75} />}
             sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 30, px: 1.5 }}
           >
-            Remove {selectedFiles.size} selected
+            {bulkRemediateLabel} ({selectedFiles.size})
           </Button>
         )}
 
-        {tabValue === 0 && (
+        {isAuditTab && (
           <ExportButton
             iconOnly={!isMdUp}
-            tooltipTitle="Export external sharing report"
-            totalItems={filteredExternalReports.length}
+            tooltipTitle="Export report"
+            totalItems={reportTotal}
             selectedCount={selectedFiles.size}
             hasFilters={false}
             onExportSelectedCSV={handleExportExternalSelectedCSV}
@@ -1033,11 +1163,11 @@ export function Drive() {
             onExportSelectedDrive={handleExportExternalSharingDrive}
             onExportFilteredCSV={handleExportExternalSharing}
             onExportFilteredDrive={handleExportExternalSharingDrive}
-            disabled={externalSharingLoading}
+            disabled={reportLoading}
             triggerSx={exportToolbarButtonSx()}
           />
         )}
-        {tabValue === 1 && (
+        {isFilesTab && (
           <ExportButton
             iconOnly={!isMdUp}
             tooltipTitle="Export"
@@ -1057,7 +1187,7 @@ export function Drive() {
       </Box>
 
       {/* Filter panel (collapsible, All Files tab only) */}
-      {tabValue === 1 && (
+      {isFilesTab && (
         <>
           <Box sx={{ overflow: 'hidden', maxHeight: filtersVisible ? 320 : 0, transition: 'max-height 0.25s ease, opacity 0.2s ease', opacity: filtersVisible ? 1 : 0, mb: filtersVisible ? 2 : 0 }}>
             <Box sx={(theme: any) => ({
@@ -1166,7 +1296,7 @@ export function Drive() {
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>{loadError}</Alert>
       )}
 
-      {tabValue === 1 && (
+      {isFilesTab && (
         <Box>
             {loading && (
               <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -1178,29 +1308,8 @@ export function Drive() {
                 </Box>
               </Box>
             )}
-            {selectedFiles.size > 0 && (
-              <Box sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
-                <Button
-                  size="small"
-                  variant="contained"
-                  color="error"
-                  onClick={handleBulkRemoveExternalShares}
-                  disabled={bulkActionLoading}
-                  startIcon={bulkActionLoading ? <CircularProgress size={14} color="inherit" /> : <Ban size={15} strokeWidth={1.75} />}
-                  sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 30, px: 1.5 }}
-                >
-                  Remove {selectedFiles.size} selected
-                </Button>
-                <Tooltip title="Clear selection">
-                  <IconButton size="small" onClick={() => setSelectedFiles(new Set())} aria-label="Clear selection" sx={{ color: (t: any) => textSecondary(t) }}>
-                    <X size={18} strokeWidth={1.75} />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            )}
 
             <Box sx={{ overflowX: { xs: 'auto', md: 'visible' }, position: 'relative' }}>
-              {/* Mobile scroll indicator */}
               <Box
                 sx={{
                   display: { xs: 'block', md: 'none' },
@@ -1324,162 +1433,156 @@ export function Drive() {
         </Box>
       )}
 
-      {tabValue === 0 && (
+      {isAuditTab && (
         <Box>
-          {externalSharingLoading && (
+          {reportLoading && (
             <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
               <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
-                Scanning files for external shares...
+                Loading report…
               </Typography>
               <Box sx={{ flex: 1, maxWidth: 300 }}>
                 <LinearProgress variant="indeterminate" />
               </Box>
             </Box>
           )}
-          {!externalSharingLoading && (
-            <>
-                <Box sx={{ overflowX: { xs: 'auto', md: 'visible' }, position: 'relative' }}>
-                  {/* Mobile scroll indicator */}
-                  <Box
-                    sx={{
-                      display: { xs: 'block', md: 'none' },
-                      position: 'absolute',
-                      top: -24,
-                      right: 0,
-                      fontSize: '0.75rem',
-                      color: (t) => textSecondary(t),
-                      fontFamily: T.font,
-                      pointerEvents: 'none',
-                      zIndex: 1
-                    }}
-                  >
-                    ← Swipe to scroll →
-                  </Box>
-                  <ListShell>
-                    <ListHeaderRow>
-                      <Box sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }}>
-                        <Checkbox
-                          size="small"
-                          indeterminate={(() => {
-                            const selectedOnPage = paginatedExternalReports.filter((r: any) => r.file?.id && selectedFiles.has(r.file.id)).length;
-                            return selectedOnPage > 0 && selectedOnPage < paginatedExternalReports.length;
-                          })()}
-                          checked={
-                            paginatedExternalReports.length > 0 &&
-                            paginatedExternalReports.every((r: any) => r.file?.id && selectedFiles.has(r.file.id))
-                          }
-                          onChange={handleSelectAllExternal}
-                        />
+          <Box sx={{ overflowX: { xs: 'auto', md: 'visible' }, position: 'relative' }}>
+            <Box
+              sx={{
+                display: { xs: 'block', md: 'none' },
+                position: 'absolute',
+                top: -24,
+                right: 0,
+                fontSize: '0.75rem',
+                color: (t) => textSecondary(t),
+                fontFamily: T.font,
+                pointerEvents: 'none',
+                zIndex: 1
+              }}
+            >
+              ← Swipe to scroll →
+            </Box>
+            <ListShell>
+              <ListHeaderRow>
+                <Box sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }}>
+                  <Checkbox
+                    size="small"
+                    indeterminate={(() => {
+                      const selectedOnPage = reportRecords.filter((r) => selectedFiles.has(r.file.id)).length;
+                      return selectedOnPage > 0 && selectedOnPage < reportRecords.length;
+                    })()}
+                    checked={reportRecords.length > 0 && reportRecords.every((r) => selectedFiles.has(r.file.id))}
+                    onChange={handleSelectAllReport}
+                  />
+                </Box>
+                <Box sx={{ width: { xs: 200, sm: 180, md: '18%' }, minWidth: { xs: 200, sm: 180 } }}>
+                  <ColumnHeader label="File Name" columnId="efn" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                </Box>
+                <Box sx={{ width: { xs: 160, sm: 160, md: '16%' }, display: { xs: 'none', sm: 'block' } }}>
+                  <ColumnHeader label="Owner" columnId="eow" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 160, display: { xs: 'none', md: 'block' } }}>
+                  <ColumnHeader label={auditCategory === 'public' ? 'Access' : 'Shared With'} columnId="esw" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                </Box>
+                <Box sx={{ width: { xs: 100, sm: 104 }, display: { xs: 'none', lg: 'block' } }}>
+                  <ColumnHeader label="Modified" columnId="emo" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                </Box>
+                <Box sx={{ width: { xs: 120, sm: 140, md: '14%' }, display: { xs: 'none', sm: 'block' } }}>
+                  <ColumnHeader label="Location" columnId="eloc" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                </Box>
+                <Box sx={{ width: 48, flexShrink: 0 }}>
+                  <ColumnHeader label="Open" columnId="eop" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} align="center" />
+                </Box>
+                <Box sx={{ width: 52, flexShrink: 0 }}>
+                  <ColumnHeader label="Perm" columnId="epm" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} align="center" />
+                </Box>
+              </ListHeaderRow>
+              {reportRecords.length === 0 ? (
+                <Box sx={{ py: 6, textAlign: 'center' }}>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>
+                    {reportLoading
+                      ? 'Loading…'
+                      : scanStatus?.status === 'never-scanned'
+                        ? 'No scan yet — click "Run scan" to audit external sharing.'
+                        : auditCategory === 'public'
+                          ? 'No public (Anyone with link) files found.'
+                          : 'No externally shared files found.'}
+                  </Typography>
+                </Box>
+              ) : (
+                reportRecords.map((record, idx) => {
+                  const f = record.file;
+                  const id = f.id;
+                  const isSelected = Boolean(id && selectedFiles.has(id));
+                  return (
+                    <ListDataRow key={id || f.name} last={idx === reportRecords.length - 1} selected={isSelected}>
+                      <Checkbox size="small" checked={isSelected} onChange={() => handleSelectFile(id)} sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }} />
+                      <Box sx={{ width: { xs: 200, sm: 180, md: '18%' }, minWidth: { xs: 200, sm: 180 }, overflow: 'hidden' }}>
+                        <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (th) => pick(th, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name ?? '—'}</Typography>
                       </Box>
-                      <Box sx={{ width: { xs: 200, sm: 180, md: '18%' }, minWidth: { xs: 200, sm: 180 } }}>
-                        <ColumnHeader label="File Name" columnId="efn" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                      <Box sx={{ width: { xs: 160, sm: 160, md: '16%' }, minWidth: { xs: 160, sm: 160 }, display: { xs: 'none', sm: 'block' }, overflow: 'hidden' }}>
+                        <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {f.ownerName || f.owner || '—'}
+                        </Typography>
                       </Box>
-                      <Box sx={{ flex: 1, display: { xs: 'none', sm: 'block' } }}>
-                        <ColumnHeader label="Owner" columnId="eow" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
-                      </Box>
-                      <Box sx={{ width: { xs: 100, sm: 104 }, display: { xs: 'none', md: 'block' } }}>
-                        <ColumnHeader label="Created" columnId="ecr" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
-                      </Box>
-                      <Box sx={{ width: { xs: 100, sm: 104 }, display: { xs: 'none', lg: 'block' } }}>
-                        <ColumnHeader label="Modified" columnId="emo" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
-                      </Box>
-                      <Box sx={{ width: { xs: 80, sm: 80 }, display: { xs: 'none', sm: 'block' } }}>
-                        <ColumnHeader label="Size" columnId="esz" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
-                      </Box>
-                      <Box sx={{ width: { xs: 120, sm: 140, md: '14%' }, display: { xs: 'none', sm: 'block' } }}>
-                        <ColumnHeader label="Location" columnId="eloc" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
-                      </Box>
-                      <Box sx={{ width: 48, flexShrink: 0 }}>
-                        <ColumnHeader label="Open" columnId="eop" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} align="center" />
-                      </Box>
-                      <Box sx={{ width: 52, flexShrink: 0 }}>
-                        <ColumnHeader label="Perm" columnId="epm" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} align="center" />
-                      </Box>
-                    </ListHeaderRow>
-                {filteredExternalReports.length === 0 ? (
-                  <Box sx={{ py: 6, textAlign: 'center' }}>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>{externalSharingLoading ? 'Loading…' : 'No external sharing data'}</Typography>
-                  </Box>
-                ) : (
-                  paginatedExternalReports.map((report: any, idx: number) => {
-                    const f = report.file ?? {};
-                    const id = f.id ?? '';
-                    const isSelected = Boolean(id && selectedFiles.has(id));
-                    return (
-                      <ListDataRow key={id || report.file?.name} last={idx === paginatedExternalReports.length - 1} selected={isSelected}>
-                        {id ? (
-                          <Checkbox size="small" checked={isSelected} onChange={() => handleSelectFile(id)} sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }} />
+                      <Box sx={{ flex: 1, minWidth: 160, display: { xs: 'none', md: 'block' }, overflow: 'hidden' }}>
+                        {auditCategory === 'public' ? (
+                          <DotLabel dotColor="#ef4444">{publicAccessLabel(record)}</DotLabel>
                         ) : (
-                          <Box sx={{ width: 34, flexShrink: 0, mr: 0.5 }} />
-                        )}
-                        <Box sx={{ width: { xs: 200, sm: 180, md: '18%' }, minWidth: { xs: 200, sm: 180 }, overflow: 'hidden' }}>
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (th) => pick(th, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name ?? '—'}</Typography>
-                        </Box>
-                        <Box sx={{ flex: 1, minWidth: 0, display: { xs: 'none', sm: 'block' } }}>
-                          {f.owners?.length ? (
-                            f.owners.map((o: any) => (
-                              <Typography key={o.emailAddress} sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), display: 'block' }}>
-                                {o.displayName || o.emailAddress}
-                              </Typography>
-                            ))
-                          ) : (
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>—</Typography>
-                          )}
-                        </Box>
-                        <Box sx={{ width: { xs: 100, sm: 104 }, flexShrink: 0, display: { xs: 'none', md: 'block' } }}>
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{f.createdTime ? new Date(f.createdTime).toLocaleDateString() : '—'}</Typography>
-                        </Box>
-                        <Box sx={{ width: { xs: 100, sm: 104 }, flexShrink: 0, display: { xs: 'none', lg: 'block' } }}>
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '—'}</Typography>
-                        </Box>
-                        <Box sx={{ width: { xs: 80, sm: 80 }, flexShrink: 0, display: { xs: 'none', sm: 'block' } }}>
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{f.size != null ? formatFileSize(f.size) : '—'}</Typography>
-                        </Box>
-                        <Box sx={{ width: { xs: 120, sm: 140, md: '14%' }, minWidth: { xs: 120, sm: 140 }, display: { xs: 'none', sm: 'block' } }}>
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {getFileLocationLabel({ ...f, path: f.path ?? '' } as DriveFile)}
-                          </Typography>
-                        </Box>
-                        <Box sx={{ width: 48, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                          {f.webViewLink ? (
-                            <Tooltip title="Open in Google Drive">
-                              <Link href={f.webViewLink} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
-                                <ExternalLink size={16} strokeWidth={1.75} />
-                              </Link>
-                            </Tooltip>
-                          ) : (
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t) }}>—</Typography>
-                          )}
-                        </Box>
-                        <Box sx={{ width: 52, flexShrink: 0, display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
-                          <Tooltip title="Manage Permissions">
-                            <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); handleOpenPermissionDialogForReport(report); }} aria-label="Manage Permissions" sx={{ p: 0.5 }}>
-                              <Pencil size={16} strokeWidth={1.75} />
-                            </IconButton>
+                          <Tooltip title={sharedWithLabel(record)} placement="top">
+                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {sharedWithLabel(record)}
+                            </Typography>
                           </Tooltip>
-                        </Box>
-                      </ListDataRow>
-                    );
-                  })
-                )}
-                </ListShell>
-              </Box>
-              {filteredExternalReports.length > 0 && (
-                <TablePagination
-                  component="div"
-                  count={filteredExternalReports.length}
-                  page={page}
-                  onPageChange={(_, newPage) => setPage(newPage)}
-                  rowsPerPage={rowsPerPage}
-                  onRowsPerPageChange={(e) => {
-                    setRowsPerPage(parseInt(e.target.value, 10));
-                    setPage(0);
-                  }}
-                  rowsPerPageOptions={[25, 50, 100]}
-                  {...tablePaginationProps(muiTheme)}
-                />
+                        )}
+                      </Box>
+                      <Box sx={{ width: { xs: 100, sm: 104 }, flexShrink: 0, display: { xs: 'none', lg: 'block' } }}>
+                        <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '—'}</Typography>
+                      </Box>
+                      <Box sx={{ width: { xs: 120, sm: 140, md: '14%' }, minWidth: { xs: 120, sm: 140 }, display: { xs: 'none', sm: 'block' } }}>
+                        <Tooltip title={f.path || ''} placement="top">
+                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {getFileLocationLabel(f)}
+                          </Typography>
+                        </Tooltip>
+                      </Box>
+                      <Box sx={{ width: 48, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                        {f.webViewLink ? (
+                          <Tooltip title="Open in Google Drive">
+                            <Link href={f.webViewLink} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
+                              <ExternalLink size={16} strokeWidth={1.75} />
+                            </Link>
+                          </Tooltip>
+                        ) : (
+                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t) }}>—</Typography>
+                        )}
+                      </Box>
+                      <Box sx={{ width: 52, flexShrink: 0, display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
+                        <Tooltip title="Manage Permissions">
+                          <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); handleOpenPermissionDialogForRecord(record); }} aria-label="Manage Permissions" sx={{ p: 0.5 }}>
+                            <Pencil size={16} strokeWidth={1.75} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </ListDataRow>
+                  );
+                })
               )}
-            </>
+            </ListShell>
+          </Box>
+          {reportTotal > 0 && (
+            <TablePagination
+              component="div"
+              count={reportTotal}
+              page={page}
+              onPageChange={(_, newPage) => setPage(newPage)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(e) => {
+                setRowsPerPage(parseInt(e.target.value, 10));
+                setPage(0);
+              }}
+              rowsPerPageOptions={[25, 50, 100]}
+              {...tablePaginationProps(muiTheme)}
+            />
           )}
         </Box>
       )}

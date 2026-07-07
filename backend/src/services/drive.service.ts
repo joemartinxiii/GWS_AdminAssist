@@ -1,5 +1,8 @@
 import { WorkspaceService } from './workspace.service';
 import { mapWithConcurrency } from '../utils/concurrency';
+import { classifyPermissions, PermissionLite } from '../utils/externalSharing';
+
+export type RemediationMode = 'all' | 'public' | 'external';
 
 // Bounded concurrency for per-file permission/classification work during bulk
 // scans. Keeps wall-clock low without issuing thousands of simultaneous Drive
@@ -83,35 +86,29 @@ export class DriveService extends WorkspaceService {
     return query;
   }
 
+  /**
+   * Legacy-shaped external classification used by getAllFiles filtering. Now
+   * delegates to the shared classifier (which uses the WORKSPACE_DOMAIN +
+   * GWS_ALLOWED_DOMAINS union) so behavior matches the audit/scan/remediation
+   * paths. `anyone` surfaces as the sentinel domain `'anyone'` unless a specific
+   * domainFilter is applied (preserving prior behavior).
+   */
   classifyExternalSharing(
     permissions: DriveFile['permissions'],
-    workspaceDomain: string,
     domainFilter?: string
   ): { externalDomains: string[]; externalEmails: string[] } {
-    const externalDomains: string[] = [];
-    const externalEmails: string[] = [];
-    const wsDomain = workspaceDomain.toLowerCase();
-    const filterDomain = (domainFilter || '').toLowerCase();
+    const c = classifyPermissions(permissions);
+    const filter = (domainFilter || '').toLowerCase();
 
-    for (const perm of permissions) {
-      if (perm.type === 'domain' && perm.domain) {
-        const permDomain = perm.domain.toLowerCase();
-        if (permDomain !== wsDomain && (!filterDomain || permDomain === filterDomain)) {
-          externalDomains.push(perm.domain);
-        }
-      } else if ((perm.type === 'user' || perm.type === 'group') && perm.emailAddress) {
-        const emailDomain = perm.emailAddress.split('@')[1]?.toLowerCase();
-        if (emailDomain && emailDomain !== wsDomain && (!filterDomain || emailDomain === filterDomain)) {
-          externalEmails.push(perm.emailAddress);
-          if (!externalDomains.some((d) => d.toLowerCase() === emailDomain)) {
-            externalDomains.push(emailDomain);
-          }
-        }
-      } else if (perm.type === 'anyone' && !filterDomain) {
-        if (!externalDomains.includes('anyone')) {
-          externalDomains.push('anyone');
-        }
-      }
+    let externalDomains = [...c.externalDomains];
+    // Groups were historically reported alongside user emails here.
+    let externalEmails = [...c.externalEmails, ...c.externalGroups];
+
+    if (filter) {
+      externalDomains = externalDomains.filter((d) => d.toLowerCase() === filter);
+      externalEmails = externalEmails.filter((e) => e.split('@')[1]?.toLowerCase() === filter);
+    } else if (c.isPublic) {
+      externalDomains = ['anyone', ...externalDomains];
     }
 
     return { externalDomains, externalEmails };
@@ -411,7 +408,6 @@ export class DriveService extends WorkspaceService {
     onProgress?: (processed: number, total?: number) => void
   ): Promise<DriveFile[]> {
     await this.initialize(userEmail);
-    const workspaceDomain = process.env.WORKSPACE_DOMAIN || '';
     const [candidates, sharedDriveNames] = await Promise.all([
       this.collectAuditCandidates(
         this.buildDriveQuery(filter),
@@ -426,7 +422,6 @@ export class DriveService extends WorkspaceService {
     const passesFilter = (driveFile: DriveFile): boolean => {
       const { externalDomains, externalEmails } = this.classifyExternalSharing(
         driveFile.permissions,
-        workspaceDomain,
         filter?.domain
       );
       if (filter?.owner && !driveFile.owners.some((o) => o.emailAddress === filter.owner || o.emailAddress?.includes(filter.owner!))) return false;
@@ -484,7 +479,6 @@ export class DriveService extends WorkspaceService {
     onProgress?: (processed: number) => void
   ): Promise<ExternalSharingReport[]> {
     await this.initialize(userEmail);
-    const workspaceDomain = process.env.WORKSPACE_DOMAIN || '';
     const sharedDrivePermissionsCache = new Map<string, DriveFile['permissions']>();
     const [candidates, sharedDriveNames] = await Promise.all([
       this.collectAuditCandidates('trashed=false', EXTERNAL_SCAN_MAX, onProgress),
@@ -498,7 +492,6 @@ export class DriveService extends WorkspaceService {
       }
       const { externalDomains, externalEmails } = this.classifyExternalSharing(
         driveFile.permissions,
-        workspaceDomain,
         domain
       );
       if (externalDomains.length > 0 || externalEmails.length > 0) {
@@ -731,53 +724,78 @@ export class DriveService extends WorkspaceService {
   }
 
   /**
-   * Remove all external shares from a file
+   * Remove external and/or public shares from a single file.
+   *
+   * mode:
+   *  - 'public'   → strip only "anyone / anyone with the link" permissions.
+   *  - 'external' → strip external users, groups, and domains (not `anyone`).
+   *  - 'all'      → both of the above.
+   *
+   * Uses the shared classifier so it agrees exactly with the audit/scan view,
+   * and (unlike the previous implementation) correctly removes external
+   * **groups** and honors the WORKSPACE_DOMAIN + GWS_ALLOWED_DOMAINS union.
    */
-  async removeAllExternalShares(userEmail: string, fileId: string): Promise<{ removed: number; errors: number }> {
+  async removeExternalShares(
+    userEmail: string,
+    fileId: string,
+    mode: RemediationMode = 'all'
+  ): Promise<{ removed: number; errors: number }> {
     await this.initialize(userEmail);
 
-    const workspaceDomain = process.env.WORKSPACE_DOMAIN || '';
-    const permissions = await this.getFilePermissions(userEmail, fileId);
-    
+    // Shared-drive files require useDomainAdminAccess to list permissions.
+    let driveId: string | undefined;
+    try {
+      const meta = await this.withRetry(() =>
+        this.drive.files.get({
+          fileId,
+          supportsAllDrives: true,
+          useDomainAdminAccess: true,
+          fields: 'driveId',
+        })
+      );
+      driveId = meta.data.driveId || undefined;
+    } catch {
+      // Best effort — fall back to My Drive listing semantics.
+    }
+
+    const permissions = await this.getFilePermissions(userEmail, fileId, !!driveId);
+    const classification = classifyPermissions(permissions);
+
+    const targets: PermissionLite[] = [];
+    if (mode === 'all' || mode === 'public') targets.push(...classification.publicPermissions);
+    if (mode === 'all' || mode === 'external') targets.push(...classification.externalPermissions);
+
     let removed = 0;
     let errors = 0;
 
-    for (const perm of permissions) {
-      // Skip owner permissions
-      if (perm.role === 'owner') continue;
-
-      // Check if it's an external share
-      let isExternal = false;
-      if (perm.type === 'domain' && perm.domain && perm.domain !== workspaceDomain) {
-        isExternal = true;
-      } else if (perm.type === 'user' && perm.emailAddress) {
-        const emailDomain = perm.emailAddress.split('@')[1];
-        if (emailDomain !== workspaceDomain) {
-          isExternal = true;
-        }
-      } else if (perm.type === 'anyone') {
-        // Anyone with link is considered external
-        isExternal = true;
-      }
-
-      if (isExternal && perm.id) {
-        try {
-          await this.deleteFilePermission(userEmail, fileId, perm.id);
-          removed++;
-        } catch (error) {
-          console.error(`Error removing permission ${perm.id} from file ${fileId}:`, error);
-          errors++;
-        }
+    for (const perm of targets) {
+      if (!perm.id) continue;
+      if (String(perm.role || '').toLowerCase() === 'owner') continue;
+      try {
+        await this.deleteFilePermission(userEmail, fileId, perm.id, driveId);
+        removed++;
+      } catch (error) {
+        console.error(`Error removing permission ${perm.id} from file ${fileId}:`, error);
+        errors++;
       }
     }
 
     return { removed, errors };
   }
 
+  /** Back-compat alias: remove every external + public share from a file. */
+  async removeAllExternalShares(userEmail: string, fileId: string): Promise<{ removed: number; errors: number }> {
+    return this.removeExternalShares(userEmail, fileId, 'all');
+  }
+
   /**
-   * Bulk remove external shares from multiple files
+   * Bulk remove external and/or public shares from multiple files.
    */
-  async bulkRemoveExternalShares(userEmail: string, fileIds: string[]): Promise<{
+  async bulkRemoveExternalShares(
+    userEmail: string,
+    fileIds: string[],
+    mode: RemediationMode = 'all'
+  ): Promise<{
     total: number;
     success: number;
     failed: number;
@@ -789,7 +807,7 @@ export class DriveService extends WorkspaceService {
 
     for (const fileId of fileIds) {
       try {
-        const result = await this.removeAllExternalShares(userEmail, fileId);
+        const result = await this.removeExternalShares(userEmail, fileId, mode);
         results.push({
           fileId,
           removed: result.removed,

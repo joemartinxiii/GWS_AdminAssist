@@ -179,8 +179,30 @@ Runtime configuration comes from Secret Manager, injected by Cloud Run. See [SEC
 - `WORKSPACE_DOMAIN` ← `app-workspace-domain:latest`
 - `GWS_ALLOWED_DOMAINS` ← `app-allowed-domains:latest`
 - `GCP_PROJECT_ID`, `SERVICE_ACCOUNT_EMAIL` set as literal env vars
+- `SCAN_BUCKET`, `SCAN_JOB_NAME`, `SCAN_REGION` set as literal env vars (external-sharing scan — see below)
 - **Keyless domain-wide delegation** — no service-account key is created or stored. Cloud Run runs as the runtime SA, which signs its own delegation tokens via the IAM Credentials API (`signJwt`); the SA holds `roles/iam.serviceAccountTokenCreator` on itself
 - **Optional:** export `SIGNATURE_TEMPLATE_BUCKET=<bucket>` before deploying to persist the org signature template in GCS (survives redeploys). The deploy script creates the bucket and grants the runtime SA `roles/storage.objectAdmin`. Without it, the template uses ephemeral local disk.
+
+---
+
+## External-sharing scan (on-demand Cloud Run Job)
+
+The **External Shares** / **Public Links** tabs on the Drive page audit *every* user's My Drive plus all Shared Drives. Google has no domain-wide "list all files" API, so the scan impersonates each user via domain-wide delegation — slow and bursty work that must not block the web request. The deploy therefore provisions a second Cloud Run resource:
+
+| Resource | Name | Purpose |
+| --- | --- | --- |
+| Cloud Run **Job** | `workspace-admin-scan` | Runs `node backend/dist/jobs/externalScan.js` from the **same image**. Triggered on demand by the web app. |
+| GCS bucket | `<project>-workspace-admin-scans` | Stores the categorized report (`latest.json`), progress (`status.json`), and immutable per-scan snapshots under `history/`. |
+
+The deploy (`scripts/deploy-cloudshell.sh`, `deploy.sh`, and the GitHub workflow) automatically:
+
+- creates the bucket and grants the runtime SA `roles/storage.objectAdmin` on it;
+- grants the runtime SA `roles/run.developer` so the web service can start the job via the Cloud Run Admin API;
+- creates/updates the job with `--task-timeout 3600 --max-retries 1` and env `SCAN_BUCKET`, `SCAN_USER_CONCURRENCY` (default 15), plus the `WORKSPACE_DOMAIN`/`GWS_ALLOWED_DOMAINS` secrets.
+
+**Usage:** open Drive → *External Shares* (or *Public Links*) → **Run scan** (super admin only). The header shows *Last scan {date}* and live progress. Results are cached, so subsequent visits load instantly. Re-scan as often as you like — this tool is typically run quarterly.
+
+**Cost:** idle cost is ~$0 (the job scales to zero and the bucket holds a few small JSON blobs). Each scan bills only for the minutes it runs. Tune throughput/cost with `SCAN_USER_CONCURRENCY`.
 
 ---
 

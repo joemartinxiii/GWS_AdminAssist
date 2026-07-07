@@ -39,4 +39,6 @@ RUNTIME_SA="workspace-admin-sa"
 DEPLOY_SA="github-deploy-sa"
 ARTIFACT_REPO="workspace-admin-repo"
 CLOUD_RUN_SERVICE="workspace-admin"
+# On-demand external-sharing scan worker (Cloud Run Job, same image).
+CLOUD_RUN_SCAN_JOB="workspace-admin-scan"
 DEFAULT_REGION="us-central1"

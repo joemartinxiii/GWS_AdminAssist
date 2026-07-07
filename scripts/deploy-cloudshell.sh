@@ -19,6 +19,11 @@ fi
 SERVICE_NAME="$CLOUD_RUN_SERVICE"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/${SERVICE_NAME}"
 
+# External-sharing scan: on-demand Cloud Run Job + GCS bucket for cached reports.
+# Bucket defaults to <project>-workspace-admin-scans; override with SCAN_BUCKET.
+SCAN_BUCKET="${SCAN_BUCKET:-${PROJECT_ID}-workspace-admin-scans}"
+SCAN_USER_CONCURRENCY="${SCAN_USER_CONCURRENCY:-15}"
+
 log "Deploying ${SERVICE_NAME} to Cloud Run via Cloud Build..."
 gcloud config set project "$PROJECT_ID" --quiet
 
@@ -68,7 +73,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --max-instances 2 \
   --timeout 300 \
   --service-account "${RUNTIME_SA_EMAIL}" \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=${RUNTIME_SA_EMAIL}" \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=${RUNTIME_SA_EMAIL},SCAN_BUCKET=${SCAN_BUCKET},SCAN_JOB_NAME=${CLOUD_RUN_SCAN_JOB},SCAN_REGION=${REGION}" \
   --set-secrets "GOOGLE_CLIENT_ID=oauth-client-id:latest,GOOGLE_CLIENT_SECRET=oauth-client-secret:latest,GOOGLE_REDIRECT_URI=oauth-redirect-uri:latest,JWT_SECRET=app-jwt-secret:latest,WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
   --allow-unauthenticated \
   --no-invoker-iam-check \
@@ -87,10 +92,44 @@ REDIRECT_VER="$(gcloud secrets versions list oauth-redirect-uri --filter='state:
 
 gcloud run services update "$SERVICE_NAME" \
   --region "$REGION" \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=${RUNTIME_SA_EMAIL},CORS_ORIGIN=${SERVICE_URL}" \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=${RUNTIME_SA_EMAIL},CORS_ORIGIN=${SERVICE_URL},SCAN_BUCKET=${SCAN_BUCKET},SCAN_JOB_NAME=${CLOUD_RUN_SCAN_JOB},SCAN_REGION=${REGION}" \
   --update-secrets "GOOGLE_REDIRECT_URI=oauth-redirect-uri:${REDIRECT_VER}" \
   --no-invoker-iam-check \
   --quiet
+
+# --- External-sharing scan: GCS bucket, IAM, and Cloud Run Job --------------
+# The scan enumerates every user via DWD and writes a categorized report to
+# GCS. It runs as an on-demand Cloud Run Job (idle cost ~$0; billed only while
+# scanning). The web service triggers it via the Cloud Run Admin API, so the
+# runtime SA needs run.developer (execute jobs) + objectAdmin on the bucket.
+log "Configuring external-sharing scan (bucket + Cloud Run Job)..."
+gcloud storage buckets describe "gs://${SCAN_BUCKET}" &>/dev/null \
+  || gcloud storage buckets create "gs://${SCAN_BUCKET}" --project="$PROJECT_ID" --location="$REGION" --uniform-bucket-level-access --quiet
+gcloud storage buckets add-iam-policy-binding "gs://${SCAN_BUCKET}" \
+  --member="serviceAccount:${RUNTIME_SA_EMAIL}" \
+  --role="roles/storage.objectAdmin" --quiet >/dev/null 2>&1 || \
+  warn "Could not grant objectAdmin on gs://${SCAN_BUCKET}"
+
+# Allow the web service's runtime SA to execute the scan job.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${RUNTIME_SA_EMAIL}" \
+  --role="roles/run.developer" --quiet >/dev/null 2>&1 || \
+  warn "Could not grant roles/run.developer to ${RUNTIME_SA_EMAIL}"
+
+# Create/update the scan job from the SAME image, overriding the entrypoint.
+gcloud run jobs deploy "$CLOUD_RUN_SCAN_JOB" \
+  --image "$DEPLOY_IMAGE" \
+  --region "$REGION" \
+  --service-account "${RUNTIME_SA_EMAIL}" \
+  --command node \
+  --args backend/dist/jobs/externalScan.js \
+  --max-retries 1 \
+  --task-timeout 3600 \
+  --memory 1Gi \
+  --cpu 1 \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=${RUNTIME_SA_EMAIL},SCAN_BUCKET=${SCAN_BUCKET},SCAN_USER_CONCURRENCY=${SCAN_USER_CONCURRENCY}" \
+  --set-secrets "WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
+  --quiet || warn "Could not deploy Cloud Run Job ${CLOUD_RUN_SCAN_JOB}; external-sharing scans will be unavailable until it is created."
 
 # Optional durable storage for the org signature template (survives redeploys).
 # Enable by exporting SIGNATURE_TEMPLATE_BUCKET before running this script; the

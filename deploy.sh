@@ -8,7 +8,10 @@ set -e
 PROJECT_ID="${1:-${PROJECT_ID:-${GCP_PROJECT_ID:-}}}"
 REGION="${2:-us-central1}"
 SERVICE_NAME="workspace-admin"
+SCAN_JOB_NAME="workspace-admin-scan"
 IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/workspace-admin-repo/${SERVICE_NAME}:latest"
+SCAN_BUCKET="${SCAN_BUCKET:-${PROJECT_ID}-workspace-admin-scans}"
+SCAN_USER_CONCURRENCY="${SCAN_USER_CONCURRENCY:-15}"
 
 if [ -z "$PROJECT_ID" ]; then
   echo "❌ Error: PROJECT_ID is required"
@@ -67,7 +70,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --max-instances 2 \
   --timeout 300 \
   --service-account "workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com,SCAN_BUCKET=${SCAN_BUCKET},SCAN_JOB_NAME=${SCAN_JOB_NAME},SCAN_REGION=${REGION}" \
   --set-secrets "GOOGLE_CLIENT_ID=oauth-client-id:latest,GOOGLE_CLIENT_SECRET=oauth-client-secret:latest,GOOGLE_REDIRECT_URI=oauth-redirect-uri:latest,JWT_SECRET=app-jwt-secret:latest,WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
   --allow-unauthenticated \
   --no-invoker-iam-check \
@@ -86,10 +89,34 @@ REDIRECT_VER="$(gcloud secrets versions list oauth-redirect-uri --filter='state:
 # Must include ALL critical vars - --set-env-vars replaces previous ones
 gcloud run services update "$SERVICE_NAME" \
   --region "$REGION" \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com,CORS_ORIGIN=${SERVICE_URL}" \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com,CORS_ORIGIN=${SERVICE_URL},SCAN_BUCKET=${SCAN_BUCKET},SCAN_JOB_NAME=${SCAN_JOB_NAME},SCAN_REGION=${REGION}" \
   --update-secrets "GOOGLE_REDIRECT_URI=oauth-redirect-uri:${REDIRECT_VER}" \
   --no-invoker-iam-check \
   --quiet
+
+# External-sharing scan: GCS bucket + IAM + on-demand Cloud Run Job (same image).
+echo "Configuring external-sharing scan (bucket + Cloud Run Job)..."
+gcloud storage buckets describe "gs://${SCAN_BUCKET}" &>/dev/null \
+  || gcloud storage buckets create "gs://${SCAN_BUCKET}" --project="$PROJECT_ID" --location="$REGION" --uniform-bucket-level-access --quiet
+gcloud storage buckets add-iam-policy-binding "gs://${SCAN_BUCKET}" \
+  --member="serviceAccount:workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/storage.objectAdmin" --quiet >/dev/null 2>&1 || echo "⚠️ Could not grant objectAdmin on gs://${SCAN_BUCKET}"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/run.developer" --quiet >/dev/null 2>&1 || echo "⚠️ Could not grant roles/run.developer"
+gcloud run jobs deploy "$SCAN_JOB_NAME" \
+  --image "$IMAGE_NAME" \
+  --region "$REGION" \
+  --service-account "workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --command node \
+  --args backend/dist/jobs/externalScan.js \
+  --max-retries 1 \
+  --task-timeout 3600 \
+  --memory 1Gi \
+  --cpu 1 \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com,SCAN_BUCKET=${SCAN_BUCKET},SCAN_USER_CONCURRENCY=${SCAN_USER_CONCURRENCY}" \
+  --set-secrets "WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
+  --quiet || echo "⚠️ Could not deploy Cloud Run Job ${SCAN_JOB_NAME}; external-sharing scans will be unavailable until it exists."
 
 echo "Public browser access: --no-invoker-iam-check (org iam.allowedPolicyMemberDomains blocks allUsers IAM binding)."
 echo "If a redeploy drops it: gcloud run services update $SERVICE_NAME --region=$REGION --project=$PROJECT_ID --no-invoker-iam-check"

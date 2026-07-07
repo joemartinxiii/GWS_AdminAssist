@@ -10,6 +10,7 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: us-central1
   SERVICE_NAME: workspace-admin
+  SCAN_JOB: workspace-admin-scan
   REPO: workspace-admin-repo
 
 jobs:
@@ -75,7 +76,7 @@ jobs:
             --max-instances 2 \
             --timeout 300 \
             --service-account "workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com" \
-            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com" \
+            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com,SCAN_BUCKET=${{ env.PROJECT_ID }}-workspace-admin-scans,SCAN_JOB_NAME=${{ env.SCAN_JOB }},SCAN_REGION=${{ env.REGION }}" \
             --set-secrets "GOOGLE_CLIENT_ID=oauth-client-id:latest,GOOGLE_CLIENT_SECRET=oauth-client-secret:latest,GOOGLE_REDIRECT_URI=oauth-redirect-uri:latest,JWT_SECRET=app-jwt-secret:latest,WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
             --allow-unauthenticated \
             --no-invoker-iam-check \
@@ -87,10 +88,35 @@ jobs:
           REDIRECT_URI="${SERVICE_URL}/api/auth/callback"
           gcloud run services update "${{ env.SERVICE_NAME }}" \
             --region "${{ env.REGION }}" \
-            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com,CORS_ORIGIN=${SERVICE_URL}" \
+            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com,CORS_ORIGIN=${SERVICE_URL},SCAN_BUCKET=${{ env.PROJECT_ID }}-workspace-admin-scans,SCAN_JOB_NAME=${{ env.SCAN_JOB }},SCAN_REGION=${{ env.REGION }}" \
             --no-invoker-iam-check \
             --quiet
           echo -n "$REDIRECT_URI" | gcloud secrets versions add oauth-redirect-uri --data-file=- --quiet
           echo "Service URL: $SERVICE_URL"
           echo "Redirect URI: $REDIRECT_URI"
           echo "Ensure this redirect URI is registered on your OAuth Web client if the URL changed."
+
+      - name: Configure external-sharing scan (bucket + Cloud Run Job)
+        run: |
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:${GITHUB_SHA}"
+          SCAN_BUCKET="${{ env.PROJECT_ID }}-workspace-admin-scans"
+          RUNTIME_SA="workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
+          gcloud storage buckets describe "gs://${SCAN_BUCKET}" &>/dev/null \
+            || gcloud storage buckets create "gs://${SCAN_BUCKET}" --project="${{ env.PROJECT_ID }}" --location="${{ env.REGION }}" --uniform-bucket-level-access --quiet
+          gcloud storage buckets add-iam-policy-binding "gs://${SCAN_BUCKET}" \
+            --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin" --quiet || true
+          gcloud projects add-iam-policy-binding "${{ env.PROJECT_ID }}" \
+            --member="serviceAccount:${RUNTIME_SA}" --role="roles/run.developer" --quiet || true
+          gcloud run jobs deploy "${{ env.SCAN_JOB }}" \
+            --image "$IMAGE" \
+            --region "${{ env.REGION }}" \
+            --service-account "${RUNTIME_SA}" \
+            --command node \
+            --args backend/dist/jobs/externalScan.js \
+            --max-retries 1 \
+            --task-timeout 3600 \
+            --memory 1Gi \
+            --cpu 1 \
+            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_EMAIL=${RUNTIME_SA},SCAN_BUCKET=${SCAN_BUCKET},SCAN_USER_CONCURRENCY=15" \
+            --set-secrets "WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
+            --quiet
