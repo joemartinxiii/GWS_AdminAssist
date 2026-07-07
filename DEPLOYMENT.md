@@ -1,5 +1,7 @@
 # Google Workspace Admin Assist - Professional Deployment
 
+> **New tenant?** Start with **[docs/NEW_DEPLOY.md](./docs/NEW_DEPLOY.md)** — one Cloud Shell command automates GCP setup, guides GWS DWD, and deploys.
+
 **This should take under 30 minutes for anyone.**
 
 This is how real professional developers deploy React + Node.js apps to Cloud Run in 2026: simple, reliable, with clear steps and local verification before cloud deployment.
@@ -30,7 +32,7 @@ chmod +x setup-secrets.sh
 ./setup-secrets.sh admin-assist-492920
 ```
 
-**Run all the IAM commands the script prints at the end.**
+> **Note:** `setup-secrets.sh` applies IAM bindings automatically. For greenfield setup, use `bash scripts/bootstrap-tenant.sh` instead (see [docs/NEW_DEPLOY.md](./docs/NEW_DEPLOY.md)).
 
 ## Step 2: Deploy
 

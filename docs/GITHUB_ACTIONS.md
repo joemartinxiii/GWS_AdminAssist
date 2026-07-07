@@ -52,8 +52,9 @@ In GitHub: **Settings → Secrets and variables → Actions → New repository s
 
 ### 3. Prerequisites (same as local deploy)
 
-Before the first CI deploy succeeds, you must already have run locally once:
+Before the first CI deploy succeeds, you must already have run the bootstrap wizard or secrets setup:
 
+- `bash scripts/bootstrap-tenant.sh` — **recommended** for new tenants (see [NEW_DEPLOY.md](./NEW_DEPLOY.md)), or
 - `./setup-secrets.sh` — OAuth, JWT, workspace domain, service account key in Secret Manager
 - Domain-wide delegation configured in Google Workspace Admin
 - OAuth Web client redirect URI (updated automatically post-deploy; register in Console if URL changes)

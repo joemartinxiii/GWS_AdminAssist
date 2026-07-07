@@ -149,22 +149,17 @@ The app stays within GCP's free tier for most small-to-medium Google Workspace o
 
 ### Deployment
 
-⚠️ **IMPORTANT**: Review **[SECURITY.md](./SECURITY.md)** and run `npm run test:security` before deployment to ensure all security measures are properly configured.
+> **New tenant (greenfield):** Use the Cloud Shell bootstrap wizard — see **[docs/NEW_DEPLOY.md](./docs/NEW_DEPLOY.md)**.
 
-1. **Build and Deploy**:
-   ```bash
-   docker build -t gcr.io/PROJECT_ID/workspace-admin:latest .
-   docker push gcr.io/PROJECT_ID/workspace-admin:latest
-   gcloud run deploy workspace-admin \
-     --image gcr.io/PROJECT_ID/workspace-admin:latest \
-     --platform managed \
-     --region us-central1 \
-     --memory 1Gi \
-     --cpu 1 \
-     --min-instances 0 \
-     --max-instances 2 \
-     --allow-unauthenticated
-   ```
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/joemartinxiii/GWS_AdminAssist.git&cloudshell_open_in_editor=true&cloudshell_working_dir=GWS_AdminAssist)
+
+```bash
+bash scripts/bootstrap-tenant.sh --domain yourcompany.com --project your-gcp-project --admin you@yourcompany.com
+```
+
+**Ongoing deploys:** push to `main` or run GitHub Actions **Deploy to Cloud Run**. See [docs/GITHUB_ACTIONS.md](./docs/GITHUB_ACTIONS.md).
+
+⚠️ **IMPORTANT**: Review **[SECURITY.md](./SECURITY.md)** and run `npm run test:security` before deployment to ensure all security measures are properly configured.
 
 ### Multi-Domain Configuration
 
@@ -179,9 +174,10 @@ This allows secure cross-domain operations (delegation, sharing) within your tru
 
 ## Documentation
 
+- **[docs/NEW_DEPLOY.md](./docs/NEW_DEPLOY.md)** — **New tenant:** Cloud Shell one-command bootstrap wizard
 - **[docs/STAGING_TEST_SETUP.md](./docs/STAGING_TEST_SETUP.md)** — Live Workspace staging tests (`npm run test:live`, Playwright E2E)
 - **[SECURITY.md](./SECURITY.md)** — Security features, OAuth setup, domain-wide delegation, and best practices (REQUIRED READING)
-- **[DEPLOYMENT.md](./DEPLOYMENT.md)** — Cloud Run deployment and local Docker setup
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** — Cloud Run deployment (legacy manual path + ongoing deploys)
 - **[docs/ui.md](./docs/ui.md)** — UI design system (tokens, `frontend/src/components/ui/`, patterns)
 - **[docs/tech-debt.md](./docs/tech-debt.md)** — Technical debt backlog and UX polish plan
 - **[QUICK_START_UI.md](./QUICK_START_UI.md)** — Frontend-only preview with MSW mocks

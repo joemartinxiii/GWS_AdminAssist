@@ -29,6 +29,7 @@ jobs:
       - name: Type-check and security tests
         run: |
           npm run type-check
+          npm run check:scopes
           npm run test:security
 
       - name: Lint (informational)
