@@ -12,6 +12,8 @@ env:
   SERVICE_NAME: workspace-admin
   SCAN_JOB: workspace-admin-scan
   REPO: workspace-admin-repo
+  # secrets can't be referenced in `if:` directly, so derive a boolean here.
+  HAS_WIF: ${{ secrets.GCP_WIF_PROVIDER != '' }}
 
 jobs:
   deploy:
@@ -37,7 +39,21 @@ jobs:
         continue-on-error: true
         run: npm run lint
 
-      - name: Authenticate to Google Cloud
+      # Keyless auth via Workload Identity Federation (preferred). Works even
+      # when org policy blocks SA key creation (iam.disableServiceAccountKeyCreation),
+      # which is the same constraint that made runtime DWD keyless. Set the
+      # GCP_WIF_PROVIDER + GCP_DEPLOY_SA secrets via scripts/setup-github-ci.sh.
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        if: env.HAS_WIF == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      # Fallback for forks whose org permits SA keys: set GCP_SA_KEY instead.
+      - name: Authenticate to Google Cloud (service-account key fallback)
+        if: env.HAS_WIF != 'true'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}

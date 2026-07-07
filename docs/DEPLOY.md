@@ -114,49 +114,62 @@ bash scripts/bootstrap-tenant.sh \
 
 ---
 
-## 2. Ongoing deploys — GitHub Actions (recommended)
+## 2. Ongoing deploys
 
-After the first setup, every push to `main` deploys automatically (Docker builds on GitHub's runner — no local Docker). Manual trigger: **Actions → Deploy to Cloud Run → Run workflow**.
+Once the app is live you keep it up to date in one of two ways: a **single manual command** (no CI required) or **GitHub Actions** (auto-deploy on push). Pick whichever fits — the underlying build/deploy steps are identical.
 
-### One-time CI setup
+### 2a. Manual update from GitHub (single command)
 
-Create a dedicated deploy service account and grant it deploy permissions:
+If you don't use CI (or just want to push an update right now), pull the latest code and run the deploy script from Cloud Shell. This builds via Cloud Build (no local Docker) and redeploys the service **and** the scan job:
 
 ```bash
-export PROJECT_ID=your-gcp-project-id
-
-gcloud iam service-accounts create github-deploy-sa \
-  --display-name="GitHub Actions deploy" --project="$PROJECT_ID"
-
-for ROLE in roles/run.admin roles/artifactregistry.writer \
-            roles/iam.serviceAccountUser roles/secretmanager.secretAccessor; do
-  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-    --member="serviceAccount:github-deploy-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-    --role="$ROLE"
-done
-
-gcloud iam service-accounts keys create github-deploy-key.json \
-  --iam-account="github-deploy-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+cd ~/GWS_AdminAssist && git pull && bash scripts/deploy-cloudshell.sh <PROJECT_ID>
 ```
 
-Add these **GitHub repository secrets** (Settings → Secrets and variables → Actions):
+First time on a fresh Cloud Shell? Clone first:
+
+```bash
+git clone https://github.com/joemartinxiii/GWS_AdminAssist && cd GWS_AdminAssist && bash scripts/deploy-cloudshell.sh <PROJECT_ID>
+```
+
+- Requires the tenant to already be bootstrapped (`scripts/bootstrap-tenant.sh` created the secrets + runtime SA). The script refuses to run otherwise.
+- `<PROJECT_ID>` is optional if `gcloud config set project` is already pointed at the right project; a second arg overrides the region (default `us-central1`).
+- Re-run it any time you `git pull` new code. It's idempotent.
+
+### 2b. GitHub Actions (auto-deploy on push) — recommended
+
+After a one-time setup, every push to `main` builds on GitHub's runner and redeploys. Manual trigger: **Actions → Deploy to Cloud Run → Run workflow**.
+
+#### One-time CI setup (keyless, via Workload Identity Federation)
+
+This project is **keyless by design** — the org policy `iam.disableServiceAccountKeyCreation` blocks service-account keys (the same reason runtime DWD is keyless). So CI authenticates with **Workload Identity Federation (WIF)**: GitHub's OIDC token impersonates a deploy SA with no key to create, store, or rotate.
+
+One command provisions the deploy SA, the WIF pool + GitHub provider (locked to your repo owner), the IAM bindings, and prints (or sets) the three GitHub secrets:
+
+```bash
+bash scripts/setup-github-ci.sh <PROJECT_ID> <GITHUB_OWNER/REPO>
+# e.g. bash scripts/setup-github-ci.sh my-proj joemartinxiii/GWS_AdminAssist
+```
+
+If the `gh` CLI is authenticated it offers to set the secrets and trigger the workflow for you; otherwise it prints them to add under **Settings → Secrets and variables → Actions**:
 
 | Secret | Value |
 |--------|-------|
 | `GCP_PROJECT_ID` | your GCP project ID |
-| `GCP_SA_KEY` | full contents of `github-deploy-key.json` |
+| `GCP_WIF_PROVIDER` | `projects/<num>/locations/global/workloadIdentityPools/github-pool/providers/github-provider` |
+| `GCP_DEPLOY_SA` | `github-deploy-sa@<project>.iam.gserviceaccount.com` |
 
-**Never commit `github-deploy-key.json`** — delete it locally after adding it to GitHub. If your org blocks SA key creation (`iam.disableServiceAccountKeyCreation`), use [Workload Identity Federation](https://github.com/google-github-actions/auth#setting-up-workload-identity-federation) instead of `GCP_SA_KEY`.
+> **Fork whose org allows SA keys?** The workflow also supports a key fallback: skip `GCP_WIF_PROVIDER` and instead set `GCP_SA_KEY` to a deploy-SA key JSON (plus `GCP_PROJECT_ID`). The workflow picks WIF automatically whenever `GCP_WIF_PROVIDER` is present, and only falls back to the key when it isn't.
 
-> CI only needs deploy permissions. The Cloud Run **runtime** still uses `workspace-admin-sa`, not `github-deploy-sa`.
+> CI only needs **deploy** permissions (push images, deploy the service + scan job, add the redirect-URI secret version, `actAs` the runtime SA). The Cloud Run **runtime** still uses `workspace-admin-sa`, never the deploy SA.
 
 ### What the workflow does
 
-1. `npm ci` → lint, type-check, security tests
+1. `npm ci` → type-check, scope check, security tests (lint is informational)
 2. Docker build (`linux/amd64`) → Artifact Registry `workspace-admin-repo`
 3. `gcloud run deploy workspace-admin` (with `--no-invoker-iam-check`)
 4. Updates `CORS_ORIGIN` and the `oauth-redirect-uri` secret
-5. Post-deploy `/health` smoke check
+5. Configures the external-sharing scan (bucket + Cloud Run Job `workspace-admin-scan`)
 
 ### Local-Docker alternative
 
@@ -244,7 +257,7 @@ Delete only the Cloud Run service:
 gcloud run services delete workspace-admin --region us-central1 --quiet
 ```
 
-Manual cleanup (not automated): remove the DWD entry for the old SA `client_id` in [admin.google.com → DWD](https://admin.google.com/ac/owl/domainwidedelegation), delete/clear the OAuth Web client in GCP Console, and clear the `GCP_PROJECT_ID` / `GCP_SA_KEY` GitHub secrets. Then re-run the bootstrap wizard.
+Manual cleanup (not automated): remove the DWD entry for the old SA `client_id` in [admin.google.com → DWD](https://admin.google.com/ac/owl/domainwidedelegation), delete/clear the OAuth Web client in GCP Console, and clear the CI GitHub secrets (`GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`, or `GCP_SA_KEY` for key-based forks). Then re-run the bootstrap wizard.
 
 ---
 
@@ -273,7 +286,8 @@ To see the raw, unfiltered `gcloud` output for debugging, set `GWS_SHOW_GCLOUD_N
 | Symptom | Fix |
 |---------|-----|
 | `unauthorized_client` on DWD test | Use the SA's numeric `client_id`, not the OAuth web client ID. Scopes must match `scopes.sh`. Wait 1–5 min after saving. |
-| SA key creation blocked | Org policy `iam.disableServiceAccountKeyCreation` — use Workload Identity Federation. |
+| SA key creation blocked | Org policy `iam.disableServiceAccountKeyCreation` — CI is keyless by default; run `scripts/setup-github-ci.sh` (Workload Identity Federation). |
+| CI: `Permission denied` / no auth | Ensure all three secrets are set (`GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`). Re-run `scripts/setup-github-ci.sh`; the WIF provider is locked to your repo owner. |
 | `400: redirect_uri_mismatch` on sign-in | The redirect URI the app sends must be registered **exactly** on the OAuth Web client. Confirm the app is sending the real URL (not `PLACEHOLDER`): `gcloud secrets versions access latest --secret=oauth-redirect-uri`. It must equal `https://<cloud-run-url>/api/auth/callback` and be listed under the client's Authorized redirect URIs. Changes take ~1 min to propagate. |
 | OAuth login fails | Redirect URI must exactly match the Cloud Run URL + `/api/auth/callback`. |
 | Billing not enabled | Pass `--billing-account` or link it in the GCP Console. |
