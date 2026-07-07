@@ -121,14 +121,17 @@ jobs:
           # owner-run bootstrap-tenant.sh / deploy-cloudshell.sh. The CI deploy SA is
           # least-privilege and cannot create buckets or edit project IAM, so treat
           # these as best-effort; only the job deploy below must succeed.
+          # stderr is silenced on the best-effort commands: a least-privilege CI SA
+          # will (expectedly) be denied create / get-iam-policy, and those denials are
+          # not failures — the bucket + bindings are provisioned once by the owner.
           if ! gcloud storage buckets describe "gs://${SCAN_BUCKET}" &>/dev/null; then
-            gcloud storage buckets create "gs://${SCAN_BUCKET}" --project="${{ env.PROJECT_ID }}" --location="${{ env.REGION }}" --uniform-bucket-level-access --quiet \
-              || echo "NOTE: CI could not verify/create gs://${SCAN_BUCKET} (expected for least-privilege CI). It is provisioned by the owner-run bootstrap-tenant.sh / deploy-cloudshell.sh; continuing."
+            gcloud storage buckets create "gs://${SCAN_BUCKET}" --project="${{ env.PROJECT_ID }}" --location="${{ env.REGION }}" --uniform-bucket-level-access --quiet 2>/dev/null \
+              || echo "NOTE: scan bucket not managed by CI (least-privilege); provisioned by owner-run bootstrap-tenant.sh / deploy-cloudshell.sh. Continuing."
           fi
           gcloud storage buckets add-iam-policy-binding "gs://${SCAN_BUCKET}" \
-            --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin" --quiet || true
+            --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin" --quiet 2>/dev/null || true
           gcloud projects add-iam-policy-binding "${{ env.PROJECT_ID }}" \
-            --member="serviceAccount:${RUNTIME_SA}" --role="roles/run.developer" --quiet || true
+            --member="serviceAccount:${RUNTIME_SA}" --role="roles/run.developer" --quiet 2>/dev/null || true
           gcloud run jobs deploy "${{ env.SCAN_JOB }}" \
             --image "$IMAGE" \
             --region "${{ env.REGION }}" \
