@@ -1,9 +1,9 @@
 import { google } from 'googleapis';
-import { JWT } from 'google-auth-library';
-import { getServiceAccountClient, getGoogleConfig } from '../config/google.config';
+import { OAuth2Client } from 'google-auth-library';
+import { getDelegatedAuthClient } from '../config/google.config';
 
 export class WorkspaceService {
-  protected auth: JWT | null = null;
+  protected auth: OAuth2Client | null = null;
   protected admin: any = null;
   protected drive: any = null;
   protected gmail: any = null;
@@ -12,15 +12,18 @@ export class WorkspaceService {
   protected chromePolicy: any = null;
 
   /**
-   * Initialize service with delegated authentication
+   * Initialize service clients authenticated as `userEmail` via keyless
+   * domain-wide delegation. A subject is always required — every Workspace
+   * operation acts on behalf of a specific user.
    */
   async initialize(userEmail?: string): Promise<void> {
-    if (userEmail) {
-      this.auth = await getServiceAccountClient();
-      this.auth.subject = userEmail;
-    } else {
-      this.auth = await getServiceAccountClient();
+    if (!userEmail) {
+      throw new Error(
+        'WorkspaceService.initialize requires a user email for domain-wide delegation'
+      );
     }
+
+    this.auth = await getDelegatedAuthClient(userEmail);
 
     // Initialize API clients
     this.admin = google.admin({ version: 'directory_v1', auth: this.auth });

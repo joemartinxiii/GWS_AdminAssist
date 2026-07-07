@@ -3,14 +3,12 @@ import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 export interface GCPConfig {
   projectId: string;
   region: string;
-  serviceAccountSecretName: string;
 }
 
 export function getGCPConfig(): GCPConfig {
   return {
     projectId: process.env.GCP_PROJECT_ID || '',
     region: process.env.GCP_REGION || 'us-central1',
-    serviceAccountSecretName: process.env.SERVICE_ACCOUNT_SECRET_NAME || 'service-account-key',
   };
 }
 

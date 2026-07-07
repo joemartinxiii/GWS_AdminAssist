@@ -4,8 +4,12 @@
 # For full greenfield setup use: bash scripts/bootstrap-tenant.sh
 #
 # Required env vars (or will prompt):
-#   PROJECT_ID, CLIENT_ID, CLIENT_SECRET, JWT_SECRET, WORKSPACE_DOMAIN, SA_KEY_PATH
+#   PROJECT_ID, CLIENT_ID, CLIENT_SECRET, JWT_SECRET, WORKSPACE_DOMAIN
 # Optional: REDIRECT_URI, ALLOWED_DOMAINS, GCP_PROJECT_ID
+#
+# Auth is keyless — no service-account key is uploaded. Ensure the runtime SA
+# has roles/iam.serviceAccountTokenCreator on itself (bootstrap-tenant.sh does
+# this) so it can sign its own domain-wide-delegation tokens.
 
 set -euo pipefail
 
@@ -43,7 +47,6 @@ REDIRECT_URI="${REDIRECT_URI:-https://PLACEHOLDER.run.app/api/auth/callback}"
 JWT_SECRET="${JWT_SECRET:-}"
 WORKSPACE_DOMAIN="${WORKSPACE_DOMAIN:-}"
 ALLOWED_DOMAINS="${ALLOWED_DOMAINS:-}"
-SA_KEY_PATH="${SA_KEY_PATH:-}"
 
 if [ -z "$JWT_SECRET" ]; then
   JWT_SECRET=$(openssl rand -base64 32)
@@ -56,19 +59,8 @@ fi
 
 ALLOWED_DOMAINS="${ALLOWED_DOMAINS:-$WORKSPACE_DOMAIN}"
 
-if [ -z "$SA_KEY_PATH" ]; then
-  read -p "Enter path to service account key JSON (sa-key.json): " SA_KEY_PATH
-fi
-
-SA_KEY_PATH="${SA_KEY_PATH#\'}"
-SA_KEY_PATH="${SA_KEY_PATH%\'}"
-SA_KEY_PATH="${SA_KEY_PATH#\"}"
-SA_KEY_PATH="${SA_KEY_PATH%\"}"
-
-[ -f "$SA_KEY_PATH" ] || die "SA key file not found: $SA_KEY_PATH"
-
 provision_secrets "$PROJECT_ID" "$CLIENT_ID" "$CLIENT_SECRET" "$WORKSPACE_DOMAIN" \
-  "$ALLOWED_DOMAINS" "$SA_KEY_PATH" "$JWT_SECRET" "$REDIRECT_URI"
+  "$ALLOWED_DOMAINS" "" "$JWT_SECRET" "$REDIRECT_URI"
 
 echo ""
 echo "Secrets setup complete for project $PROJECT_ID"

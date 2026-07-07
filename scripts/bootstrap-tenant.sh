@@ -206,8 +206,8 @@ TMP_DIR="${REPO_ROOT}/.bootstrap-tmp-$$"
 mkdir -p "$TMP_DIR"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-RUNTIME_KEY="${TMP_DIR}/workspace-admin-sa-key.json"
 DEPLOY_KEY="${TMP_DIR}/github-deploy-sa-key.json"
+RUNTIME_SA_EMAIL="${RUNTIME_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 # Phase 1 — GCP provision
 log "Phase 1: GCP provision (APIs, service accounts, secrets, Artifact Registry)"
@@ -215,18 +215,26 @@ provision_apis "$PROJECT_ID"
 provision_runtime_sa "$PROJECT_ID"
 provision_deploy_sa "$PROJECT_ID"
 
-if ! verify_sa_key_policy "$PROJECT_ID" "$RUNTIME_SA"; then
-  attempt_unblock_sa_keys "$PROJECT_ID" || \
-    die "Service-account key creation is blocked. Follow the steps above, then re-run: bash scripts/bootstrap-tenant.sh (choose 'existing project' → ${PROJECT_ID})"
+# Runtime auth is KEYLESS — no service-account key is created for the runtime SA.
+# It signs its own domain-wide-delegation tokens via the IAM Credentials API.
+#
+# The optional GitHub Actions deploy SA still uses a key; if org policy blocks
+# key creation we skip GitHub setup rather than failing the whole bootstrap.
+DEPLOY_KEY_OK=false
+if [[ "$SKIP_GITHUB" != "true" ]]; then
+  if try_create_sa_key "$PROJECT_ID" "$DEPLOY_SA" "$DEPLOY_KEY"; then
+    DEPLOY_KEY_OK=true
+  else
+    warn "Could not create a deploy-SA key (org policy). Skipping GitHub Actions setup."
+    warn "Ongoing deploys: re-run 'bash scripts/deploy-cloudshell.sh ${PROJECT_ID} ${REGION}' from Cloud Shell, or set up Workload Identity Federation."
+    SKIP_GITHUB=true
+  fi
 fi
 
-create_sa_key "$PROJECT_ID" "$RUNTIME_SA" "$RUNTIME_KEY"
-create_sa_key "$PROJECT_ID" "$DEPLOY_SA" "$DEPLOY_KEY"
-
-provision_secrets "$PROJECT_ID" "" "" "$WORKSPACE_DOMAIN" "$WORKSPACE_DOMAIN" "$RUNTIME_KEY"
+provision_secrets "$PROJECT_ID" "" "" "$WORKSPACE_DOMAIN" "$WORKSPACE_DOMAIN" ""
 provision_artifact_registry "$PROJECT_ID" "$REGION"
 
-SA_CLIENT_ID="$(get_sa_client_id "$RUNTIME_KEY")"
+SA_CLIENT_ID="$(get_sa_oauth_client_id "$PROJECT_ID" "$RUNTIME_SA")"
 log "Service account DWD client_id: ${SA_CLIENT_ID}"
 
 # Phase 2 — OAuth (guided)
@@ -241,27 +249,33 @@ else
   CLIENT_SECRET="${OAUTH_CREDS[1]}"
 fi
 
-provision_secrets "$PROJECT_ID" "$CLIENT_ID" "$CLIENT_SECRET" "$WORKSPACE_DOMAIN" "$WORKSPACE_DOMAIN" "$RUNTIME_KEY"
+provision_secrets "$PROJECT_ID" "$CLIENT_ID" "$CLIENT_SECRET" "$WORKSPACE_DOMAIN" "$WORKSPACE_DOMAIN" ""
 verify_secrets "$PROJECT_ID"
 
-# Phase 3 — GWS DWD (guided + validated)
+# Phase 3 — GWS DWD (guided + best-effort keyless validation)
 log "Phase 3: Domain-wide delegation (Workspace Admin — guided)"
 guide_dwd_setup "$SA_CLIENT_ID"
 
+# Keyless verification: mint a delegated token for the admin via signJwt and
+# list one user. This can fail from Cloud Shell even when runtime will succeed
+# (the caller may lack tokenCreator on the SA), so it is best-effort — the
+# runtime SA holds tokenCreator on itself and will verify at first use.
 DWD_OK=false
 for attempt in 1 2 3; do
-  if verify_dwd "$RUNTIME_KEY" "$ADMIN_EMAIL" 2>/dev/null; then
+  if verify_dwd "$RUNTIME_SA_EMAIL" "$ADMIN_EMAIL" 2>/dev/null; then
     DWD_OK=true
     break
   fi
   if [[ "$attempt" -lt 3 ]]; then
-    warn "DWD verification failed (attempt ${attempt}/3). Waiting 30s for propagation..."
+    warn "DWD not verified yet (attempt ${attempt}/3). Waiting 30s for propagation..."
     sleep 30
   fi
 done
 
-if [[ "$DWD_OK" != "true" ]]; then
-  verify_dwd "$RUNTIME_KEY" "$ADMIN_EMAIL" || die "DWD verification failed after 3 attempts"
+if [[ "$DWD_OK" == "true" ]]; then
+  log "Domain-wide delegation verified."
+else
+  warn "Could not verify DWD from Cloud Shell (this is often fine — the runtime service account will verify on first use). Continuing."
 fi
 
 # Phase 4 — First deploy

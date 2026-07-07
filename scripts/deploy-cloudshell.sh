@@ -22,8 +22,10 @@ IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/${SERVICE_NAME}"
 log "Deploying ${SERVICE_NAME} to Cloud Run via Cloud Build..."
 gcloud config set project "$PROJECT_ID" --quiet
 
-if ! gcloud secrets describe service-account-key --project="$PROJECT_ID" &>/dev/null; then
-  die "Secret 'service-account-key' not found. Run bootstrap-tenant.sh first."
+RUNTIME_SA_EMAIL="${RUNTIME_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
+
+if ! gcloud secrets describe app-jwt-secret --project="$PROJECT_ID" &>/dev/null; then
+  die "App secrets not found. Run bootstrap-tenant.sh first."
 fi
 
 # shellcheck source=scripts/lib/gcp-provision.sh
@@ -50,8 +52,8 @@ gcloud run deploy "$SERVICE_NAME" \
   --min-instances 0 \
   --max-instances 2 \
   --timeout 300 \
-  --service-account "${RUNTIME_SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_SECRET_NAME=service-account-key" \
+  --service-account "${RUNTIME_SA_EMAIL}" \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=${RUNTIME_SA_EMAIL}" \
   --set-secrets "GOOGLE_CLIENT_ID=oauth-client-id:latest,GOOGLE_CLIENT_SECRET=oauth-client-secret:latest,GOOGLE_REDIRECT_URI=oauth-redirect-uri:latest,JWT_SECRET=app-jwt-secret:latest,WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
   --allow-unauthenticated \
   --no-invoker-iam-check \
@@ -62,7 +64,7 @@ REDIRECT_URI="${SERVICE_URL}/api/auth/callback"
 
 gcloud run services update "$SERVICE_NAME" \
   --region "$REGION" \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_SECRET_NAME=service-account-key,CORS_ORIGIN=${SERVICE_URL}" \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=${RUNTIME_SA_EMAIL},CORS_ORIGIN=${SERVICE_URL}" \
   --no-invoker-iam-check \
   --quiet
 

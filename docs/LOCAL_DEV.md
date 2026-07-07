@@ -33,7 +33,7 @@ Alternatively, add `VITE_USE_MSW=true` to `frontend/.env.local` and run `npm run
 npm run dev              # from repo root: backend (port 5001) + frontend (3000)
 ```
 
-The Vite dev server proxies `/api` → `http://localhost:5001`. Sign in with Google. This requires backend env vars (OAuth client, JWT secret, workspace domain, and a service-account key). Point `SA_KEY_PATH` at a local JSON key, or read from Secret Manager. See [SECURITY.md](../SECURITY.md#environment-variables) and [STAGING_TEST_SETUP.md](./STAGING_TEST_SETUP.md).
+The Vite dev server proxies `/api` → `http://localhost:5001`. Sign in with Google. This requires backend env vars (OAuth client, JWT secret, workspace domain). Auth is **keyless** — set `SERVICE_ACCOUNT_EMAIL` to the runtime SA and authenticate locally with `gcloud auth application-default login` (your account needs `roles/iam.serviceAccountTokenCreator` on that SA). No key file. See [SECURITY.md](../SECURITY.md#environment-variables) and [STAGING_TEST_SETUP.md](./STAGING_TEST_SETUP.md).
 
 ## Frontend env vars (`VITE_*`)
 

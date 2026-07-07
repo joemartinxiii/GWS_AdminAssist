@@ -75,7 +75,7 @@ jobs:
             --max-instances 2 \
             --timeout 300 \
             --service-account "workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com" \
-            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_SECRET_NAME=service-account-key" \
+            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com" \
             --set-secrets "GOOGLE_CLIENT_ID=oauth-client-id:latest,GOOGLE_CLIENT_SECRET=oauth-client-secret:latest,GOOGLE_REDIRECT_URI=oauth-redirect-uri:latest,JWT_SECRET=app-jwt-secret:latest,WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
             --allow-unauthenticated \
             --no-invoker-iam-check \
@@ -87,7 +87,7 @@ jobs:
           REDIRECT_URI="${SERVICE_URL}/api/auth/callback"
           gcloud run services update "${{ env.SERVICE_NAME }}" \
             --region "${{ env.REGION }}" \
-            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_SECRET_NAME=service-account-key,CORS_ORIGIN=${SERVICE_URL}" \
+            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com,CORS_ORIGIN=${SERVICE_URL}" \
             --no-invoker-iam-check \
             --quiet
           echo -n "$REDIRECT_URI" | gcloud secrets versions add oauth-redirect-uri --data-file=- --quiet

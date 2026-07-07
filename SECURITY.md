@@ -57,15 +57,15 @@ Key security setup (one-time):
 
 4. **Secrets**:
    - Run `./setup-secrets.sh` (or with env vars). It creates **one secret per value** for unambiguous Cloud Run `--set-secrets` injection (`:latest` or specific version).
-   - Script handles SA key JSON, JWT (auto-generates if missing), placeholders for redirect/CORS.
+   - Script handles OAuth client id/secret, JWT (auto-generates if missing), placeholders for redirect/CORS. No SA key — auth is keyless.
    - **Run the printed IAM commands** to grant `roles/secretmanager.secretAccessor` to the Cloud Run SA on each secret.
    - `deploy.sh` automatically adds versions for production URLs.
 
 **Production mapping** (in `scripts/deploy-cloudshell.sh` and `.github/workflows/deploy.yml`):
 - `GOOGLE_CLIENT_ID` ← `oauth-client-id:latest`
 - Similar for secret, redirect, JWT, domain, allowed domains.
-- SA key loaded at runtime via `@google-cloud/secret-manager` (`backend/src/config/gcp.config.ts`).
-- `GCP_PROJECT_ID`, `SERVICE_ACCOUNT_SECRET_NAME` set as literal env vars.
+- **Keyless domain-wide delegation** — no service-account key is stored. Cloud Run runs as the runtime SA, which signs its own delegation tokens via the IAM Credentials API (`signJwt`). Requires `roles/iam.serviceAccountTokenCreator` on the SA itself + `iamcredentials.googleapis.com` enabled (`backend/src/config/google.config.ts`).
+- `GCP_PROJECT_ID`, `SERVICE_ACCOUNT_EMAIL` set as literal env vars.
 
 See [docs/DEPLOY.md](docs/DEPLOY.md) for exact commands.
 
@@ -183,7 +183,7 @@ npm run test:backend
 Required environment variables (stored as secrets):
 
 - `GCP_PROJECT_ID`: Your GCP project ID
-- `SERVICE_ACCOUNT_SECRET_NAME`: Name of the secret containing service account key
+- `SERVICE_ACCOUNT_EMAIL`: The runtime service account the app impersonates as for keyless domain-wide delegation (e.g. `workspace-admin-sa@<project>.iam.gserviceaccount.com`). If unset, inferred from Application Default Credentials.
 - `GOOGLE_CLIENT_ID`: OAuth2 client ID
 - `GOOGLE_CLIENT_SECRET`: OAuth2 client secret
 - `GOOGLE_REDIRECT_URI`: OAuth2 redirect URI

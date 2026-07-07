@@ -71,6 +71,16 @@ provision_runtime_sa() {
   gcloud projects add-iam-policy-binding "$project_id" \
     --member="serviceAccount:${sa_email}" \
     --role="roles/logging.logWriter" --quiet >/dev/null 2>&1 || true
+
+  # Keyless domain-wide delegation: the runtime SA signs its own delegation
+  # assertions via the IAM Credentials API, which requires tokenCreator on
+  # itself. No downloaded key is ever created.
+  log "Granting ${RUNTIME_SA} permission to sign its own delegation tokens..."
+  gcloud iam service-accounts add-iam-policy-binding "$sa_email" \
+    --member="serviceAccount:${sa_email}" \
+    --role="roles/iam.serviceAccountTokenCreator" \
+    --project="$project_id" --quiet >/dev/null 2>&1 || \
+    warn "Could not grant serviceAccountTokenCreator to ${sa_email} (delegation may fail at runtime)"
 }
 
 provision_deploy_sa() {
@@ -212,12 +222,6 @@ provision_secrets() {
     secret_upsert app-allowed-domains "$allowed_domains"
   fi
 
-  if [[ -n "$sa_key_path" && -f "$sa_key_path" ]]; then
-    log "Uploading service account key to Secret Manager..."
-    gcloud secrets create service-account-key --data-file="$sa_key_path" 2>/dev/null || \
-      gcloud secrets versions add service-account-key --data-file="$sa_key_path"
-  fi
-
   grant_secret_access "$project_id"
 }
 
@@ -232,10 +236,27 @@ provision_artifact_registry() {
     --project="$project_id" --quiet 2>/dev/null || true
 }
 
-get_sa_client_id() {
-  local key_path="$1"
-  python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['client_id'])" "$key_path" 2>/dev/null || \
-    node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).client_id)" "$key_path"
+# The domain-wide-delegation client ID is the service account's OAuth2 client
+# ID (a.k.a. its unique numeric ID). With keyless auth there is no key file to
+# read it from, so query the SA directly.
+get_sa_oauth_client_id() {
+  local project_id="$1"
+  local sa_name="$2"
+  gcloud iam service-accounts describe \
+    "${sa_name}@${project_id}.iam.gserviceaccount.com" \
+    --project="$project_id" --format='value(oauth2ClientId)'
+}
+
+# Best-effort SA key creation for the (optional) GitHub Actions deploy SA.
+# Returns non-zero instead of aborting when org policy blocks key creation.
+try_create_sa_key() {
+  local project_id="$1"
+  local sa_name="$2"
+  local out_path="$3"
+  local sa_email="${sa_name}@${project_id}.iam.gserviceaccount.com"
+
+  gcloud iam service-accounts keys create "$out_path" \
+    --iam-account="$sa_email" --project="$project_id" --quiet 2>/dev/null
 }
 
 provision_gcp_full() {

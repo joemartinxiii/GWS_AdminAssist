@@ -9,7 +9,7 @@ alwaysApply: false
 ## Services
 
 - Google API logic lives in `backend/src/services/*`, each extending `WorkspaceService`.
-- Access clients via `this.admin` / `this.drive` / `this.gmail` / `this.calendar` after `await this.initialize(userEmail)` — this sets DWD impersonation (`subject = userEmail`).
+- Access clients via `this.admin` / `this.drive` / `this.gmail` / `this.calendar` after `await this.initialize(userEmail)` — this builds a **keyless** DWD client for `userEmail` (a minted per-user access token; no key file, no mutable `.subject`). To act as a different user, call `initialize()` again with that email.
 - Wrap Google calls in `this.withRetry(() => client.x.y(...))` (handles 429/5xx backoff and status extraction). It returns `any` by design; narrow the result at the call site (e.g. `response.data as DirectoryUser`).
 - For bulk per-item Google calls, use `mapWithConcurrency(items, limit, worker)` from `utils/concurrency.ts` — never fire thousands of unbounded parallel requests.
 

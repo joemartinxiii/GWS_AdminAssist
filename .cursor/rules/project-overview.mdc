@@ -11,7 +11,7 @@ A web admin tool for Google Workspace tenants (GAM-like operations with a modern
 
 - **Frontend**: React + TypeScript + Vite + MUI (Material-UI). Design tokens in `frontend/src/theme/designTokens.ts`.
 - **Backend**: Node + Express + TypeScript. Default dev port **5001**; serves `/api/*` and the built SPA.
-- **Auth**: Google OAuth2 for sign-in; a **service account with domain-wide delegation (DWD)** impersonates the signed-in admin for all Google API calls.
+- **Auth**: Google OAuth2 for sign-in; a **service account with domain-wide delegation (DWD)** impersonates the signed-in admin for all Google API calls. DWD is **keyless** — the runtime SA signs its own delegation tokens via the IAM Credentials API (`signJwt`); there is no service-account key file. See `backend/src/config/google.config.ts` (`getDelegatedAuthClient`).
 - **Google APIs** via `googleapis`: Admin SDK (Directory), Drive, Gmail, Calendar, Chrome Policy.
 
 ## Directory map

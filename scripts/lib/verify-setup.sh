@@ -27,15 +27,16 @@ verify_secrets() {
 }
 
 verify_dwd() {
-  local sa_key_path="$1"
+  local sa_email="$1"
   local admin_email="$2"
 
-  log "Verifying domain-wide delegation for ${admin_email}..."
+  log "Verifying domain-wide delegation for ${admin_email} (keyless)..."
   if ! command -v npx >/dev/null 2>&1; then
-    die "npx not found — run npm install in repo root first"
+    warn "npx not found — skipping DWD verification"
+    return 1
   fi
 
-  (cd "$REPO_ROOT" && npx tsx scripts/verify-dwd.ts "$sa_key_path" "$admin_email")
+  (cd "$REPO_ROOT" && npx tsx scripts/verify-dwd.ts "$sa_email" "$admin_email")
 }
 
 verify_health() {

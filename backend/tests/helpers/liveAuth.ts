@@ -5,7 +5,6 @@ const REQUIRED = [
   'JWT_SECRET',
   'GCP_PROJECT_ID',
   'WORKSPACE_DOMAIN',
-  'SERVICE_ACCOUNT_SECRET_NAME',
 ] as const;
 
 export function requireLiveEnv(): void {
@@ -15,8 +14,11 @@ export function requireLiveEnv(): void {
       `Live tests require: ${missing.join(', ')}. Copy .env.test.example to .env.test — see docs/STAGING_TEST_SETUP.md`
     );
   }
-  if (!process.env.SA_KEY_PATH?.trim() && process.env.NODE_ENV !== 'production') {
-    console.warn('Live tests: SA_KEY_PATH not set — will use Secret Manager (requires gcloud auth).');
+  // Keyless DWD: the app signs delegation tokens as SERVICE_ACCOUNT_EMAIL using
+  // Application Default Credentials. Locally you need `gcloud auth
+  // application-default login` and tokenCreator on that SA.
+  if (!process.env.SERVICE_ACCOUNT_EMAIL?.trim() && process.env.NODE_ENV !== 'production') {
+    console.warn('Live tests: SERVICE_ACCOUNT_EMAIL not set — will infer the SA from ADC credentials.');
   }
 }
 

@@ -38,10 +38,8 @@ export class CalendarService extends WorkspaceService {
   async listCalendars(userEmail: string, targetEmail: string): Promise<Calendar[]> {
     await this.initialize(userEmail);
     
-    // Set the subject to the target user for domain-wide delegation
-    if (this.auth) {
-      this.auth.subject = targetEmail;
-    }
+    // Keyless DWD: re-target delegation to the calendar owner.
+    await this.initialize(targetEmail);
 
     try {
       const response = await this.withRetry(() =>
@@ -247,10 +245,8 @@ export class CalendarService extends WorkspaceService {
   ): Promise<any[]> {
     await this.initialize(userEmail);
     
-    // Set the subject to the target user for domain-wide delegation
-    if (this.auth) {
-      this.auth.subject = targetEmail;
-    }
+    // Keyless DWD: re-target delegation to the calendar owner.
+    await this.initialize(targetEmail);
 
     try {
       const response = await this.withRetry(() =>
@@ -279,10 +275,8 @@ export class CalendarService extends WorkspaceService {
   async getEvent(userEmail: string, targetEmail: string, calendarId: string, eventId: string): Promise<any> {
     await this.initialize(userEmail);
     
-    // Set the subject to the target user for domain-wide delegation
-    if (this.auth) {
-      this.auth.subject = targetEmail;
-    }
+    // Keyless DWD: re-target delegation to the calendar owner.
+    await this.initialize(targetEmail);
 
     const response = await this.withRetry(() =>
       this.calendar.events.get({
@@ -313,10 +307,8 @@ export class CalendarService extends WorkspaceService {
   ): Promise<any> {
     await this.initialize(userEmail);
     
-    // Set the subject to the target user for domain-wide delegation
-    if (this.auth) {
-      this.auth.subject = targetEmail;
-    }
+    // Keyless DWD: re-target delegation to the calendar owner.
+    await this.initialize(targetEmail);
 
     // First get the current event
     const currentEvent = await this.getEvent(userEmail, targetEmail, calendarId, eventId);
@@ -394,10 +386,8 @@ export class CalendarService extends WorkspaceService {
   ): Promise<void> {
     await this.initialize(userEmail);
     
-    // Set the subject to the target user for domain-wide delegation
-    if (this.auth) {
-      this.auth.subject = targetEmail;
-    }
+    // Keyless DWD: re-target delegation to the calendar owner.
+    await this.initialize(targetEmail);
 
     await this.withRetry(() =>
       this.calendar.events.delete({
@@ -426,10 +416,8 @@ export class CalendarService extends WorkspaceService {
   ): Promise<any> {
     await this.initialize(userEmail);
     
-    // Set the subject to the target user for domain-wide delegation
-    if (this.auth) {
-      this.auth.subject = targetEmail;
-    }
+    // Keyless DWD: re-target delegation to the calendar owner.
+    await this.initialize(targetEmail);
 
     const response = await this.withRetry(() =>
       this.calendar.events.insert({

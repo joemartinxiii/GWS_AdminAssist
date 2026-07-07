@@ -6,14 +6,14 @@ Live tests hit your **real Google Workspace tenant** via domain-wide delegation.
 
 1. Super admin account for automation (e.g. your workspace super admin)
 2. Service account with DWD scopes from [SECURITY.md](../SECURITY.md)
-3. Service account JSON key saved locally as `sa-key.json` (never commit)
+3. **Keyless** — no JSON key. Run `gcloud auth application-default login` with an identity that has `roles/iam.serviceAccountTokenCreator` on the runtime SA
 4. Node.js 18+, Playwright Chromium (`npx playwright install chromium`)
 
 ## Configure `.env.test`
 
 ```bash
 cp .env.test.example .env.test
-# Set SA_KEY_PATH to your JSON key; fill JWT_SECRET, domain, etc.
+# Set SERVICE_ACCOUNT_EMAIL to the runtime SA; fill JWT_SECRET, domain, etc.
 # Or: npm run bootstrap:test  (from gcloud + Secret Manager)
 ```
 

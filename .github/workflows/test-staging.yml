@@ -32,8 +32,8 @@ jobs:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           WORKSPACE_DOMAIN: ${{ secrets.TEST_WORKSPACE_DOMAIN }}
           GWS_ALLOWED_DOMAINS: ${{ secrets.TEST_GWS_ALLOWED_DOMAINS }}
-          SERVICE_ACCOUNT_SECRET_NAME: service-account-key
-          SA_KEY_PATH: /tmp/sa-key.json
+          SERVICE_ACCOUNT_EMAIL: workspace-admin-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa-key.json
           GOOGLE_CLIENT_ID: ${{ secrets.TEST_GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_CLIENT_SECRET }}
           GOOGLE_REDIRECT_URI: http://localhost:5001/api/auth/callback
@@ -51,8 +51,8 @@ jobs:
             echo "GCP_PROJECT_ID=${GCP_PROJECT_ID}"
             echo "WORKSPACE_DOMAIN=${WORKSPACE_DOMAIN}"
             echo "GWS_ALLOWED_DOMAINS=${GWS_ALLOWED_DOMAINS:-$WORKSPACE_DOMAIN}"
-            echo "SERVICE_ACCOUNT_SECRET_NAME=service-account-key"
-            echo "SA_KEY_PATH=/tmp/sa-key.json"
+            echo "SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${GCP_PROJECT_ID}.iam.gserviceaccount.com"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa-key.json"
             echo "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}"
             echo "GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}"
             echo "GOOGLE_REDIRECT_URI=http://localhost:5001/api/auth/callback"

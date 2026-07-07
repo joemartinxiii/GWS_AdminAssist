@@ -8,12 +8,14 @@ DWD_SCOPES="https://www.googleapis.com/auth/admin.directory.user,https://www.goo
 # OAuth consent screen (user sign-in scopes — readonly)
 OAUTH_CONSENT_SCOPES="https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/userinfo.profile,https://www.googleapis.com/auth/admin.directory.user.readonly,https://www.googleapis.com/auth/admin.directory.group.readonly,https://www.googleapis.com/auth/drive.readonly,https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/calendar.readonly"
 
-# APIs to enable (includes chromepolicy for chrome.management.policy DWD scope)
+# APIs to enable (includes chromepolicy for chrome.management.policy DWD scope,
+# and iamcredentials for keyless domain-wide delegation via signJwt)
 GCP_APIS=(
   run.googleapis.com
   secretmanager.googleapis.com
   cloudbuild.googleapis.com
   artifactregistry.googleapis.com
+  iamcredentials.googleapis.com
   admin.googleapis.com
   drive.googleapis.com
   gmail.googleapis.com
@@ -21,7 +23,9 @@ GCP_APIS=(
   chromepolicy.googleapis.com
 )
 
-# Secret Manager secret names used by Cloud Run
+# Secret Manager secret names used by Cloud Run.
+# NOTE: no service-account-key — domain-wide delegation is keyless (the runtime
+# SA signs its own delegation tokens via the IAM Credentials API).
 APP_SECRETS=(
   oauth-client-id
   oauth-client-secret
@@ -29,7 +33,6 @@ APP_SECRETS=(
   app-jwt-secret
   app-workspace-domain
   app-allowed-domains
-  service-account-key
 )
 
 RUNTIME_SA="workspace-admin-sa"

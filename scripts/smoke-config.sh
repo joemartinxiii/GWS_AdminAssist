@@ -17,7 +17,7 @@ fi
 set -a && source "$ENV_FILE" && set +a
 
 missing=()
-for key in TEST_SUPER_ADMIN_EMAIL JWT_SECRET GCP_PROJECT_ID WORKSPACE_DOMAIN SERVICE_ACCOUNT_SECRET_NAME; do
+for key in TEST_SUPER_ADMIN_EMAIL JWT_SECRET GCP_PROJECT_ID WORKSPACE_DOMAIN; do
   if [[ -z "${!key:-}" ]]; then
     missing+=("$key")
   fi
@@ -29,15 +29,12 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   exit 1
 fi
 
-if [[ -n "${SA_KEY_PATH:-}" ]]; then
-  if [[ ! -f "$SA_KEY_PATH" ]]; then
-    echo "FAIL: SA_KEY_PATH file not found: $SA_KEY_PATH"
-    exit 1
-  fi
-  echo "OK: SA_KEY_PATH file exists"
+if [[ -n "${SERVICE_ACCOUNT_EMAIL:-}" ]]; then
+  echo "OK: SERVICE_ACCOUNT_EMAIL set ($SERVICE_ACCOUNT_EMAIL)"
 else
-  echo "WARN: SA_KEY_PATH not set — live tests will use Secret Manager"
+  echo "WARN: SERVICE_ACCOUNT_EMAIL not set — the SA will be inferred from ADC credentials"
 fi
+echo "Keyless: ensure ADC is set (gcloud auth application-default login) with tokenCreator on the SA."
 
 optional=(TEST_GROUP_EMAIL TEST_MY_DRIVE_FILE_ID TEST_SHARED_DRIVE_ID TEST_SHARED_DRIVE_FILE_ID)
 for key in "${optional[@]}"; do

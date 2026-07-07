@@ -61,14 +61,15 @@ bash scripts/bootstrap-tenant.sh \
 | Create project | Yes | Offered in the wizard (or `--create-project`) |
 | Link billing | Yes | Auto-detects your billing account (or `--billing-account`) |
 | Enable APIs | Yes | `gcloud services enable` |
-| `workspace-admin-sa` + `github-deploy-sa` (keys → Secret Manager) | Yes | IAM |
+| `workspace-admin-sa` (keyless: tokenCreator on itself, no key) | Yes | IAM |
+| `github-deploy-sa` (key for optional CI; skipped if org blocks keys) | Optional | IAM |
 | Secret Manager secrets + IAM bindings | Yes | — |
 | Artifact Registry | Yes | — |
 | OAuth consent screen + Web client | **No** | GCP Console (wizard opens links + copy-paste scopes) |
-| Domain-wide delegation | **No** | admin.google.com (wizard prints `client_id` + scopes) |
+| Domain-wide delegation | **No** | admin.google.com (wizard prints the SA `client_id` + scopes) |
 | First Cloud Run deploy | Yes | Cloud Build via `deploy-cloudshell.sh` |
 | GitHub Actions secrets | Optional | `gh secret set` or printed instructions |
-| DWD smoke test + `/health` check | Yes | Impersonates admin, lists 1 user |
+| DWD smoke test + `/health` check | Best-effort | Keyless: mints a delegated token, lists 1 user |
 
 ### Wizard options
 
@@ -158,8 +159,8 @@ Runtime configuration comes from Secret Manager, injected by Cloud Run. See [SEC
 - `JWT_SECRET` ← `app-jwt-secret:latest`
 - `WORKSPACE_DOMAIN` ← `app-workspace-domain:latest`
 - `GWS_ALLOWED_DOMAINS` ← `app-allowed-domains:latest`
-- `GCP_PROJECT_ID`, `SERVICE_ACCOUNT_SECRET_NAME` set as literal env vars
-- The service-account key is loaded at runtime via `@google-cloud/secret-manager`
+- `GCP_PROJECT_ID`, `SERVICE_ACCOUNT_EMAIL` set as literal env vars
+- **Keyless domain-wide delegation** — no service-account key is created or stored. Cloud Run runs as the runtime SA, which signs its own delegation tokens via the IAM Credentials API (`signJwt`); the SA holds `roles/iam.serviceAccountTokenCreator` on itself
 - **Optional:** export `SIGNATURE_TEMPLATE_BUCKET=<bucket>` before deploying to persist the org signature template in GCS (survives redeploys). The deploy script creates the bucket and grants the runtime SA `roles/storage.objectAdmin`. Without it, the template uses ephemeral local disk.
 
 ---

@@ -1,6 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { getServiceAccountClient, getOAuth2Client, getTokensFromCode } from '../config/google.config';
-import { JWT } from 'google-auth-library';
+import { getOAuth2Client, getTokensFromCode } from '../config/google.config';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -24,15 +23,6 @@ export interface UserInfo {
 }
 
 export class AuthService {
-  /**
-   * Create a service account client with domain-wide delegation for a specific user
-   */
-  async getDelegatedServiceAccountClient(userEmail: string): Promise<JWT> {
-    const client = await getServiceAccountClient();
-    client.subject = userEmail;
-    return client;
-  }
-
   /**
    * Exchange OAuth2 code for tokens
    */

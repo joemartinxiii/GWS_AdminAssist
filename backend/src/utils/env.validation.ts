@@ -4,7 +4,7 @@ function envPresent(key: string): boolean {
 }
 
 export function validateEnvironment(): void {
-  const required = ['JWT_SECRET', 'GCP_PROJECT_ID', 'WORKSPACE_DOMAIN', 'SERVICE_ACCOUNT_SECRET_NAME'];
+  const required = ['JWT_SECRET', 'GCP_PROJECT_ID', 'WORKSPACE_DOMAIN'];
   const missing = required.filter((key) => !envPresent(key));
 
   if (missing.length > 0) {

@@ -26,8 +26,8 @@ echo ""
 gcloud config set project "$PROJECT_ID" --quiet
 
 echo "Running pre-flight checks..."
-if ! gcloud secrets describe service-account-key --project="${PROJECT_ID}" &>/dev/null; then
-  echo "❌ ERROR: Secret 'service-account-key' not found. Run setup first."
+if ! gcloud secrets describe app-jwt-secret --project="${PROJECT_ID}" &>/dev/null; then
+  echo "❌ ERROR: App secrets not found. Run bootstrap-tenant.sh (or setup-secrets.sh) first."
   exit 1
 fi
 echo "✅ Secrets and service account verified."
@@ -67,7 +67,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --max-instances 2 \
   --timeout 300 \
   --service-account "workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_SECRET_NAME=service-account-key" \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
   --set-secrets "GOOGLE_CLIENT_ID=oauth-client-id:latest,GOOGLE_CLIENT_SECRET=oauth-client-secret:latest,GOOGLE_REDIRECT_URI=oauth-redirect-uri:latest,JWT_SECRET=app-jwt-secret:latest,WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
   --allow-unauthenticated \
   --no-invoker-iam-check \
@@ -80,7 +80,7 @@ echo "Updating configuration with full environment variables..."
 # Must include ALL critical vars - --set-env-vars replaces previous ones
 gcloud run services update "$SERVICE_NAME" \
   --region "$REGION" \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_SECRET_NAME=service-account-key,CORS_ORIGIN=${SERVICE_URL}" \
+  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com,CORS_ORIGIN=${SERVICE_URL}" \
   --no-invoker-iam-check \
   --quiet
 

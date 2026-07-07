@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build .env.test from GCP Secret Manager + local sa-key.json (secrets never printed).
+# Build .env.test from GCP Secret Manager (secrets never printed). Keyless: no
+# SA key file — live tests authenticate via your Application Default Credentials.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,11 +20,7 @@ if ! gcloud auth print-access-token &>/dev/null; then
   exit 1
 fi
 
-SA_KEY="${ROOT}/sa-key.json"
-if [[ ! -f "$SA_KEY" ]]; then
-  echo "ERROR: ${SA_KEY} not found. Download SA key or set SA_KEY_PATH manually."
-  exit 1
-fi
+RUNTIME_SA_EMAIL="workspace-admin-sa@${PROJECT}.iam.gserviceaccount.com"
 
 # Active gcloud account as test super admin (must be Workspace super admin)
 TEST_ADMIN="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' | head -1)"
@@ -50,8 +47,7 @@ JWT_SECRET=${JWT_SECRET}
 GCP_PROJECT_ID=${PROJECT}
 WORKSPACE_DOMAIN=${WORKSPACE_DOMAIN}
 GWS_ALLOWED_DOMAINS=${ALLOWED}
-SERVICE_ACCOUNT_SECRET_NAME=service-account-key
-SA_KEY_PATH=${SA_KEY}
+SERVICE_ACCOUNT_EMAIL=${RUNTIME_SA_EMAIL}
 GOOGLE_CLIENT_ID=${CLIENT_ID}
 GOOGLE_CLIENT_SECRET=${CLIENT_SECRET}
 GOOGLE_REDIRECT_URI=http://localhost:5001/api/auth/callback
@@ -62,6 +58,9 @@ NODE_ENV=development
 EOF
 
 echo "OK: Wrote ${OUT} for ${TEST_ADMIN} @ ${WORKSPACE_DOMAIN}"
+echo "Keyless: live tests sign delegation tokens as ${RUNTIME_SA_EMAIL} via your ADC."
+echo "  If not already done: gcloud auth application-default login"
+echo "  and ensure your account has roles/iam.serviceAccountTokenCreator on that SA."
 echo "Live tests auto-discover groups, drives, and files from your tenant (no manual TEST_* IDs required)."
 echo "Run read-only: npm run test:live:read"
 echo "Run full suite (API + mutating + E2E): npm run test:all"
