@@ -101,10 +101,21 @@ create_sa_key() {
   fi
 
   log "Creating key for ${sa_email}..."
-  if ! gcloud iam service-accounts keys create "$out_path" \
-    --iam-account="$sa_email" --project="$project_id" --quiet 2>/dev/null; then
-    die "Could not create SA key (org policy may block iam.disableServiceAccountKeyCreation). See docs/DEPLOY.md for Workload Identity Federation."
-  fi
+  # Org-policy changes (e.g. lifting iam.disableServiceAccountKeyCreation) can
+  # take a couple minutes to propagate, so retry rather than failing on the
+  # first attempt.
+  local attempt
+  for attempt in 1 2 3 4 5 6; do
+    if gcloud iam service-accounts keys create "$out_path" \
+      --iam-account="$sa_email" --project="$project_id" --quiet 2>/dev/null; then
+      return 0
+    fi
+    if [[ "$attempt" -lt 6 ]]; then
+      warn "Key creation failed (attempt ${attempt}/6) — org policy may still be propagating. Retrying in 20s..."
+      sleep 20
+    fi
+  done
+  die "Could not create SA key after retries (org policy iam.disableServiceAccountKeyCreation may still be enforced or propagating). Re-run in a few minutes, or see docs/DEPLOY.md for Workload Identity Federation."
 }
 
 # If iam.disableServiceAccountKeyCreation is enforced (secure-by-default on new
