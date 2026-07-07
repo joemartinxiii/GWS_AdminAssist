@@ -7,16 +7,10 @@ import { driveService } from '../services/drive.service';
 import { groupsService } from '../services/groups.service';
 import { sanitizeText, validateEmail } from '../utils/validation';
 import { convertToCSV, generateExportFilename } from '../utils/csv';
+import { normalizeEmailParam } from '../utils/email';
+import { sendApiError } from '../utils/apiError';
 
 const router = Router();
-
-function normalizeEmailParam(raw: string): string {
-  const trimmed = String(raw || '').trim();
-  if (!trimmed) return '';
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return trimmed;
-  const inParens = trimmed.match(/\(([^\s@]+@[^\s@]+\.[^\s@]+)\)\s*$/)?.[1];
-  return inParens || '';
-}
 
 // All routes require authentication
 router.use(authenticateSession);
@@ -31,8 +25,7 @@ router.get('/', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
     const users = await userService.listUsers(req.user!.email, maxResults);
     res.json(users);
   } catch (error: any) {
-    console.error('Error listing users:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to list users' });
+    sendApiError(res, error, 'Failed to list users', 'users.list');
   }
 });
 
@@ -49,8 +42,7 @@ router.get('/search', requireAnyAdmin, async (req: AuthRequest, res: Response) =
     const users = await userService.searchUsers(req.user!.email, query);
     res.json(users);
   } catch (error: any) {
-    console.error('Error searching users:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to search users' });
+    sendApiError(res, error, 'Failed to search users', 'users.search');
   }
 });
 
@@ -63,8 +55,7 @@ router.get('/organizational-units', requireAnyAdmin, async (req: AuthRequest, re
     const orgUnits = await userService.listOrganizationalUnits(req.user!.email);
     res.json(orgUnits);
   } catch (error: any) {
-    console.error('Error getting organizational units:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get organizational units' });
+    sendApiError(res, error, 'Failed to get organizational units', 'users.orgUnits');
   }
 });
 
@@ -414,8 +405,7 @@ router.get('/:email/groups', requirePermission('users.view'), async (req: AuthRe
     const groups = await groupsService.getGroupsForUser(req.user!.email, targetEmail);
     res.json(groups);
   } catch (error: any) {
-    console.error('Error getting user groups:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get user groups' });
+    sendApiError(res, error, 'Failed to get user groups', 'users.groups');
   }
 });
 
@@ -430,8 +420,7 @@ router.get('/:email/third-party-apps', requirePermission('users.view'), async (r
     const apps = await userService.getThirdPartyApps(req.user!.email, targetEmail);
     res.json(apps);
   } catch (error: any) {
-    console.error('Error getting third-party apps:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get third-party apps' });
+    sendApiError(res, error, 'Failed to get third-party apps', 'users.thirdPartyApps');
   }
 });
 
@@ -446,8 +435,7 @@ router.delete('/:email/third-party-apps/:clientId', requirePermission('users.upd
     await userService.revokeThirdPartyApp(req.user!.email, targetEmail, req.params.clientId);
     res.json({ message: 'Third-party app revoked successfully' });
   } catch (error: any) {
-    console.error('Error revoking third-party app:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to revoke third-party app' });
+    sendApiError(res, error, 'Failed to revoke third-party app', 'users.revokeApp');
   }
 });
 
@@ -462,8 +450,7 @@ router.delete('/:email/third-party-apps', requirePermission('users.update'), aud
     const revokedCount = await userService.revokeAllThirdPartyApps(req.user!.email, targetEmail);
     res.json({ message: `Successfully revoked ${revokedCount} third-party app(s)` });
   } catch (error: any) {
-    console.error('Error revoking all third-party apps:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to revoke third-party apps' });
+    sendApiError(res, error, 'Failed to revoke third-party apps', 'users.revokeAllApps');
   }
 });
 

@@ -4,7 +4,7 @@
 # Usage:
 #   bash scripts/teardown-project.sh --project PROJECT_ID [--region us-central1] [--delete-project]
 #
-# Does NOT touch Google Workspace (DWD) or OAuth clients — see docs/NEW_DEPLOY.md "Full teardown".
+# Does NOT touch Google Workspace (DWD) or OAuth clients — see docs/DEPLOY.md "Teardown / rebuild".
 
 set -euo pipefail
 
@@ -38,7 +38,7 @@ Removes:
   - Service accounts (${RUNTIME_SA}, ${DEPLOY_SA}) and their keys
   - Artifact Registry repo (${ARTIFACT_REPO})
 
-Manual steps still required (documented in docs/NEW_DEPLOY.md):
+Manual steps still required (documented in docs/DEPLOY.md):
   - Remove DWD entry in admin.google.com
   - Remove or reset OAuth Web client in GCP Console
   - Update or remove GitHub Actions secrets (GCP_SA_KEY)
@@ -127,10 +127,10 @@ echo "   https://console.cloud.google.com/apis/credentials?project=${PROJECT_ID}
 echo ""
 echo "3. GitHub — remove or update Actions secrets:"
 echo "   GCP_PROJECT_ID, GCP_SA_KEY"
-echo "   https://github.com/joemartinxiii/GWS_AdminAssist/settings/secrets/actions"
+echo "   https://github.com/<owner>/<repo>/settings/secrets/actions"
 echo ""
 echo "4. Rebuild from scratch:"
 echo "   bash scripts/bootstrap-tenant.sh --domain YOUR_DOMAIN --project ${PROJECT_ID} --admin YOU@YOUR_DOMAIN"
 echo ""
-echo "See docs/NEW_DEPLOY.md for the full from-scratch walkthrough."
+echo "See docs/DEPLOY.md for the full from-scratch walkthrough."
 echo "=============================================="

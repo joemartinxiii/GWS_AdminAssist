@@ -103,7 +103,7 @@ create_sa_key() {
   log "Creating key for ${sa_email}..."
   if ! gcloud iam service-accounts keys create "$out_path" \
     --iam-account="$sa_email" --project="$project_id" --quiet 2>/dev/null; then
-    die "Could not create SA key (org policy may block iam.disableServiceAccountKeyCreation). See docs/GITHUB_ACTIONS.md for Workload Identity Federation."
+    die "Could not create SA key (org policy may block iam.disableServiceAccountKeyCreation). See docs/DEPLOY.md for Workload Identity Federation."
   fi
 }
 

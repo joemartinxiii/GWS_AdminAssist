@@ -1,0 +1,29 @@
+---
+description: Security invariants — never violate these.
+alwaysApply: true
+---
+
+# Security Rules
+
+## Never commit secrets or tenant identifiers
+
+- No service-account keys, JWTs, OAuth secrets, or `.env*` files (see `.gitignore`).
+- **No real tenant data in code or docs**: no real workspace domains, admin emails, GCP project IDs, DWD `client_id`s, or live Cloud Run URLs. Use placeholders (`yourcompany.com`, `you@yourcompany.com`, `your-gcp-project-id`).
+
+## Authorization is enforced server-side
+
+- Mutations MUST be gated by `requireSuperAdmin`; read endpoints by `requireAnyAdmin` or `requirePermission(...)`. Never rely on the frontend to hide an action for security.
+- The login-time gate (`backend/src/routes/auth.routes.ts`) must keep rejecting non-admins and out-of-domain users. Domain checks use `isEmailInAllowedDomain` (fails closed when no domains configured).
+
+## Input handling
+
+- Validate every external input: `validateEmail`, domain checks, `sanitizeText` for profile fields, DOMPurify for signature HTML. Never interpolate unvalidated input into Google API calls.
+
+## Tokens & transport
+
+- OAuth callback returns session tokens in the URL **fragment** (`#`), never query string.
+- CORS is locked to `CORS_ORIGIN` in production. `/health` must stay minimal (`{ status, timestamp }`) — no config disclosure.
+
+## Scopes stay in sync
+
+- DWD + OAuth-consent scopes live in `scripts/lib/scopes.sh` AND `backend/src/config/google.config.ts`. Change both and run `npm run check:scopes`.

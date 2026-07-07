@@ -1,0 +1,36 @@
+---
+description: Backend (Express + Google APIs) conventions
+globs: backend/**/*.ts
+alwaysApply: false
+---
+
+# Backend Conventions
+
+## Services
+
+- Google API logic lives in `backend/src/services/*`, each extending `WorkspaceService`.
+- Access clients via `this.admin` / `this.drive` / `this.gmail` / `this.calendar` after `await this.initialize(userEmail)` — this sets DWD impersonation (`subject = userEmail`).
+- Wrap Google calls in `this.withRetry(() => client.x.y(...))` (handles 429/5xx backoff and status extraction). It returns `any` by design; narrow the result at the call site (e.g. `response.data as DirectoryUser`).
+- For bulk per-item Google calls, use `mapWithConcurrency(items, limit, worker)` from `utils/concurrency.ts` — never fire thousands of unbounded parallel requests.
+
+## Routes
+
+- Routes are thin: authenticate, gate permissions, validate/normalize input, call a service, respond.
+- Middleware order: `authenticateSession` → `requireAnyAdmin` | `requireSuperAdmin` | `requirePermission(...)` → `auditLog(...)` for mutations.
+- Normalize email path params with `normalizeEmailParam` (`utils/email.ts`). CSV exports use `convertToCSV` + `generateExportFilename` (`utils/csv.ts`).
+
+## Error handling
+
+```typescript
+// ❌ BAD
+} catch (error: any) {
+  res.status(error.status || 500).json({ error: error.message });
+}
+
+// ✅ GOOD — resolves true Google status + actionable hint, logs server-side
+} catch (error: any) {
+  sendApiError(res, error, 'Failed to list delegations', 'gmail.delegations.get');
+}
+```
+
+- Do not add `@ts-nocheck`. Do not swallow errors silently in single-item operations (propagate); tolerate-and-log only in bulk scans.

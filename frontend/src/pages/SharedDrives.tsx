@@ -51,6 +51,7 @@ import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogLis
 import { DotLabel } from '../components/StatusDot';
 import { FilterToken } from '../components/ui/FilterToken';
 import { useTheme } from '@mui/material/styles';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -98,6 +99,7 @@ export function SharedDrives() {
   };
   const [drives, setDrives] = useState<SharedDrive[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedDrive, setSelectedDrive] = useState<SharedDrive | null>(null);
   const [permissions, setPermissions] = useState<SharedDrivePermission[]>([]);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
@@ -311,7 +313,7 @@ export function SharedDrives() {
       setSnackbar({ open: true, message: 'Saved to Google Drive.', severity: 'success' });
     } catch (err: any) {
       console.error(err);
-      setSnackbar({ open: true, message: err?.response?.data?.error || 'Drive export failed.', severity: 'error' });
+      setSnackbar({ open: true, message: getApiErrorMessage(err, 'Drive export failed.'), severity: 'error' });
     }
   };
   const handleExportSelectedDrive = async () => {
@@ -324,7 +326,7 @@ export function SharedDrives() {
       setSnackbar({ open: true, message: 'Selection saved to Google Drive.', severity: 'success' });
     } catch (err: any) {
       console.error(err);
-      setSnackbar({ open: true, message: err?.response?.data?.error || 'Drive export failed.', severity: 'error' });
+      setSnackbar({ open: true, message: getApiErrorMessage(err, 'Drive export failed.'), severity: 'error' });
     }
   };
   const handleExportFilteredDrive = async () => {
@@ -334,7 +336,7 @@ export function SharedDrives() {
       setSnackbar({ open: true, message: 'Filtered export saved to Google Drive.', severity: 'success' });
     } catch (err: any) {
       console.error(err);
-      setSnackbar({ open: true, message: err?.response?.data?.error || 'Drive export failed.', severity: 'error' });
+      setSnackbar({ open: true, message: getApiErrorMessage(err, 'Drive export failed.'), severity: 'error' });
     }
   };
 
@@ -412,14 +414,11 @@ export function SharedDrives() {
       } else {
         setDrives([]);
       }
+      setLoadError(null);
     } catch (error: any) {
       console.error('Error fetching shared drives:', error);
       setDrives([]);
-      setSnackbar({
-        open: true,
-        message: error?.response?.data?.error || 'Failed to load shared drives.',
-        severity: 'error',
-      });
+      setLoadError(getApiErrorMessage(error, 'Failed to load shared drives'));
     } finally {
       setLoading(false);
     }
@@ -442,7 +441,7 @@ export function SharedDrives() {
       setPermissions([]);
       setSnackbar({
         open: true,
-        message: error?.response?.data?.error || 'Failed to load shared drive permissions.',
+        message: getApiErrorMessage(error, 'Failed to load shared drive permissions.'),
         severity: 'error',
       });
     } finally {
@@ -494,7 +493,7 @@ export function SharedDrives() {
       console.error('Error adding permission:', error);
       setSnackbar({
         open: true,
-        message: error.response?.data?.error || 'Failed to add permission',
+        message: getApiErrorMessage(error, 'Failed to add permission'),
         severity: 'error',
       });
     }
@@ -517,7 +516,7 @@ export function SharedDrives() {
       console.error('Error removing permission:', error);
       setSnackbar({
         open: true,
-        message: error.response?.data?.error || 'Failed to remove permission',
+        message: getApiErrorMessage(error, 'Failed to remove permission'),
         severity: 'error',
       });
     }
@@ -538,7 +537,7 @@ export function SharedDrives() {
       console.error('Error bulk removing permissions:', error);
       setSnackbar({
         open: true,
-        message: error.response?.data?.error || 'Failed to remove some permissions',
+        message: getApiErrorMessage(error, 'Failed to remove some permissions'),
         severity: 'error',
       });
     }
@@ -771,6 +770,9 @@ export function SharedDrives() {
         </Box>
       ) : (
         <>
+          {loadError && !loading && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>{loadError}</Alert>
+          )}
           <ListShell>
             <ListHeaderRow>
               <Checkbox
@@ -1027,6 +1029,7 @@ export function SharedDrives() {
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       {newPermissionType === 'domain' ? (
                         <TextField
+                          autoFocus
                           size="small"
                           placeholder="domain.com"
                           value={newPermissionDomain}
@@ -1052,6 +1055,7 @@ export function SharedDrives() {
                           renderInput={(params) => (
                             <TextField
                               {...params}
+                              autoFocus
                               size="small"
                               placeholder="Type name/email (e.g. ops)"
                               sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}

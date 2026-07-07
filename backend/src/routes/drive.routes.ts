@@ -5,6 +5,7 @@ import { auditLog } from '../middleware/audit.middleware';
 import { driveService, sharedDriveService } from '../services/drive.service';
 import { validateEmail, validateDomain } from '../utils/validation';
 import { convertToCSV, generateExportFilename } from '../utils/csv';
+import { sendApiError } from '../utils/apiError';
 
 const router = Router();
 
@@ -45,8 +46,7 @@ router.get('/files', requireAnyAdmin, async (req: AuthRequest, res: Response) =>
     );
     res.json(files);
   } catch (error: any) {
-    console.error('Error getting files:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get files' });
+    sendApiError(res, error, 'Failed to get files', 'drive.files.list');
   }
 });
 
@@ -220,8 +220,7 @@ router.get('/external-sharing', requireAnyAdmin, async (req: AuthRequest, res: R
     );
     res.json(reports);
   } catch (error: any) {
-    console.error('Error getting external sharing:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get external sharing' });
+    sendApiError(res, error, 'Failed to get external sharing', 'drive.externalSharing.list');
   }
 });
 
@@ -237,8 +236,7 @@ router.get('/files/:fileId', requireAnyAdmin, async (req: AuthRequest, res: Resp
     }
     res.json(file);
   } catch (error: any) {
-    console.error('Error getting file:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get file' });
+    sendApiError(res, error, 'Failed to get file', 'drive.files.get');
   }
 });
 
@@ -254,8 +252,7 @@ router.get('/files/:fileId/permissions', requireAnyAdmin, async (req: AuthReques
     );
     res.json(permissions);
   } catch (error: any) {
-    console.error('Error getting file permissions:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get permissions' });
+    sendApiError(res, error, 'Failed to get permissions', 'drive.permissions.list');
   }
 });
 
@@ -310,8 +307,7 @@ router.post('/files/:fileId/permissions', requirePermission('drive.permissions.m
 
     res.status(201).json({ message: 'Permission created successfully' });
   } catch (error: any) {
-    console.error('Error creating permission:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to create permission' });
+    sendApiError(res, error, 'Failed to create permission', 'drive.permissions.create');
   }
 });
 
@@ -340,8 +336,7 @@ router.patch('/files/:fileId/permissions/:permissionId', requirePermission('driv
 
     res.json({ message: 'Permission updated successfully' });
   } catch (error: any) {
-    console.error('Error updating permission:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to update permission' });
+    sendApiError(res, error, 'Failed to update permission', 'drive.permissions.update');
   }
 });
 
@@ -360,8 +355,7 @@ router.delete('/files/:fileId/permissions/:permissionId', requirePermission('dri
     );
     res.json({ message: 'Permission deleted successfully' });
   } catch (error: any) {
-    console.error('Error deleting permission:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to delete permission' });
+    sendApiError(res, error, 'Failed to delete permission', 'drive.permissions.delete');
   }
 });
 
@@ -410,8 +404,7 @@ router.post('/files/export/drive', requireSuperAdmin, async (req: AuthRequest, r
     const result = await driveService.uploadFile(req.user!.email, fileName, csv, 'text/csv', req.body.folderId);
     res.json({ fileId: result.id, webViewLink: result.webViewLink, message: 'Drive files exported to Google Drive successfully' });
   } catch (error: any) {
-    console.error('Error exporting files to Drive:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to export files to Drive' });
+    sendApiError(res, error, 'Failed to export files to Drive', 'drive.files.exportToDrive');
   }
 });
 
@@ -430,8 +423,7 @@ router.post('/files/bulk-remove-external-shares', requirePermission('drive.permi
     const result = await driveService.bulkRemoveExternalShares(req.user!.email, fileIds);
     res.json(result);
   } catch (error: any) {
-    console.error('Error bulk removing external shares:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to remove external shares' });
+    sendApiError(res, error, 'Failed to remove external shares', 'drive.files.bulkRemoveExternalShares');
   }
 });
 
@@ -468,8 +460,7 @@ router.get('/external-sharing/export', requireAnyAdmin, async (req: AuthRequest,
     res.setHeader('Content-Disposition', `attachment; filename="external-sharing-${new Date().toISOString().split('T')[0]}.csv"`);
     res.send(csv);
   } catch (error: any) {
-    console.error('Error exporting external sharing:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to export data' });
+    sendApiError(res, error, 'Failed to export data', 'drive.externalSharing.export');
   }
 });
 
@@ -499,8 +490,7 @@ router.post('/external-sharing/export/drive', requireSuperAdmin, async (req: Aut
     const result = await driveService.uploadFile(req.user!.email, fileName, csv, 'text/csv', req.body?.folderId);
     res.json({ fileId: result.id, webViewLink: result.webViewLink, message: 'External sharing report exported to Google Drive successfully' });
   } catch (error: any) {
-    console.error('Error exporting external sharing to Drive:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to export external sharing to Drive' });
+    sendApiError(res, error, 'Failed to export external sharing to Drive', 'drive.externalSharing.exportToDrive');
   }
 });
 
@@ -542,8 +532,7 @@ router.post('/files/export/selected/drive', requireSuperAdmin, async (req: AuthR
     const result = await driveService.uploadFile(req.user!.email, fileName, csv, 'text/csv', req.body?.folderId);
     res.json({ fileId: result.id, webViewLink: result.webViewLink, message: 'Selected files exported to Google Drive successfully' });
   } catch (error: any) {
-    console.error('Error exporting selected files to Drive:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to export selected files to Drive' });
+    sendApiError(res, error, 'Failed to export selected files to Drive', 'drive.files.exportSelectedToDrive');
   }
 });
 
@@ -556,8 +545,7 @@ router.get('/shared-drives', requireAnyAdmin, async (req: AuthRequest, res: Resp
     const drives = await sharedDriveService.listSharedDrives(req.user!.email);
     res.json(drives);
   } catch (error: any) {
-    console.error('Error listing shared drives:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to list shared drives' });
+    sendApiError(res, error, 'Failed to list shared drives', 'drive.shared.list');
   }
 });
 
@@ -579,8 +567,7 @@ router.post('/shared-drives/export/drive', requireSuperAdmin, async (req: AuthRe
     const result = await driveService.uploadFile(req.user!.email, fileName, csv, 'text/csv', req.body?.folderId);
     res.json({ fileId: result.id, webViewLink: result.webViewLink, message: 'Shared drives exported to Google Drive successfully' });
   } catch (error: any) {
-    console.error('Error exporting shared drives to Drive:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to export shared drives to Drive' });
+    sendApiError(res, error, 'Failed to export shared drives to Drive', 'drive.shared.exportToDrive');
   }
 });
 
@@ -607,8 +594,7 @@ router.post('/shared-drives/export/selected/drive', requireSuperAdmin, async (re
     const result = await driveService.uploadFile(req.user!.email, fileName, csv, 'text/csv', req.body?.folderId);
     res.json({ fileId: result.id, webViewLink: result.webViewLink, message: 'Selected shared drives exported to Google Drive successfully' });
   } catch (error: any) {
-    console.error('Error exporting selected shared drives to Drive:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to export selected shared drives to Drive' });
+    sendApiError(res, error, 'Failed to export selected shared drives to Drive', 'drive.shared.exportSelectedToDrive');
   }
 });
 
@@ -624,8 +610,7 @@ router.get('/shared-drives/:driveId/permissions', requireAnyAdmin, async (req: A
     );
     res.json(permissions);
   } catch (error: any) {
-    console.error('Error getting shared drive permissions:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get shared drive permissions' });
+    sendApiError(res, error, 'Failed to get shared drive permissions', 'drive.shared.permissions.list');
   }
 });
 
@@ -662,8 +647,7 @@ router.post('/shared-drives/:driveId/permissions', requirePermission('drive.perm
 
     res.status(201).json(permission);
   } catch (error: any) {
-    console.error('Error adding shared drive permission:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to add permission' });
+    sendApiError(res, error, 'Failed to add permission', 'drive.shared.permissions.create');
   }
 });
 
@@ -680,8 +664,7 @@ router.delete('/shared-drives/:driveId/permissions/:permissionId', requirePermis
     );
     res.json({ message: 'Permission removed successfully' });
   } catch (error: any) {
-    console.error('Error removing shared drive permission:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to remove permission' });
+    sendApiError(res, error, 'Failed to remove permission', 'drive.shared.permissions.delete');
   }
 });
 

@@ -34,6 +34,8 @@ export function usePermissions() {
     isDelegatedAdmin: permissions.isDelegatedAdmin,
     /** Mutations and exports: backend enforces super admin; use for UI affordances */
     canTakeAction: permissions.isSuperAdmin,
+    /** Set when the permissions request failed (degraded mode). */
+    error: permissions.error ?? null,
     loading,
     hasPermission,
     hasAnyPermission,

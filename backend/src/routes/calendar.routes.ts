@@ -3,6 +3,7 @@ import { authenticateSession, AuthRequest } from '../middleware/auth.middleware'
 import { requirePermission, requireAnyAdmin } from '../middleware/permissions.middleware';
 import { auditLog } from '../middleware/audit.middleware';
 import { calendarService } from '../services/calendar.service';
+import { sendApiError } from '../utils/apiError';
 
 const router = Router();
 
@@ -34,8 +35,7 @@ router.get('/:email/calendars', requireAnyAdmin, async (req: AuthRequest, res: R
     );
     res.json(calendars);
   } catch (error: any) {
-    console.error('Error listing calendars:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to list calendars' });
+    sendApiError(res, error, 'Failed to list calendars', 'calendar.calendars.list');
   }
 });
 
@@ -51,8 +51,7 @@ router.get('/:calendarId/acl', requireAnyAdmin, async (req: AuthRequest, res: Re
     );
     res.json(acl);
   } catch (error: any) {
-    console.error('Error getting calendar ACL:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get calendar ACL' });
+    sendApiError(res, error, 'Failed to get calendar ACL', 'calendar.acl.get');
   }
 });
 
@@ -65,8 +64,7 @@ router.get('/resources', requireAnyAdmin, async (req: AuthRequest, res: Response
     const resources = await calendarService.listResources(req.user!.email);
     res.json(resources);
   } catch (error: any) {
-    console.error('Error listing resources:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to list resources' });
+    sendApiError(res, error, 'Failed to list resources', 'calendar.resources.list');
   }
 });
 
@@ -92,8 +90,7 @@ router.post('/resources', requirePermission('calendar.resources.manage'), auditL
 
     res.status(201).json(resource);
   } catch (error: any) {
-    console.error('Error creating resource:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to create resource' });
+    sendApiError(res, error, 'Failed to create resource', 'calendar.resource.create');
   }
 });
 
@@ -111,8 +108,7 @@ router.patch('/resources/:resourceId', requirePermission('calendar.resources.man
     );
     res.json(resource);
   } catch (error: any) {
-    console.error('Error updating resource:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to update resource' });
+    sendApiError(res, error, 'Failed to update resource', 'calendar.resource.update');
   }
 });
 
@@ -125,8 +121,7 @@ router.delete('/resources/:resourceId', requirePermission('calendar.resources.ma
     await calendarService.deleteResource(req.user!.email, req.params.resourceId);
     res.json({ message: 'Resource deleted successfully' });
   } catch (error: any) {
-    console.error('Error deleting resource:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to delete resource' });
+    sendApiError(res, error, 'Failed to delete resource', 'calendar.resource.delete');
   }
 });
 
@@ -154,8 +149,7 @@ router.get('/:email/events', requireAnyAdmin, async (req: AuthRequest, res: Resp
     );
     res.json(events);
   } catch (error: any) {
-    console.error('Error listing events:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to list events' });
+    sendApiError(res, error, 'Failed to list events', 'calendar.events.list');
   }
 });
 
@@ -177,8 +171,7 @@ router.get('/:email/events/:eventId', requireAnyAdmin, async (req: AuthRequest, 
     );
     res.json(event);
   } catch (error: any) {
-    console.error('Error getting event:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get event' });
+    sendApiError(res, error, 'Failed to get event', 'calendar.event.get');
   }
 });
 
@@ -202,8 +195,7 @@ router.patch('/:email/events/:eventId', requirePermission('calendar.resources.ma
     );
     res.json(event);
   } catch (error: any) {
-    console.error('Error updating event:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to update event' });
+    sendApiError(res, error, 'Failed to update event', 'calendar.event.update');
   }
 });
 
@@ -232,8 +224,7 @@ router.post('/:email/events/:eventId/attendees', requirePermission('calendar.res
     );
     res.json(event);
   } catch (error: any) {
-    console.error('Error adding attendees:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to add attendees' });
+    sendApiError(res, error, 'Failed to add attendees', 'calendar.event.addAttendees');
   }
 });
 
@@ -264,8 +255,7 @@ router.post('/:email/events/:eventId/move', requirePermission('calendar.resource
     );
     res.json(event);
   } catch (error: any) {
-    console.error('Error moving event:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to move event' });
+    sendApiError(res, error, 'Failed to move event', 'calendar.event.move');
   }
 });
 
@@ -290,8 +280,7 @@ router.delete('/:email/events/:eventId', requirePermission('calendar.resources.m
     );
     res.json({ message: 'Event deleted successfully' });
   } catch (error: any) {
-    console.error('Error deleting event:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to delete event' });
+    sendApiError(res, error, 'Failed to delete event', 'calendar.event.delete');
   }
 });
 
@@ -326,8 +315,7 @@ router.post('/:email/events', requirePermission('calendar.resources.manage'), au
     );
     res.status(201).json(event);
   } catch (error: any) {
-    console.error('Error creating event:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to create event' });
+    sendApiError(res, error, 'Failed to create event', 'calendar.event.create');
   }
 });
 
@@ -364,8 +352,7 @@ router.post('/:email/events/:eventId/transfer', requirePermission('calendar.reso
       deletedOriginal: deleteOriginal === true,
     });
   } catch (error: any) {
-    console.error('Error transferring event:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to transfer event' });
+    sendApiError(res, error, 'Failed to transfer event', 'calendar.event.transfer');
   }
 });
 

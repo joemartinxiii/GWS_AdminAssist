@@ -41,6 +41,7 @@ import {
   Check,
 } from 'lucide-react';
 import { apiClient } from '../services/api.client';
+import { getApiErrorMessage } from '../utils/apiError';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
@@ -175,6 +176,7 @@ export function Drive() {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [externalSharingData, setExternalSharingData] = useState<any>(null);
   const [externalSharingLoading, setExternalSharingLoading] = useState(false);
@@ -334,12 +336,14 @@ export function Drive() {
       } else {
         setExternalSharingData({ reports: [], statistics: {} });
       }
+      setLoadError(null);
     } catch (error: any) {
       console.error('Error fetching external sharing audit:', error);
       setExternalSharingData({ reports: [], statistics: {} });
+      setLoadError(getApiErrorMessage(error, 'Failed to load external sharing data.'));
       setSnackbar({
         open: true,
-        message: error?.response?.data?.error || 'Failed to load external sharing data.',
+        message: getApiErrorMessage(error, 'Failed to load external sharing data.'),
         severity: 'error',
       });
     } finally {
@@ -393,12 +397,14 @@ export function Drive() {
       } else {
         setFiles([]);
       }
+      setLoadError(null);
     } catch (error: any) {
       console.error('Error fetching files:', error);
       setFiles([]);
+      setLoadError(getApiErrorMessage(error, 'Failed to load Drive files'));
       setSnackbar({
         open: true,
-        message: error?.response?.data?.error || 'Failed to load Drive files.',
+        message: getApiErrorMessage(error, 'Failed to load Drive files.'),
         severity: 'error',
       });
     } finally {
@@ -489,7 +495,7 @@ export function Drive() {
       setPermissionDialogOpen(true);
     } catch (err: any) {
       console.error(err);
-      alert(err?.response?.data?.error || 'Failed to load file for permissions.');
+      setSnackbar({ open: true, message: getApiErrorMessage(err, 'Failed to load file for permissions.'), severity: 'error' });
     }
   };
 
@@ -531,7 +537,7 @@ export function Drive() {
       console.error('Error removing external shares:', error);
       setSnackbar({
         open: true,
-        message: error.response?.data?.error || 'Failed to remove external shares',
+        message: getApiErrorMessage(error, 'Failed to remove external shares'),
         severity: 'error',
       });
     } finally {
@@ -589,7 +595,7 @@ export function Drive() {
       setPermissionDialogOpen(false);
     } catch (error) {
       console.error('Error updating permission:', error);
-      alert('Failed to update permission. Please try again.');
+      setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to update permission. Please try again.'), severity: 'error' });
     }
   };
 
@@ -613,11 +619,7 @@ export function Drive() {
       else fetchFiles();
     } catch (error: any) {
       console.error('Error deleting permission:', error);
-      const msg =
-        error?.response?.data?.error ||
-        error?.response?.data?.message ||
-        'Failed to delete permission. Please try again.';
-      setSnackbar({ open: true, message: msg, severity: 'error' });
+      setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to delete permission. Please try again.'), severity: 'error' });
     }
   };
 
@@ -660,7 +662,7 @@ export function Drive() {
       console.error('Error adding permission:', error);
       setSnackbar({
         open: true,
-        message: error.response?.data?.error || 'Failed to add permission',
+        message: getApiErrorMessage(error, 'Failed to add permission'),
         severity: 'error',
       });
     }
@@ -682,11 +684,7 @@ export function Drive() {
         });
         succeeded.push(p.id);
       } catch (error: any) {
-        const msg =
-          error?.response?.data?.error ||
-          error?.response?.data?.message ||
-          `Failed to remove permission ${p.id}`;
-        errors.push(msg);
+        errors.push(getApiErrorMessage(error, `Failed to remove permission ${p.id}`));
       }
     }
 
@@ -859,7 +857,7 @@ export function Drive() {
       setSnackbar({ open: true, message: 'Saved to Google Drive.', severity: 'success' });
     } catch (err: any) {
       console.error(err);
-      setSnackbar({ open: true, message: err?.response?.data?.error || 'Drive export failed.', severity: 'error' });
+      setSnackbar({ open: true, message: getApiErrorMessage(err, 'Drive export failed.'), severity: 'error' });
     }
   };
 
@@ -871,7 +869,7 @@ export function Drive() {
       setSnackbar({ open: true, message: 'Selection saved to Google Drive.', severity: 'success' });
     } catch (err: any) {
       console.error(err);
-      setSnackbar({ open: true, message: err?.response?.data?.error || 'Drive export failed.', severity: 'error' });
+      setSnackbar({ open: true, message: getApiErrorMessage(err, 'Drive export failed.'), severity: 'error' });
     }
   };
 
@@ -882,7 +880,7 @@ export function Drive() {
       setSnackbar({ open: true, message: 'Report saved to Google Drive.', severity: 'success' });
     } catch (err: any) {
       console.error(err);
-      setSnackbar({ open: true, message: err?.response?.data?.error || 'Drive export failed.', severity: 'error' });
+      setSnackbar({ open: true, message: getApiErrorMessage(err, 'Drive export failed.'), severity: 'error' });
     }
   };
 
@@ -1162,6 +1160,10 @@ export function Drive() {
             </Box>
           )}
         </>
+      )}
+
+      {loadError && !loading && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>{loadError}</Alert>
       )}
 
       {tabValue === 1 && (
@@ -1719,6 +1721,7 @@ export function Drive() {
                           renderInput={(params) => (
                             <TextField
                               {...params}
+                              autoFocus
                               size="small"
                               placeholder="Type name/email (e.g. ops)"
                               sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}

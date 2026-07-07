@@ -5,10 +5,12 @@ import { auditLog } from '../middleware/audit.middleware';
 import { gmailService } from '../services/gmail.service';
 import { driveService } from '../services/drive.service';
 import { validateEmail, validateDelegationDomain } from '../utils/validation';
+import { normalizeEmailParam } from '../utils/email';
+import { convertToCSV } from '../utils/csv';
+import { sendApiError } from '../utils/apiError';
+import { loadSignatureTemplate, saveSignatureTemplate, SignatureTemplate } from '../services/signature-template.service';
 import DOMPurify from 'dompurify';
 import { JSDOM } from 'jsdom';
-import fs from 'fs';
-import path from 'path';
 
 let DOMPurifyServer: any;
 
@@ -23,66 +25,24 @@ function getDOMPurify() {
 
 const router = Router();
 
-function normalizeEmailParam(raw: string): string {
-  const trimmed = String(raw || '').trim();
-  if (!trimmed) return '';
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return trimmed;
-  const inParens = trimmed.match(/\(([^\s@]+@[^\s@]+\.[^\s@]+)\)\s*$/)?.[1];
-  return inParens || '';
-}
-
-// --- Template persistence ---
-const DATA_DIR = path.join(__dirname, '..', '..', 'data');
-const TEMPLATE_FILE = path.join(DATA_DIR, 'signature-template.json');
-
-interface SignatureTemplate {
-  html: string;
-  updatedAt: string | null;
-}
-
-function loadTemplateFromDisk(): SignatureTemplate {
-  try {
-    return JSON.parse(fs.readFileSync(TEMPLATE_FILE, 'utf-8')) as SignatureTemplate;
-  } catch {
-    return { html: '', updatedAt: null };
-  }
-}
-
-function saveTemplateToDisk(template: SignatureTemplate): void {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(TEMPLATE_FILE, JSON.stringify(template, null, 2), 'utf-8');
-}
-
-function convertToCSV(data: any[]): string {
-  if (data.length === 0) return '';
-  const headers = Object.keys(data[0]);
-  const csvRows = [headers.map(h => (h.includes(',') ? `"${h}"` : h)).join(',')];
-  for (const row of data) {
-    const values = headers.map(header => {
-      const value = row[header];
-      if (value === null || value === undefined) return '';
-      const stringValue = String(value).replace(/"/g, '""');
-      return stringValue.includes(',') ? `"${stringValue}"` : stringValue;
-    });
-    csvRows.push(values.join(','));
-  }
-  return csvRows.join('\n');
-}
-
 // All routes require authentication
 router.use(authenticateSession);
 
 /**
  * GET /api/gmail/signatures/template
- * Load the saved domain signature template from disk.
+ * Load the saved domain signature template.
  */
-router.get('/signatures/template', requirePermission('gmail.view'), (_req: AuthRequest, res: Response) => {
-  res.json(loadTemplateFromDisk());
+router.get('/signatures/template', requirePermission('gmail.view'), async (_req: AuthRequest, res: Response) => {
+  try {
+    res.json(await loadSignatureTemplate());
+  } catch (error: any) {
+    sendApiError(res, error, 'Failed to load signature template', 'gmail.signatures.template.get');
+  }
 });
 
 /**
  * POST /api/gmail/signatures/template
- * Persist the domain signature template HTML to disk.
+ * Persist the domain signature template HTML.
  */
 router.post(
   '/signatures/template',
@@ -108,11 +68,10 @@ router.post(
       }
 
       const template: SignatureTemplate = { html: sanitizedHtml, updatedAt: new Date().toISOString() };
-      saveTemplateToDisk(template);
+      await saveSignatureTemplate(template);
       res.json(template);
     } catch (error: any) {
-      console.error('Error saving signature template:', error);
-      res.status(error.status || 500).json({ error: error.message || 'Failed to save template' });
+      sendApiError(res, error, 'Failed to save template', 'gmail.signatures.template.post');
     }
   }
 );
@@ -144,11 +103,78 @@ router.post(
       );
       res.json(result);
     } catch (error: any) {
-      console.error('Error batch-updating signatures:', error);
-      res.status(error.status || 500).json({ error: error.message || 'Failed to apply signatures' });
+      sendApiError(res, error, 'Failed to apply signatures', 'gmail.signatures.batch');
     }
   }
 );
+
+/**
+ * GET /api/gmail/delegations
+ * Get all email delegations across all users.
+ * NOTE: static path — registered before parameterized `/:email/...` routes.
+ */
+router.get('/delegations', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const maxUsers = parseInt(req.query.maxUsers as string) || 500;
+    const delegations = await gmailService.getAllDelegations(req.user!.email, maxUsers);
+    res.json(delegations);
+  } catch (error: any) {
+    sendApiError(res, error, 'Failed to get delegations', 'gmail.delegations.all');
+  }
+});
+
+/**
+ * POST /api/gmail/delegations/export/drive
+ * Export all delegations to Google Drive
+ */
+router.post('/delegations/export/drive', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const maxUsers = parseInt(req.body.maxUsers as string) || 500;
+    const delegations = await gmailService.getAllDelegations(req.user!.email, maxUsers);
+    const csvData = delegations.map(d => ({
+      'User Email': d.userEmail,
+      'Delegate Email': d.delegateEmail,
+      'Verification Status': d.verificationStatus,
+    }));
+    const csv = convertToCSV(csvData);
+    const fileName = `email-delegations-${new Date().toISOString().split('T')[0]}.csv`;
+    const result = await driveService.uploadFile(req.user!.email, fileName, csv, 'text/csv', req.body.folderId);
+    res.json({
+      fileId: result.id,
+      webViewLink: result.webViewLink,
+      message: 'Delegations exported to Google Drive successfully',
+    });
+  } catch (error: any) {
+    sendApiError(res, error, 'Failed to export delegations to Drive', 'gmail.delegations.export');
+  }
+});
+
+/**
+ * POST /api/gmail/delegations/export/selected/drive
+ * Export selected delegations to Google Drive
+ */
+router.post('/delegations/export/selected/drive', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { delegations } = req.body as { delegations?: Array<{ userEmail: string; delegateEmail: string }> };
+    if (!Array.isArray(delegations) || delegations.length === 0) {
+      return res.status(400).json({ error: 'delegations array is required' });
+    }
+    const allDelegations = await gmailService.getAllDelegations(req.user!.email, 5000);
+    const keySet = new Set(delegations.map(d => `${d.userEmail}|${d.delegateEmail}`));
+    const selected = allDelegations.filter(d => keySet.has(`${d.userEmail}|${d.delegateEmail}`));
+    const csvData = selected.map(d => ({
+      'User Email': d.userEmail,
+      'Delegate Email': d.delegateEmail,
+      'Verification Status': d.verificationStatus,
+    }));
+    const csv = convertToCSV(csvData);
+    const fileName = `email-delegations-selected-${new Date().toISOString().split('T')[0]}.csv`;
+    const result = await driveService.uploadFile(req.user!.email, fileName, csv, 'text/csv', req.body?.folderId);
+    res.json({ fileId: result.id, webViewLink: result.webViewLink, message: 'Selected delegations exported to Google Drive successfully' });
+  } catch (error: any) {
+    sendApiError(res, error, 'Failed to export selected delegations to Drive', 'gmail.delegations.export.selected');
+  }
+});
 
 /**
  * GET /api/gmail/:email/delegations
@@ -164,8 +190,7 @@ router.get('/:email/delegations', requireAnyAdmin, async (req: AuthRequest, res:
     );
     res.json(delegations);
   } catch (error: any) {
-    console.error('Error getting delegations:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get delegations' });
+    sendApiError(res, error, 'Failed to get delegations', 'gmail.delegations.get');
   }
 });
 
@@ -199,8 +224,7 @@ router.post('/:email/delegations', requirePermission('gmail.delegation.manage'),
 
     res.status(201).json({ message: 'Delegation added successfully' });
   } catch (error: any) {
-    console.error('Error adding delegation:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to add delegation' });
+    sendApiError(res, error, 'Failed to add delegation', 'gmail.delegation.create');
   }
 });
 
@@ -220,78 +244,7 @@ router.delete('/:email/delegations/:delegateEmail', requirePermission('gmail.del
     );
     res.json({ message: 'Delegation removed successfully' });
   } catch (error: any) {
-    console.error('Error removing delegation:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to remove delegation' });
-  }
-});
-
-/**
- * GET /api/gmail/delegations
- * Get all email delegations across all users
- */
-router.get('/delegations', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
-  try {
-    const maxUsers = parseInt(req.query.maxUsers as string) || 500;
-    const delegations = await gmailService.getAllDelegations(req.user!.email, maxUsers);
-    res.json(delegations);
-  } catch (error: any) {
-    console.error('Error getting all delegations:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get delegations' });
-  }
-});
-
-/**
- * POST /api/gmail/delegations/export/drive
- * Export all delegations to Google Drive
- */
-router.post('/delegations/export/drive', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
-  try {
-    const maxUsers = parseInt(req.body.maxUsers as string) || 500;
-    const delegations = await gmailService.getAllDelegations(req.user!.email, maxUsers);
-    const csvData = delegations.map(d => ({
-      'User Email': d.userEmail,
-      'Delegate Email': d.delegateEmail,
-      'Verification Status': d.verificationStatus,
-    }));
-    const csv = convertToCSV(csvData);
-    const fileName = `email-delegations-${new Date().toISOString().split('T')[0]}.csv`;
-    const result = await driveService.uploadFile(req.user!.email, fileName, csv, 'text/csv', req.body.folderId);
-    res.json({
-      fileId: result.id,
-      webViewLink: result.webViewLink,
-      message: 'Delegations exported to Google Drive successfully',
-    });
-  } catch (error: any) {
-    console.error('Error exporting delegations to Drive:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to export delegations to Drive' });
-  }
-});
-
-/**
- * POST /api/gmail/delegations/export/selected/drive
- * Export selected delegations to Google Drive
- */
-router.post('/delegations/export/selected/drive', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
-  try {
-    const { delegations } = req.body as { delegations?: Array<{ userEmail: string; delegateEmail: string }> };
-    if (!Array.isArray(delegations) || delegations.length === 0) {
-      return res.status(400).json({ error: 'delegations array is required' });
-    }
-    const allDelegations = await gmailService.getAllDelegations(req.user!.email, 5000);
-    const keySet = new Set(delegations.map(d => `${d.userEmail}|${d.delegateEmail}`));
-    const selected = allDelegations.filter(d => keySet.has(`${d.userEmail}|${d.delegateEmail}`));
-    const csvData = selected.map(d => ({
-      'User Email': d.userEmail,
-      'Delegate Email': d.delegateEmail,
-      'Verification Status': d.verificationStatus,
-    }));
-    const csv = convertToCSV(csvData);
-    const fileName = `email-delegations-selected-${new Date().toISOString().split('T')[0]}.csv`;
-    const result = await driveService.uploadFile(req.user!.email, fileName, csv, 'text/csv', req.body?.folderId);
-    res.json({ fileId: result.id, webViewLink: result.webViewLink, message: 'Selected delegations exported to Google Drive successfully' });
-  } catch (error: any) {
-    console.error('Error exporting selected delegations to Drive:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to export selected delegations to Drive' });
+    sendApiError(res, error, 'Failed to remove delegation', 'gmail.delegation.delete');
   }
 });
 
@@ -309,8 +262,7 @@ router.get('/:email/send-as', requireAnyAdmin, async (req: AuthRequest, res: Res
     );
     res.json(sendAsList);
   } catch (error: any) {
-    console.error('Error getting send-as settings:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get send-as settings' });
+    sendApiError(res, error, 'Failed to get send-as settings', 'gmail.sendas.get');
   }
 });
 
@@ -336,8 +288,7 @@ router.post('/:email/send-as', requirePermission('gmail.sendas.manage'), auditLo
 
     res.status(201).json({ message: 'Send-as alias created successfully' });
   } catch (error: any) {
-    console.error('Error creating send-as:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to create send-as alias' });
+    sendApiError(res, error, 'Failed to create send-as alias', 'gmail.sendas.create');
   }
 });
 
@@ -358,8 +309,7 @@ router.patch('/:email/send-as/:sendAsEmail', requirePermission('gmail.sendas.man
     );
     res.json({ message: 'Send-as settings updated successfully' });
   } catch (error: any) {
-    console.error('Error updating send-as:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to update send-as settings' });
+    sendApiError(res, error, 'Failed to update send-as settings', 'gmail.sendas.update');
   }
 });
 
@@ -378,8 +328,7 @@ router.delete('/:email/send-as/:sendAsEmail', requirePermission('gmail.sendas.ma
     );
     res.json({ message: 'Send-as alias deleted successfully' });
   } catch (error: any) {
-    console.error('Error deleting send-as:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to delete send-as alias' });
+    sendApiError(res, error, 'Failed to delete send-as alias', 'gmail.sendas.delete');
   }
 });
 

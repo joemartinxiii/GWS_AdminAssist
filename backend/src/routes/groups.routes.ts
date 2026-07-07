@@ -6,16 +6,10 @@ import { groupsService } from '../services/groups.service';
 import { driveService } from '../services/drive.service';
 import { validateEmail } from '../utils/validation';
 import { convertToCSV, generateExportFilename } from '../utils/csv';
+import { normalizeEmailParam } from '../utils/email';
+import { sendApiError } from '../utils/apiError';
 
 const router = Router();
-
-function normalizeEmailParam(raw: string): string {
-  const trimmed = String(raw || '').trim();
-  if (!trimmed) return '';
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return trimmed;
-  const inParens = trimmed.match(/\(([^\s@]+@[^\s@]+\.[^\s@]+)\)\s*$/)?.[1];
-  return inParens || '';
-}
 
 // All routes require authentication
 router.use(authenticateSession);
@@ -30,8 +24,7 @@ router.get('/', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
     const groups = await groupsService.listGroups(req.user!.email, maxResults);
     res.json(groups);
   } catch (error: any) {
-    console.error('Error listing groups:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to list groups' });
+    sendApiError(res, error, 'Failed to list groups', 'groups.list');
   }
 });
 
@@ -45,8 +38,7 @@ router.get('/with-external-members', requireAnyAdmin, async (req: AuthRequest, r
     const groups = await groupsService.listGroupsWithExternalMembers(req.user!.email, maxGroups);
     res.json(groups);
   } catch (error: any) {
-    console.error('Error listing groups with external members:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to list groups with external members' });
+    sendApiError(res, error, 'Failed to list groups with external members', 'groups.external');
   }
 });
 
@@ -118,8 +110,7 @@ router.get('/:email', requireAnyAdmin, async (req: AuthRequest, res: Response) =
     }
     res.json(group);
   } catch (error: any) {
-    console.error('Error getting group:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to get group' });
+    sendApiError(res, error, 'Failed to get group', 'groups.get');
   }
 });
 
@@ -143,8 +134,7 @@ router.post('/', requirePermission('groups.create'), auditLog('group.create', 'g
 
     res.status(201).json(group);
   } catch (error: any) {
-    console.error('Error creating group:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to create group' });
+    sendApiError(res, error, 'Failed to create group', 'groups.create');
   }
 });
 
@@ -160,8 +150,7 @@ router.patch('/:email', requirePermission('groups.update'), auditLog('group.upda
     const group = await groupsService.updateGroup(req.user!.email, groupEmail, updates);
     res.json(group);
   } catch (error: any) {
-    console.error('Error updating group:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to update group' });
+    sendApiError(res, error, 'Failed to update group', 'groups.update');
   }
 });
 
@@ -176,8 +165,7 @@ router.delete('/:email', requirePermission('groups.delete'), auditLog('group.del
     await groupsService.deleteGroup(req.user!.email, groupEmail);
     res.json({ message: 'Group deleted successfully' });
   } catch (error: any) {
-    console.error('Error deleting group:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to delete group' });
+    sendApiError(res, error, 'Failed to delete group', 'groups.delete');
   }
 });
 
@@ -192,8 +180,7 @@ router.get('/:email/members', requireAnyAdmin, async (req: AuthRequest, res: Res
     const members = await groupsService.listMembers(req.user!.email, groupEmail);
     res.json(members);
   } catch (error: any) {
-    console.error('Error listing members:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to list members' });
+    sendApiError(res, error, 'Failed to list members', 'groups.members.list');
   }
 });
 
@@ -223,8 +210,7 @@ router.post('/:email/members', requirePermission('groups.update'), auditLog('gro
 
     res.status(201).json(member);
   } catch (error: any) {
-    console.error('Error adding member:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to add member' });
+    sendApiError(res, error, 'Failed to add member', 'groups.members.add');
   }
 });
 
@@ -252,8 +238,7 @@ router.patch('/:email/members/:memberEmail', requirePermission('groups.update'),
 
     res.json(member);
   } catch (error: any) {
-    console.error('Error updating member:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to update member' });
+    sendApiError(res, error, 'Failed to update member', 'groups.members.update');
   }
 });
 
@@ -273,8 +258,7 @@ router.delete('/:email/members/:memberEmail', requirePermission('groups.update')
     );
     res.json({ message: 'Member removed successfully' });
   } catch (error: any) {
-    console.error('Error removing member:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to remove member' });
+    sendApiError(res, error, 'Failed to remove member', 'groups.members.remove');
   }
 });
 

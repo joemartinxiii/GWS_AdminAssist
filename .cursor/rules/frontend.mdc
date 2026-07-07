@@ -1,0 +1,36 @@
+---
+description: Frontend (React + MUI) conventions
+globs: frontend/**/*.tsx
+alwaysApply: false
+---
+
+# Frontend Conventions
+
+Full design system: `docs/ui.md`. Match `frontend/src/pages/Users.tsx` as the reference page.
+
+## Styling
+
+- Import `T`, `pick`, and menu helpers from `frontend/src/theme/designTokens.ts`. Do not fork token objects or hardcode core-color hex values.
+- Data views use the flex-list primitives in `frontend/src/components/ui/` (`ListShell`, `ColumnHeader`, `ListDataRow`, `DialogListPagination`). Filters use the toggled inline strip + `FilterToken` (no drawer).
+
+## Interaction (never use browser-native modals)
+
+```tsx
+// ❌ BAD
+if (window.confirm('Delete?')) { ... }
+alert('Failed');
+
+// ✅ GOOD
+const confirm = useConfirm();      // frontend/src/hooks/useConfirm.tsx
+const { showError, showSuccess } = useSnackbar();  // frontend/src/hooks/useSnackbar.tsx
+if (await confirm({ title: 'Delete permission?', ... })) { ... }
+```
+
+- Date/time inputs: use `components/DateTimePicker.tsx`, never native `datetime-local`.
+- Autofocus the first meaningful input in dialogs.
+
+## Data, errors, permissions
+
+- Surface API errors with `getApiErrorMessage(e)` (`frontend/src/utils/apiError.ts`) — it includes backend hints.
+- Track a `loadError` state per fetch and render an MUI `Alert` for failures, distinct from empty states.
+- Gate destructive UI with `usePermissions()` (`hasPermission(...)`, and `canTakeAction` when only super admins may act). This is UX only — the backend still enforces.

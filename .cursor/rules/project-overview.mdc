@@ -1,0 +1,43 @@
+---
+description: What this app is, its architecture, and where things live. Read first.
+alwaysApply: true
+---
+
+# Google Workspace Admin Assist
+
+A web admin tool for Google Workspace tenants (GAM-like operations with a modern UI): users, groups, calendar, email delegation/signatures, Drive & shared-drive permissions, and a security-hardening audit. Runs as a **single Cloud Run service**.
+
+## Stack
+
+- **Frontend**: React + TypeScript + Vite + MUI (Material-UI). Design tokens in `frontend/src/theme/designTokens.ts`.
+- **Backend**: Node + Express + TypeScript. Default dev port **5001**; serves `/api/*` and the built SPA.
+- **Auth**: Google OAuth2 for sign-in; a **service account with domain-wide delegation (DWD)** impersonates the signed-in admin for all Google API calls.
+- **Google APIs** via `googleapis`: Admin SDK (Directory), Drive, Gmail, Calendar, Chrome Policy.
+
+## Directory map
+
+- `backend/src/routes/*` — Express routes (thin; validate input, call services, `sendApiError` on failure).
+- `backend/src/services/*` — Google API logic. Services extend `WorkspaceService` (in `workspace.service.ts`).
+- `backend/src/middleware/*` — `auth`, `permissions`, `audit`, `error`, `request`.
+- `backend/src/utils/*` — `apiError`, `validation`, `concurrency`, `email`, `csv`, `env.validation`.
+- `backend/src/config/*` — `google.config.ts` (scopes, OAuth), `gcp.config.ts` (Secret Manager).
+- `frontend/src/pages/*` — one page per feature. `frontend/src/components/ui/*` — list/table primitives.
+- `frontend/src/hooks/*` — `usePermissions`, `useConfirm`, `useSnackbar`, `useTable`.
+- `scripts/*` — deploy/bootstrap/teardown + `lib/scopes.sh` (scope source of truth).
+
+## Authorization model (critical)
+
+- Any Workspace admin (super **or** delegated) may sign in and **view** data.
+- **Mutations** (create/update/delete, permission changes, delegation/send-as, calendar writes, exports to Drive, audit CSV export) require a **super admin** (`isAdmin` in Admin SDK), enforced by `requireSuperAdmin`.
+- A **login-time gate** rejects sign-in unless the user is a Workspace admin in an allowed domain (`WORKSPACE_DOMAIN` / `GWS_ALLOWED_DOMAINS`).
+
+## Deploy & docs
+
+- **Deploy is Cloud Run first** — see `docs/DEPLOY.md` (bootstrap wizard + GitHub Actions). Local dev: `docs/LOCAL_DEV.md`.
+- Security model & scopes: `SECURITY.md`. UI system: `docs/ui.md`. Known issues: `docs/tech-debt.md`.
+
+## Conventions (see backend/frontend rules for detail)
+
+- Backend errors: always `sendApiError(res, error, fallback, logLabel)` — never hand-roll `res.status(500)`.
+- Frontend: use `getApiErrorMessage`, `useConfirm`/`useSnackbar` (never native `confirm`/`alert`), MUI design tokens.
+- Never commit secrets or real tenant identifiers. Keep DWD/OAuth scopes in sync (`npm run check:scopes`).

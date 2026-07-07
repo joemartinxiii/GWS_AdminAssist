@@ -34,11 +34,14 @@ export class WorkspaceService {
   /**
    * Handle API errors with retry logic
    */
-  protected async withRetry<T>(
-    operation: () => Promise<T>,
+  // Returns `any` because the Google API clients (this.admin/drive/gmail/…) are
+  // themselves loosely typed; a generic here would infer `unknown` and force a
+  // cast at every call site. Callers narrow the result as needed.
+  protected async withRetry(
+    operation: () => Promise<any>,
     maxRetries: number = 3,
     delay: number = 1000
-  ): Promise<T> {
+  ): Promise<any> {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -47,18 +50,25 @@ export class WorkspaceService {
       } catch (error: any) {
         lastError = error;
 
-        // Don't retry on 4xx errors (client errors)
-        if (error.status >= 400 && error.status < 500) {
-          throw error;
+        // googleapis/gaxios expose the HTTP status in different places
+        // depending on the failure; `error.status` alone is often undefined.
+        const status: number =
+          error?.response?.status ??
+          (typeof error?.code === 'number' ? error.code : undefined) ??
+          error?.status ??
+          0;
+
+        // Rate limiting - wait longer (check before generic 4xx bail-out)
+        if (status === 429) {
+          const retryAfter = error.response?.headers?.['retry-after'] ?? error.headers?.['retry-after'];
+          const wait = retryAfter ? parseInt(retryAfter, 10) * 1000 : delay * Math.pow(2, attempt);
+          await new Promise(resolve => setTimeout(resolve, wait));
+          continue;
         }
 
-        // Rate limiting - wait longer
-        if (error.status === 429) {
-          const retryAfter = error.headers?.['retry-after'] 
-            ? parseInt(error.headers['retry-after']) * 1000
-            : delay * Math.pow(2, attempt);
-          await new Promise(resolve => setTimeout(resolve, retryAfter));
-          continue;
+        // Don't retry on other 4xx errors (client errors)
+        if (status >= 400 && status < 500) {
+          throw error;
         }
 
         // Wait before retry

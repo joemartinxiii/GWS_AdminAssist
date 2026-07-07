@@ -19,6 +19,7 @@ import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
 import { T, pick, menuPaperProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { ExportMenuRow } from '../components/ExportButton';
+import { getApiErrorMessage } from '../utils/apiError';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
 import { DotLabel } from '../components/StatusDot';
@@ -289,6 +290,7 @@ export function SecurityAudit() {
   const theme = useTheme();
   const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [hardeningData, setHardeningData] = useState<HardeningData | null>(null);
   const [exportAnchorEl, setExportAnchorEl] = useState<null | HTMLElement>(null);
   const [auditTab, setAuditTab] = useState(0);
@@ -324,7 +326,7 @@ export function SecurityAudit() {
       console.error('Error exporting hardening checks:', error);
       const msg = error?.response?.data instanceof Blob
         ? 'Export failed. Check console or try again.'
-        : (error?.response?.data?.error || error?.message || 'Failed to export CSV.');
+        : getApiErrorMessage(error, 'Failed to export CSV.');
       showSnackbar(msg, 'error');
     }
   };
@@ -337,7 +339,7 @@ export function SecurityAudit() {
       showSnackbar('Saved to Google Drive.');
     } catch (err: any) {
       console.error(err);
-      showSnackbar(err?.response?.data?.error || 'Drive export failed.', 'error');
+      showSnackbar(getApiErrorMessage(err, 'Drive export failed.'), 'error');
     }
   };
 
@@ -362,8 +364,10 @@ export function SecurityAudit() {
       setLoading(true);
       const response = await apiClient.get('/audit/hardening');
       setHardeningData(response.data);
+      setLoadError(null);
     } catch (error) {
       console.error('Error fetching hardening checks:', error);
+      setLoadError(getApiErrorMessage(error, 'Audit failed'));
     } finally {
       setLoading(false);
     }
@@ -575,6 +579,10 @@ export function SecurityAudit() {
           )}
         </Box>
       </Box>
+
+      {loadError && !loading && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>{loadError}</Alert>
+      )}
 
       {loading ? (
         <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">

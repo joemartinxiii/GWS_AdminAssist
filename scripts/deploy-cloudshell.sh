@@ -68,8 +68,40 @@ gcloud run services update "$SERVICE_NAME" \
 
 echo -n "$REDIRECT_URI" | gcloud secrets versions add oauth-redirect-uri --data-file=- --quiet 2>/dev/null || true
 
+# Optional durable storage for the org signature template (survives redeploys).
+# Enable by exporting SIGNATURE_TEMPLATE_BUCKET before running this script; the
+# runtime SA is granted object admin on it. Without it, templates fall back to
+# ephemeral local disk (previous behavior).
+if [[ -n "${SIGNATURE_TEMPLATE_BUCKET:-}" ]]; then
+  log "Configuring durable signature-template storage in gs://${SIGNATURE_TEMPLATE_BUCKET}..."
+  gcloud storage buckets describe "gs://${SIGNATURE_TEMPLATE_BUCKET}" &>/dev/null \
+    || gcloud storage buckets create "gs://${SIGNATURE_TEMPLATE_BUCKET}" --project="$PROJECT_ID" --location="$REGION" --uniform-bucket-level-access --quiet
+  gcloud storage buckets add-iam-policy-binding "gs://${SIGNATURE_TEMPLATE_BUCKET}" \
+    --member="serviceAccount:${RUNTIME_SA}@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/storage.objectAdmin" --quiet
+  gcloud run services update "$SERVICE_NAME" --region "$REGION" \
+    --update-env-vars "SIGNATURE_TEMPLATE_BUCKET=${SIGNATURE_TEMPLATE_BUCKET}" --no-invoker-iam-check --quiet
+fi
+
+# Post-deploy smoke check: confirm the service answers /health (allow for cold start).
+log "Running post-deploy health check..."
+HEALTH_OK=false
+for attempt in 1 2 3 4 5; do
+  if curl -fsS --max-time 10 "${SERVICE_URL}/health" | grep -q '"status":"ok"'; then
+    HEALTH_OK=true
+    break
+  fi
+  log "  health not ready (attempt ${attempt}/5), retrying in 5s..."
+  sleep 5
+done
+
 echo ""
-echo "Deployed successfully."
+if [[ "$HEALTH_OK" == true ]]; then
+  echo "Deployed successfully — /health responded OK."
+else
+  echo "WARNING: Deployed, but /health did not respond OK after retries. Check logs:"
+  echo "  gcloud run services logs read ${SERVICE_NAME} --region ${REGION}"
+fi
 echo "Service URL:   ${SERVICE_URL}"
 echo "Redirect URI:  ${REDIRECT_URI}"
 echo ""

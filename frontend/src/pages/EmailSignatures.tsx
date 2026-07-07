@@ -19,6 +19,8 @@ import {
 import { Search, X, Save, Send, ChevronDown, ChevronUp, HelpCircle, FileCode } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { T, pick, textSecondary, textTertiary } from '../theme/designTokens';
+import { useSnackbar } from '../hooks/useSnackbar';
+import { getApiErrorMessage } from '../utils/apiError';
 
 // ---------------------------------------------------------------------------
 // Variable definitions
@@ -74,8 +76,10 @@ interface UserRow {
 // Component
 // ---------------------------------------------------------------------------
 export function EmailSignatures() {
+  const { snackbar, showSuccess, showError } = useSnackbar();
   const [templateHtml, setTemplateHtml]           = useState('');
   const [templateLoading, setTemplateLoading]     = useState(true);
+  const [loadError, setLoadError]                 = useState<string | null>(null);
   const [templateSaving, setTemplateSaving]       = useState(false);
   const [templateUpdatedAt, setTemplateUpdatedAt] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess]             = useState(false);
@@ -103,8 +107,10 @@ export function EmailSignatures() {
       const { data } = await apiClient.get<{ html: string; updatedAt: string | null }>('/gmail/signatures/template');
       setTemplateHtml(data.html || '');
       setTemplateUpdatedAt(data.updatedAt ?? null);
+      setLoadError(null);
     } catch (e) {
       console.error(e);
+      setLoadError(getApiErrorMessage(e, 'Failed to load signature template.'));
     } finally {
       setTemplateLoading(false);
     }
@@ -135,10 +141,11 @@ export function EmailSignatures() {
       setTemplateHtml(data.html);
       setTemplateUpdatedAt(data.updatedAt ?? null);
       setSaveSuccess(true);
+      showSuccess('Signature template saved.');
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e: any) {
       console.error(e);
-      alert(e?.response?.data?.error || 'Failed to save template.');
+      showError(e, 'Failed to save template.');
     } finally {
       setTemplateSaving(false);
     }
@@ -210,9 +217,10 @@ export function EmailSignatures() {
         { userEmails: emails, signatureHtml: templateHtml }
       );
       setPushResult(data);
+      if (data.failed.length === 0) showSuccess('Signatures applied.');
     } catch (e: any) {
       console.error(e);
-      alert(e?.response?.data?.error || 'Failed to push signatures.');
+      showError(e, 'Failed to push signatures.');
     } finally {
       setApplying(false);
     }
@@ -333,6 +341,10 @@ export function EmailSignatures() {
           </Button>
         </Box>
       </Box>
+
+      {loadError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>{loadError}</Alert>
+      )}
 
       {/* Collapsible help panel */}
       <Box sx={{
@@ -592,6 +604,7 @@ export function EmailSignatures() {
 
           {/* Search */}
           <TextField
+            autoFocus
             size="small"
             fullWidth
             placeholder="Search users..."
@@ -739,6 +752,7 @@ export function EmailSignatures() {
         </DialogActions>
       </Dialog>
 
+      {snackbar}
     </Box>
   );
 }

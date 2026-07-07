@@ -18,6 +18,7 @@
   "dependencies": {
     "@google-cloud/logging": "^11.0.0",
     "@google-cloud/secret-manager": "^5.0.1",
+    "@google-cloud/storage": "^7.7.0",
     "@types/dompurify": "^3.0.5",
     "@types/jsdom": "^28.0.1",
     "cookie-parser": "^1.4.6",

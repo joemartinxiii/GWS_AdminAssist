@@ -23,6 +23,8 @@ export interface UserPermissions {
   permissions: Permission[];
   isSuperAdmin: boolean;
   isDelegatedAdmin: boolean;
+  /** Set when the permissions request failed; drives the degraded-mode banner. */
+  error?: string | null;
 }
 
 class PermissionsService {
@@ -30,6 +32,7 @@ class PermissionsService {
   private isSuperAdmin: boolean = false;
   private isDelegatedAdmin: boolean = false;
   private cacheExpiry: number = 0;
+  private loadError: string | null = null;
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   async fetchPermissions(): Promise<UserPermissions> {
@@ -39,6 +42,7 @@ class PermissionsService {
         permissions: this.permissions,
         isSuperAdmin: this.isSuperAdmin,
         isDelegatedAdmin: this.isDelegatedAdmin,
+        error: this.loadError,
       };
     }
 
@@ -48,21 +52,27 @@ class PermissionsService {
       this.isSuperAdmin = response.data.isSuperAdmin;
       this.isDelegatedAdmin = response.data.isDelegatedAdmin;
       this.cacheExpiry = Date.now() + this.CACHE_TTL;
-      
-      return response.data;
+      this.loadError = null;
+
+      return { ...response.data, error: null };
     } catch (error: any) {
       const errorMsg = error.response?.data?.error || error.message || 'Unknown error';
+      const hint = error.response?.data?.hint;
       console.error('Error fetching permissions:', errorMsg);
-      console.warn(
-        'Permission fetch error (common in prod): If mentions Secret Manager, delegation, or admin roles, ' +
-        'verify SA IAM, domain-wide delegation scopes (SECURITY.md), and run setup-secrets.sh/deploy.sh. ' +
-        'User may be delegated admin (view-only).'
-      );
-      // Return empty permissions on error (UI shows view-only / disabled actions)
+      // Surface a degraded-mode message rather than silently emptying the UI.
+      // An empty permission set makes navigation items and action buttons
+      // disappear; without this signal the user has no idea why.
+      this.permissions = [];
+      this.isSuperAdmin = false;
+      this.isDelegatedAdmin = false;
+      this.cacheExpiry = 0; // do not cache a failure
+      this.loadError = hint ? `${errorMsg} ${hint}` : errorMsg;
+
       return {
         permissions: [],
         isSuperAdmin: false,
         isDelegatedAdmin: false,
+        error: this.loadError,
       };
     }
   }

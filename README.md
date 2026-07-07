@@ -97,67 +97,32 @@ The app stays within GCP's free tier for most small-to-medium Google Workspace o
 2. Google Workspace domain with admin access
 3. Node.js 18+ and npm
 
-### Initial Setup
+### The fastest path
 
-1. **Enable Google APIs**:
-   - Admin SDK API
-   - Drive API
-   - Gmail API
-   - Calendar API
-   - Groups Migration API
+The bootstrap wizard provisions GCP (APIs, service accounts, secrets, Artifact Registry), guides the manual OAuth + domain-wide-delegation console steps, and deploys — all from Cloud Shell. Start with **[docs/DEPLOY.md](./docs/DEPLOY.md)**; you do not need to do the manual GCP setup by hand.
 
-2. **Create Service Account**:
-   - Create service account in GCP
-   - Enable domain-wide delegation
-   - Download JSON key
-   - Store in Secret Manager: `gcloud secrets create service-account-key --data-file=key.json`
+**Multi-domain note**: for Workspace setups with multiple domains, configure `GWS_ALLOWED_DOMAINS` to allow cross-domain operations (and sign-in) within your trusted domains.
 
-3. **Configure OAuth2**:
-   - Create OAuth2 credentials in GCP Console
-   - Add authorized redirect URIs
-   - Configure consent screen
+Before deploying, run the security tests:
 
-4. **Install Dependencies**:
-   ```bash
-   npm install
-   cd frontend && npm install
-   cd ../backend && npm install
-   ```
+```bash
+npm install
+npm run test:security
+```
 
-5. **Environment variables** (local dev): Create a **`.env`** at the repo root (used by **`docker-compose.yml`**) or configure the backend process with OAuth, JWT, workspace domain, and paths to credentials as described in **[SECURITY.md](./SECURITY.md)**. Production uses Secret Manager and Cloud Run env mapping (see **[DEPLOYMENT.md](./DEPLOYMENT.md)**).
+### Deployment (Cloud Run — primary)
 
-   **Security Note**: For multi-domain Google Workspace setups, configure `GWS_ALLOWED_DOMAINS` to allow cross-domain operations within your trusted domains.
+Cloud Run is the primary way to run this app. Full guide: **[docs/DEPLOY.md](./docs/DEPLOY.md)**.
 
-6. **Security Setup**: Review **[SECURITY.md](./SECURITY.md)** for security configuration and best practices. Run security tests with `npm run test:security`.
-
-6. **Local Development**:
-   ```bash
-   npm run dev
-   ```
-
-7. **Security Testing**:
-   ```bash
-   # Run security validation tests
-   npm run test:security
-
-   # Run all backend tests
-   npm run test:backend
-
-   # Run all tests
-   npm test
-   ```
-
-### Deployment
-
-> **New tenant (greenfield):** Use the Cloud Shell bootstrap wizard — see **[docs/NEW_DEPLOY.md](./docs/NEW_DEPLOY.md)**.
-
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/joemartinxiii/GWS_AdminAssist.git&cloudshell_open_in_editor=true&cloudshell_working_dir=GWS_AdminAssist)
+**First-time / greenfield** — one command in Cloud Shell provisions GCP, guides the OAuth + domain-wide-delegation console steps, and deploys:
 
 ```bash
 bash scripts/bootstrap-tenant.sh --domain yourcompany.com --project your-gcp-project --admin you@yourcompany.com
 ```
 
-**Ongoing deploys:** push to `main` or run GitHub Actions **Deploy to Cloud Run**. See [docs/GITHUB_ACTIONS.md](./docs/GITHUB_ACTIONS.md).
+**Ongoing deploys** — push to `main` or run GitHub Actions **Deploy to Cloud Run**. See [docs/DEPLOY.md](./docs/DEPLOY.md#2-ongoing-deploys--github-actions-recommended).
+
+For iterating locally before deploying, see **[docs/LOCAL_DEV.md](./docs/LOCAL_DEV.md)**.
 
 ⚠️ **IMPORTANT**: Review **[SECURITY.md](./SECURITY.md)** and run `npm run test:security` before deployment to ensure all security measures are properly configured.
 
@@ -174,14 +139,12 @@ This allows secure cross-domain operations (delegation, sharing) within your tru
 
 ## Documentation
 
-- **[docs/NEW_DEPLOY.md](./docs/NEW_DEPLOY.md)** — **New tenant:** Cloud Shell one-command bootstrap wizard
-- **[docs/STAGING_TEST_SETUP.md](./docs/STAGING_TEST_SETUP.md)** — Live Workspace staging tests (`npm run test:live`, Playwright E2E)
+- **[docs/DEPLOY.md](./docs/DEPLOY.md)** — Cloud Run deployment: bootstrap wizard, GitHub Actions, teardown (PRIMARY)
 - **[SECURITY.md](./SECURITY.md)** — Security features, OAuth setup, domain-wide delegation, and best practices (REQUIRED READING)
-- **[DEPLOYMENT.md](./DEPLOYMENT.md)** — Cloud Run deployment (legacy manual path + ongoing deploys)
+- **[docs/LOCAL_DEV.md](./docs/LOCAL_DEV.md)** — Local development (MSW mocks + full stack, `VITE_*` vars)
+- **[docs/STAGING_TEST_SETUP.md](./docs/STAGING_TEST_SETUP.md)** — Live Workspace staging tests (`npm run test:live`, Playwright E2E)
 - **[docs/ui.md](./docs/ui.md)** — UI design system (tokens, `frontend/src/components/ui/`, patterns)
-- **[docs/tech-debt.md](./docs/tech-debt.md)** — Technical debt backlog and UX polish plan
-- **[QUICK_START_UI.md](./QUICK_START_UI.md)** — Frontend-only preview with MSW mocks
-- **[frontend/ENV_SETUP.md](./frontend/ENV_SETUP.md)** — `VITE_*` variables (MSW, API URL)
+- **[docs/tech-debt.md](./docs/tech-debt.md)** — Technical debt backlog and known issues
 - **[GWS_HARDENING.md](./GWS_HARDENING.md)** — Hardening checks referenced by Security Audit
 - **[AUDIT_LOGGING.md](./AUDIT_LOGGING.md)** — Admin mutation audit trail in Cloud Logging
 
@@ -198,7 +161,7 @@ This allows secure cross-domain operations (delegation, sharing) within your tru
 
 ## Contributing
 
-We welcome contributions! Please see our security implementation plan and ensure all changes maintain the security standards outlined in [SECURITY_IMPLEMENTATION_PLAN.md](./SECURITY_IMPLEMENTATION_PLAN.md).
+We welcome contributions! Please ensure all changes maintain the security standards outlined in [SECURITY.md](./SECURITY.md).
 
 ### Development Setup
 1. Follow the setup instructions above

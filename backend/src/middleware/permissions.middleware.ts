@@ -97,7 +97,7 @@ export async function requireAnyAdmin(
     res.status(500).json({ 
       error: errorMessage.includes('Secret Manager') || errorMessage.includes('delegation') || errorMessage.includes('Domain-wide') 
         ? errorMessage 
-        : 'Failed to verify admin privileges. Check server logs and DEPLOYMENT.md.' 
+        : 'Failed to verify admin privileges. Check server logs and SECURITY.md.' 
     });
   }
 }
@@ -133,7 +133,7 @@ export async function requireSuperAdmin(
     res.status(500).json({ 
       error: errorMessage.includes('Secret Manager') || errorMessage.includes('delegation') || errorMessage.includes('Domain-wide') 
         ? errorMessage 
-        : 'Failed to verify super admin privileges. Check server logs and DEPLOYMENT.md.' 
+        : 'Failed to verify super admin privileges. Check server logs and SECURITY.md.' 
     });
   }
 }

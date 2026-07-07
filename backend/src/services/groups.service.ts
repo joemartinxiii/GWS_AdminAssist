@@ -1,5 +1,5 @@
-// @ts-nocheck - Temporary to allow clean build/deployment (Google API response typing)
 import { WorkspaceService } from './workspace.service';
+import { mapWithConcurrency } from '../utils/concurrency';
 
 export interface Group {
   id: string;
@@ -87,7 +87,8 @@ export class GroupsService extends WorkspaceService {
         directMembersCount: this.normalizeMembersCount(response.data.directMembersCount),
       };
     } catch (error: any) {
-      if (error.status === 404) {
+      const status = error?.response?.status ?? error?.code ?? error?.status;
+      if (status === 404) {
         return null;
       }
       throw error;
@@ -311,28 +312,41 @@ export class GroupsService extends WorkspaceService {
   async listGroupsWithExternalMembers(userEmail: string, maxGroups: number = 500): Promise<Group[]> {
     await this.initialize(userEmail);
     const allGroups = await this.listGroups(userEmail, maxGroups);
-    const result: Group[] = [];
     const workspaceDomain = String(process.env.WORKSPACE_DOMAIN || '').toLowerCase();
 
-    for (const group of allGroups) {
-      if ((group.directMembersCount || 0) === 0) continue;
+    // Only groups with members can have external members; skip empties up front.
+    const candidates = allGroups.filter((g) => (g.directMembersCount || 0) > 0);
+
+    let firstError: any = null;
+    let failures = 0;
+
+    const scanned = await mapWithConcurrency(candidates, 8, async (group) => {
       try {
         const members = await this.listMembers(userEmail, group.email);
-        const hasExternal = members.some(
-          (m) => {
-            if (m.type === 'CUSTOMER' || m.type === 'EXTERNAL') return true;
-            if (!m.email || !workspaceDomain) return false;
-            const memberDomain = m.email.split('@')[1]?.toLowerCase();
-            return Boolean(memberDomain && memberDomain !== workspaceDomain);
-          }
-        );
-        if (hasExternal) result.push(group);
-      } catch {
-        // Skip group if we can't list members
+        const hasExternal = members.some((m) => {
+          if (m.type === 'CUSTOMER' || m.type === 'EXTERNAL') return true;
+          if (!m.email || !workspaceDomain) return false;
+          const memberDomain = m.email.split('@')[1]?.toLowerCase();
+          return Boolean(memberDomain && memberDomain !== workspaceDomain);
+        });
+        return hasExternal ? group : null;
+      } catch (error: any) {
+        failures++;
+        if (!firstError) firstError = error;
+        console.warn(`Could not list members for group ${group.email}:`, error?.message || error);
+        return null;
       }
+    });
+
+    // If EVERY member lookup failed, this is a systemic problem (missing scope,
+    // insufficient privileges, rate limiting) rather than a genuinely empty
+    // result. Surface the real error so the client shows an actionable message
+    // instead of a misleadingly empty "Externally Shared" tab.
+    if (candidates.length > 0 && failures === candidates.length && firstError) {
+      throw firstError;
     }
 
-    return result;
+    return scanned.filter((g): g is Group => g !== null);
   }
 }
 

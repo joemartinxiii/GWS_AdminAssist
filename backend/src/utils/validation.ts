@@ -49,6 +49,32 @@ export function validateDelegationDomain(userEmail: string, delegateEmail: strin
   return { valid: true };
 }
 
+/**
+ * Domains permitted to sign in: WORKSPACE_DOMAIN plus any GWS_ALLOWED_DOMAINS.
+ */
+export function getAllowedDomains(): string[] {
+  const domains = new Set<string>();
+  const primary = process.env.WORKSPACE_DOMAIN?.trim().toLowerCase();
+  if (primary) domains.add(primary);
+  for (const d of process.env.GWS_ALLOWED_DOMAINS?.split(',') || []) {
+    const trimmed = d.trim().toLowerCase();
+    if (trimmed) domains.add(trimmed);
+  }
+  return Array.from(domains);
+}
+
+/**
+ * True if the email belongs to a permitted Workspace domain. If no domains are
+ * configured (misconfiguration), returns false so we fail closed.
+ */
+export function isEmailInAllowedDomain(email: string): boolean {
+  const domain = String(email || '').split('@')[1]?.toLowerCase();
+  if (!domain) return false;
+  const allowed = getAllowedDomains();
+  if (allowed.length === 0) return false;
+  return allowed.includes(domain);
+}
+
 export function sanitizeText(text: string): string {
   if (!text || typeof text !== 'string') return '';
 

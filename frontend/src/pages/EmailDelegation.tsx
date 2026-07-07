@@ -34,6 +34,8 @@ import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
 import { useTheme } from '@mui/material/styles';
 import { DotLabel } from '../components/StatusDot';
+import { useConfirm } from '../hooks/useConfirm';
+import { getApiErrorMessage } from '../utils/apiError';
 
 interface AllDelegation {
   userEmail: string;
@@ -67,8 +69,10 @@ export function EmailDelegation() {
     '& .MuiTypography-root, & .MuiInputBase-root, & .MuiFormLabel-root': { fontFamily: T.font },
     '& .MuiOutlinedInput-notchedOutline': { borderColor: pick(muiTheme, T.border, '#3f3f46') },
   };
+  const { confirm, confirmDialog } = useConfirm();
   const [allDelegations, setAllDelegations] = useState<AllDelegation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newDelegateEmail, setNewDelegateEmail] = useState('');
@@ -191,10 +195,12 @@ export function EmailDelegation() {
       } else {
         setAllDelegations([]);
       }
+      setLoadError(null);
     } catch (error: any) {
       console.error('Error fetching all delegations:', error);
       setAllDelegations([]);
-      showSnackbar(error?.response?.data?.error || 'Failed to load delegations.', 'error');
+      setLoadError(getApiErrorMessage(error, 'Failed to load delegations'));
+      showSnackbar(getApiErrorMessage(error, 'Failed to load delegations.'), 'error');
     } finally {
       setLoading(false);
     }
@@ -247,7 +253,12 @@ export function EmailDelegation() {
   };
   const handleRemoveSelected = async () => {
     if (selectedDelegations.size === 0) return;
-    if (!window.confirm(`Remove ${selectedDelegations.size} delegation(s)?`)) return;
+    if (!(await confirm({
+      title: 'Remove delegations?',
+      message: `Remove ${selectedDelegations.size} delegation(s)? This cannot be undone.`,
+      danger: true,
+      confirmLabel: 'Remove',
+    }))) return;
     setRemoving(true);
     try {
       for (const key of selectedDelegations) {
@@ -258,13 +269,18 @@ export function EmailDelegation() {
       fetchAllDelegations();
     } catch (err: any) {
       console.error(err);
-      showSnackbar(err?.response?.data?.error || 'Failed to remove one or more delegations.', 'error');
+      showSnackbar(getApiErrorMessage(err, 'Failed to remove one or more delegations.'), 'error');
     } finally {
       setRemoving(false);
     }
   };
   const handleRemoveOne = async (d: AllDelegation) => {
-    if (!window.confirm(`Remove delegation for ${d.delegateEmail} from ${d.userEmail}?`)) return;
+    if (!(await confirm({
+      title: 'Remove delegation?',
+      message: `Remove delegation for ${d.delegateEmail} from ${d.userEmail}? This cannot be undone.`,
+      danger: true,
+      confirmLabel: 'Remove',
+    }))) return;
     try {
       await apiClient.delete(`/gmail/${encodeURIComponent(d.userEmail)}/delegations/${encodeURIComponent(d.delegateEmail)}`);
       fetchAllDelegations();
@@ -275,7 +291,7 @@ export function EmailDelegation() {
       });
     } catch (err: any) {
       console.error(err);
-      showSnackbar(err?.response?.data?.error || 'Failed to remove delegation.', 'error');
+      showSnackbar(getApiErrorMessage(err, 'Failed to remove delegation.'), 'error');
     }
   };
 
@@ -304,7 +320,7 @@ export function EmailDelegation() {
       showSnackbar(msg, 'success');
     } catch (err: any) {
       console.error(err);
-      showSnackbar(err?.response?.data?.error || 'Failed to export delegations to Drive.', 'error');
+      showSnackbar(getApiErrorMessage(err, 'Failed to export delegations to Drive.'), 'error');
     }
   };
   const handleExportSelectedDrive = async () => {
@@ -319,7 +335,7 @@ export function EmailDelegation() {
       showSnackbar(msg, 'success');
     } catch (err: any) {
       console.error(err);
-      showSnackbar(err?.response?.data?.error || 'Failed to export selected delegations to Drive.', 'error');
+      showSnackbar(getApiErrorMessage(err, 'Failed to export selected delegations to Drive.'), 'error');
     }
   };
   const handleExportFilteredDrive = async () => {
@@ -330,7 +346,7 @@ export function EmailDelegation() {
       showSnackbar(msg, 'success');
     } catch (err: any) {
       console.error(err);
-      showSnackbar(err?.response?.data?.error || 'Failed to export delegations to Drive.', 'error');
+      showSnackbar(getApiErrorMessage(err, 'Failed to export delegations to Drive.'), 'error');
     }
   };
 
@@ -549,6 +565,9 @@ export function EmailDelegation() {
         </Box>
       ) : (
         <>
+          {loadError && !loading && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>{loadError}</Alert>
+          )}
           <ListShell>
             <ListHeaderRow>
               <Checkbox
@@ -702,6 +721,7 @@ export function EmailDelegation() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+      {confirmDialog}
     </Box>
   );
 }

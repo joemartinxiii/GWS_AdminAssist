@@ -1,4 +1,3 @@
-// @ts-nocheck - Temporary to allow deployment (many Google API response types are `unknown`)
 import { WorkspaceService } from './workspace.service';
 
 export interface User {

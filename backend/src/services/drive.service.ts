@@ -1,5 +1,14 @@
-// @ts-nocheck - Temporary to allow deployment (many Google API response types are `unknown`)
 import { WorkspaceService } from './workspace.service';
+import { mapWithConcurrency } from '../utils/concurrency';
+
+// Bounded concurrency for per-file permission/classification work during bulk
+// scans. Keeps wall-clock low without issuing thousands of simultaneous Drive
+// API calls (which would trip rate limits / exhaust sockets and time out).
+const SCAN_CONCURRENCY = Number(process.env.DRIVE_SCAN_CONCURRENCY) || 10;
+// Hard cap on files inspected during an external-sharing audit. Prevents the
+// scan from running unbounded (and timing out at the load balancer) on very
+// large tenants. Override with DRIVE_EXTERNAL_SCAN_MAX.
+const EXTERNAL_SCAN_MAX = Number(process.env.DRIVE_EXTERNAL_SCAN_MAX) || 20000;
 
 export interface DriveFile {
   id: string;
@@ -337,7 +346,14 @@ export class DriveService extends WorkspaceService {
     );
 
     if (!hasPrincipalPermissions) {
-      directPermissions = await this.getFilePermissions(userEmail, driveFile.id, !!driveFile.driveId);
+      // Bulk-scan context: a single file's permission fetch failing must not
+      // abort the whole scan, so tolerate per-file errors here (the direct
+      // single-file path in getFile() still propagates errors to the client).
+      try {
+        directPermissions = await this.getFilePermissions(userEmail, driveFile.id, !!driveFile.driveId);
+      } catch (error: any) {
+        console.warn(`Could not hydrate permissions for file ${driveFile.id}:`, error?.message || error);
+      }
     }
 
     if (!driveFile.driveId) {
@@ -346,8 +362,13 @@ export class DriveService extends WorkspaceService {
 
     let sharedDrivePermissions = sharedDrivePermissionsCache.get(driveFile.driveId);
     if (!sharedDrivePermissions) {
-      sharedDrivePermissions = await this.getSharedDrivePermissionsByDriveId(driveFile.driveId);
-      sharedDrivePermissionsCache.set(driveFile.driveId, sharedDrivePermissions);
+      try {
+        sharedDrivePermissions = await this.getSharedDrivePermissionsByDriveId(driveFile.driveId);
+        sharedDrivePermissionsCache.set(driveFile.driveId, sharedDrivePermissions);
+      } catch (error: any) {
+        console.warn(`Could not fetch shared-drive permissions for ${driveFile.driveId}:`, error?.message || error);
+        sharedDrivePermissions = [];
+      }
     }
 
     return {
@@ -400,39 +421,40 @@ export class DriveService extends WorkspaceService {
       this.fetchSharedDriveNames(),
     ]);
 
-    const files: DriveFile[] = [];
     const sharedDrivePermissionsCache = new Map<string, DriveFile['permissions']>();
-    for (const candidate of candidates) {
-      let driveFile = await this.mapToDriveFile(userEmail, candidate, sharedDriveNames);
-      if (driveFile.shared || driveFile.driveId) {
-        driveFile = await this.hydrateEffectivePermissions(userEmail, driveFile, sharedDrivePermissionsCache);
-      }
+
+    const passesFilter = (driveFile: DriveFile): boolean => {
       const { externalDomains, externalEmails } = this.classifyExternalSharing(
         driveFile.permissions,
         workspaceDomain,
         filter?.domain
       );
-
-      if (filter?.owner && !driveFile.owners.some((o) => o.emailAddress === filter.owner || o.emailAddress?.includes(filter.owner!))) continue;
-      if (filter?.domain && externalDomains.length === 0) continue;
-      if (filter?.minSize && (!driveFile.size || parseInt(driveFile.size, 10) < filter.minSize)) continue;
-      if (filter?.maxSize && (!driveFile.size || parseInt(driveFile.size, 10) > filter.maxSize)) continue;
-      if (filter?.createdAfter && driveFile.createdTime && new Date(driveFile.createdTime) < new Date(filter.createdAfter)) continue;
-      if (filter?.createdBefore && driveFile.createdTime && new Date(driveFile.createdTime) > new Date(filter.createdBefore)) continue;
-      if (filter?.modifiedAfter && new Date(driveFile.modifiedTime) < new Date(filter.modifiedAfter)) continue;
-      if (filter?.modifiedBefore && new Date(driveFile.modifiedTime) > new Date(filter.modifiedBefore)) continue;
-      if (filter?.pathContains && !driveFile.path?.toLowerCase().includes(filter.pathContains.toLowerCase())) continue;
-      if (filter?.shared !== undefined && driveFile.shared !== filter.shared) continue;
+      if (filter?.owner && !driveFile.owners.some((o) => o.emailAddress === filter.owner || o.emailAddress?.includes(filter.owner!))) return false;
+      if (filter?.domain && externalDomains.length === 0) return false;
+      if (filter?.minSize && (!driveFile.size || parseInt(driveFile.size, 10) < filter.minSize)) return false;
+      if (filter?.maxSize && (!driveFile.size || parseInt(driveFile.size, 10) > filter.maxSize)) return false;
+      if (filter?.createdAfter && driveFile.createdTime && new Date(driveFile.createdTime) < new Date(filter.createdAfter)) return false;
+      if (filter?.createdBefore && driveFile.createdTime && new Date(driveFile.createdTime) > new Date(filter.createdBefore)) return false;
+      if (filter?.modifiedAfter && new Date(driveFile.modifiedTime) < new Date(filter.modifiedAfter)) return false;
+      if (filter?.modifiedBefore && new Date(driveFile.modifiedTime) > new Date(filter.modifiedBefore)) return false;
+      if (filter?.pathContains && !driveFile.path?.toLowerCase().includes(filter.pathContains.toLowerCase())) return false;
+      if (filter?.shared !== undefined && driveFile.shared !== filter.shared) return false;
       if (filter?.externallyShared !== undefined) {
         const hasExternal = externalDomains.length > 0 || externalEmails.length > 0;
-        if (filter.externallyShared !== hasExternal) continue;
+        if (filter.externallyShared !== hasExternal) return false;
       }
+      return true;
+    };
 
-      files.push(driveFile);
-      if (files.length >= maxResults) break;
-    }
+    const processed = await mapWithConcurrency(candidates, SCAN_CONCURRENCY, async (candidate) => {
+      let driveFile = await this.mapToDriveFile(userEmail, candidate, sharedDriveNames);
+      if (driveFile.shared || driveFile.driveId) {
+        driveFile = await this.hydrateEffectivePermissions(userEmail, driveFile, sharedDrivePermissionsCache);
+      }
+      return passesFilter(driveFile) ? driveFile : null;
+    });
 
-    return files;
+    return processed.filter((f): f is DriveFile => f !== null).slice(0, maxResults);
   }
 
   /**
@@ -463,14 +485,13 @@ export class DriveService extends WorkspaceService {
   ): Promise<ExternalSharingReport[]> {
     await this.initialize(userEmail);
     const workspaceDomain = process.env.WORKSPACE_DOMAIN || '';
-    const reports: ExternalSharingReport[] = [];
     const sharedDrivePermissionsCache = new Map<string, DriveFile['permissions']>();
     const [candidates, sharedDriveNames] = await Promise.all([
-      this.collectAuditCandidates('trashed=false', 100000, onProgress),
+      this.collectAuditCandidates('trashed=false', EXTERNAL_SCAN_MAX, onProgress),
       this.fetchSharedDriveNames(),
     ]);
 
-    for (const candidate of candidates) {
+    const processed = await mapWithConcurrency(candidates, SCAN_CONCURRENCY, async (candidate) => {
       let driveFile = await this.mapToDriveFile(userEmail, candidate, sharedDriveNames);
       if (driveFile.shared || driveFile.driveId) {
         driveFile = await this.hydrateEffectivePermissions(userEmail, driveFile, sharedDrivePermissionsCache);
@@ -480,17 +501,13 @@ export class DriveService extends WorkspaceService {
         workspaceDomain,
         domain
       );
-
       if (externalDomains.length > 0 || externalEmails.length > 0) {
-        reports.push({
-          file: driveFile,
-          externalDomains,
-          externalEmails,
-        });
+        return { file: driveFile, externalDomains, externalEmails } as ExternalSharingReport;
       }
-    }
+      return null;
+    });
 
-    return reports;
+    return processed.filter((r): r is ExternalSharingReport => r !== null);
   }
 
   /**
@@ -564,32 +581,31 @@ export class DriveService extends WorkspaceService {
   async getFilePermissions(userEmail: string, fileId: string, isSharedDrive = false): Promise<DriveFile['permissions']> {
     await this.initialize(userEmail);
 
-    try {
-      const response = await this.withRetry(() =>
-        this.drive.permissions.list({
-          fileId,
-          supportsAllDrives: true,
-          // useDomainAdminAccess only applies to Shared Drive files; using it on
-          // My Drive files causes the API to return an empty permissions list.
-          ...(isSharedDrive ? { useDomainAdminAccess: true } : {}),
-          fields: 'permissions(id, type, role, emailAddress, domain, displayName, deleted, permissionDetails)',
-        })
-      );
+    // NOTE: errors are intentionally propagated so single-file views and
+    // mutations surface a real error to the client instead of a misleadingly
+    // empty permission list. Bulk scans wrap this call to tolerate per-file
+    // failures (see hydrateEffectivePermissions).
+    const response = await this.withRetry(() =>
+      this.drive.permissions.list({
+        fileId,
+        supportsAllDrives: true,
+        // useDomainAdminAccess only applies to Shared Drive files; using it on
+        // My Drive files causes the API to return an empty permissions list.
+        ...(isSharedDrive ? { useDomainAdminAccess: true } : {}),
+        fields: 'permissions(id, type, role, emailAddress, domain, displayName, deleted, permissionDetails)',
+      })
+    );
 
-      return (response.data.permissions || [])
-        .filter(perm => !perm.deleted)
-        .map(perm => ({
-          id: perm.id || '',
-          type: perm.type || '',
-          role: perm.role || '',
-          emailAddress: perm.emailAddress || undefined,
-          domain: perm.domain || undefined,
-          displayName: perm.displayName || undefined,
-        }));
-    } catch (error) {
-      console.error(`Error getting permissions for file ${fileId}:`, error);
-      return [];
-    }
+    return (response.data.permissions || [])
+      .filter(perm => !perm.deleted)
+      .map(perm => ({
+        id: perm.id || '',
+        type: perm.type || '',
+        role: perm.role || '',
+        emailAddress: perm.emailAddress || undefined,
+        domain: perm.domain || undefined,
+        displayName: perm.displayName || undefined,
+      }));
   }
 
   /**
@@ -639,7 +655,8 @@ export class DriveService extends WorkspaceService {
         path: adminPath,
       };
     } catch (error: any) {
-      if (error.status === 404) {
+      const status = error?.response?.status ?? error?.code ?? error?.status;
+      if (status === 404) {
         return null;
       }
       throw error;
@@ -1063,6 +1080,7 @@ export class SharedDriveService extends WorkspaceService {
       this.drive.permissions.create({
         fileId: driveId,
         supportsAllDrives: true,
+        useDomainAdminAccess: true,
         requestBody,
         sendNotificationEmail: false,
       })
@@ -1089,6 +1107,7 @@ export class SharedDriveService extends WorkspaceService {
         fileId: driveId,
         permissionId,
         supportsAllDrives: true,
+        useDomainAdminAccess: true,
       })
     );
   }

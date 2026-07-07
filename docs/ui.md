@@ -55,10 +55,12 @@ Data views use bordered flex lists (not legacy `Table`/`Paper` grids) for consis
 ## 3. Layout, theme, and icons
 
 - **`Layout`** loads **Plus Jakarta Sans** via **`FontLinks`** and uses the app **`ThemeProvider`** so portaled menus and selects inherit **`T.font`**.
-- **`FilterDrawer`** — right-side filter panel pattern.
-- **`ConfirmDialog`** — standard confirm/cancel typography.
+- **`FilterToken`** (`frontend/src/components/ui/FilterToken`) — inline filter chips used in the toggled filter strip (see §6).
+- **`ConfirmDialog`** — standard confirm/cancel typography. Prefer the **`useConfirm`** hook (`frontend/src/hooks/useConfirm.tsx`) over native `window.confirm()`.
+- **`useSnackbar`** (`frontend/src/hooks/useSnackbar.tsx`) — theme-aware success/error/info toasts; use instead of native `alert()`.
+- **`DateTimePicker`** (`frontend/src/components/DateTimePicker.tsx`) — app-styled date/time popover; use instead of native `datetime-local` inputs.
 - **`EditUserDialog`** — full user edit (profile, groups, apps) using the list primitives above.
-- Icons: **Lucide** (`lucide-react`). **`FilterDrawer`**, **`DateRangeCalendar`**, and **`ExportButton`** use Lucide internally.
+- Icons: **Lucide** (`lucide-react`). **`FilterToken`**, **`DateRangeCalendar`**, and **`ExportButton`** use Lucide internally.
 
 ---
 
@@ -83,13 +85,14 @@ Data views use bordered flex lists (not legacy `Table`/`Paper` grids) for consis
 
 ---
 
-## 6. Filters (`FilterDrawer`)
+## 6. Filters (inline `FilterToken` strip)
 
-- Use **`FilterDrawer`** (`frontend/src/components/FilterDrawer.tsx`). Drawer anchor: right (~380px).
-- **Rows**: “Label : Control”; label `Typography` `body2` / `text.secondary`; control `FormControl size="small"`, selects often right-aligned.
-- Optional **Clear filters** when `hasActiveFilters`.
+- Filtering uses a **toggled inline strip** (not a drawer). A Filters icon in the toolbar flips `filtersVisible`, revealing a row of controls above the data list.
+- Individual active filters render as **`FilterToken`** chips (`frontend/src/components/ui/FilterToken`) that can be cleared individually.
+- **Controls**: `FormControl size="small"`, selects often right-aligned; labels `Typography` `body2` / `text.secondary`.
+- Provide a **Clear filters** affordance when any filter is active.
 
-**Reference:** `Users.tsx`; `FilterDrawer.tsx`.
+**Reference:** `Users.tsx` (`filtersVisible`, `UserFilters`, `FilterToken`).
 
 ---
 
@@ -138,7 +141,7 @@ Some screens still use **`Table`** / **`useTable`** (e.g. Calendar, Email Delega
 
 - [ ] Chrome matches Users (tabs + action bar, icon colors, tooltips).
 - [ ] Search: icon + slide-out if applicable.
-- [ ] Filters: `FilterDrawer` or collapsible strip; right-aligned selects where used elsewhere.
+- [ ] Filters: toggled inline strip with `FilterToken` chips; right-aligned selects where used elsewhere.
 - [ ] Data: `ListShell` / `ColumnHeader` / `ListDataRow` OR table patterns above.
 - [ ] Dialogs: single dismiss pattern; section headers consistent.
 - [ ] Tokens from `designTokens.ts`; Lucide icons; no one-off hex for core colors.

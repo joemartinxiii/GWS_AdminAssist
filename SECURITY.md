@@ -31,11 +31,11 @@ Enable the Chrome Policy API in GCP if you use the last scope (`gcloud services 
 
 ## Prerequisites & Setup (Simplified)
 
-**Follow [DEPLOYMENT.md](DEPLOYMENT.md) for the complete <30min help-desk flow.** It uses `./setup-secrets.sh` (now non-interactive with env var support and placeholders) and `./deploy.sh`.
+**Follow [docs/DEPLOY.md](docs/DEPLOY.md) for the complete deploy flow** — the bootstrap wizard automates most of the steps below. This section documents what happens under the hood for security review.
 
 Key security setup (one-time):
 
-1. **Enable APIs** (included in DEPLOYMENT.md prerequisites):
+1. **Enable APIs** (done automatically by the bootstrap wizard):
    ```bash
    gcloud services enable run.googleapis.com secretmanager.googleapis.com cloudbuild.googleapis.com \
      artifactregistry.googleapis.com admin.googleapis.com drive.googleapis.com gmail.googleapis.com calendar-json.googleapis.com
@@ -48,7 +48,7 @@ Key security setup (one-time):
      - **Client ID**: numeric `client_id` from the service account JSON key (not the OAuth web client).
      - **OAuth scopes (comma-delimited)**: paste the **domain-wide delegation** single line from the **Copy-paste scope strings** section at the top of this file.
    - Download JSON key (`sa-key.json`) — passed to `setup-secrets.sh`.
-   - **Cloud Build permission** (common with `--source .`): The default compute service account must have `roles/storage.objectViewer`. `deploy.sh` now grants this automatically. See DEPLOYMENT.md if it fails.
+   - **Cloud Build permission** (common with `--source .`): The default compute service account must have `roles/storage.objectViewer`. The deploy scripts grant this automatically. See [docs/DEPLOY.md](docs/DEPLOY.md) if it fails.
 
 3. **OAuth 2.0 Web Client** (APIs & Services > Credentials):
    - Application type: Web application.
@@ -61,13 +61,13 @@ Key security setup (one-time):
    - **Run the printed IAM commands** to grant `roles/secretmanager.secretAccessor` to the Cloud Run SA on each secret.
    - `deploy.sh` automatically adds versions for production URLs.
 
-**Production mapping** (in `deploy.sh` and `cloud-run.yaml` / `service.yaml`):
+**Production mapping** (in `scripts/deploy-cloudshell.sh` and `.github/workflows/deploy.yml`):
 - `GOOGLE_CLIENT_ID` ← `oauth-client-id:latest`
 - Similar for secret, redirect, JWT, domain, allowed domains.
 - SA key loaded at runtime via `@google-cloud/secret-manager` (`backend/src/config/gcp.config.ts`).
 - `GCP_PROJECT_ID`, `SERVICE_ACCOUNT_SECRET_NAME` set as literal env vars.
 
-See DEPLOYMENT.md for exact commands. Old combined secrets (`oauth-config` etc.) are supported via migration in the new script.
+See [docs/DEPLOY.md](docs/DEPLOY.md) for exact commands.
 
 ## Application Roles & Permissions
 
@@ -141,11 +141,11 @@ The tool protects against these specific attack vectors:
 
 **Key Risks and Mitigations** (evaluated as seasoned security engineer):
 
-- **Network Exposure (High)**: Cloud Run was configured with `ingress: all` and `--allow-unauthenticated`. **Fixed**: Updated to `internal-and-cloud-load-balancing` in [cloud-run.yaml](cloud-run.yaml) and [.github/workflows/deploy.yml](.github/workflows/deploy.yml). **Recommendation**: Configure Identity-Aware Proxy (IAP) + OAuth consent screen for zero-trust access. Only authenticated GWS admins can reach the service. Update CORS_ORIGIN and redirect URIs accordingly.
+- **Network Exposure (High)**: Cloud Run is deployed with `--allow-unauthenticated` + `--no-invoker-iam-check` (see [.github/workflows/deploy.yml](.github/workflows/deploy.yml) and [scripts/deploy-cloudshell.sh](scripts/deploy-cloudshell.sh)) because common org policies block `allUsers` invoker IAM bindings. Access control is therefore enforced at the **application layer**: Google OAuth sign-in, a login-time Workspace-admin + allowed-domain gate, and per-request super-admin/role checks. CORS is locked to `CORS_ORIGIN` in production. **Recommendation**: For zero-trust network isolation, front the service with an external HTTPS Load Balancer + Identity-Aware Proxy (IAP) and restrict ingress to `internal-and-cloud-load-balancing`.
 - **Domain-Wide Delegation/Impersonation**: Broad SA scopes (full Drive, Gmail send, Admin Directory). Per-request `subject = userEmail` + super-admin gating in [permissions.middleware.ts](backend/src/middleware/permissions.middleware.ts) and [permissions.service.ts](backend/src/services/permissions.service.ts). **Mitigation**: Split clients by permission level; regular SA key rotation via Secret Manager; monitor Cloud Logging for anomalous API calls.
 - **Privilege Escalation**: Delegated admins limited to read-only via `isAdmin` check from Admin SDK and permission cache. Tested in security-validation.test.ts.
 - **Input/XSS**: Centralized validation in [utils/validation.ts](backend/src/utils/validation.ts) (email, domain, delegation) + sanitizeText + DOMPurify. CSV/exports now centralized in [utils/csv.ts](backend/src/utils/csv.ts). Route-specific checks added (e.g. [users.routes.ts](backend/src/routes/users.routes.ts)).
-- **Session/Auth**: JWT with short expiry, verified in [auth.service.ts](backend/src/services/auth.service.ts). Use HttpOnly/SameSite=Strict cookies (add in auth routes if not present). No refresh token leakage.
+- **Session/Auth**: JWT with short expiry, verified in [auth.service.ts](backend/src/services/auth.service.ts). A **login-time gate** in [auth.routes.ts](backend/src/routes/auth.routes.ts) rejects any account that is not a Workspace admin in an allowed domain before a session is issued. OAuth callback tokens are returned in the URL **fragment** (`#`, never sent to servers/logs) rather than the query string. The `/health` endpoint returns only `{ status, timestamp }` and discloses no configuration.
 - **Error/Info Leak**: Global [error.middleware.ts](backend/src/middleware/error.middleware.ts) sanitizes in prod. Route catches updated to avoid leaking Google SDK details.
 - **Deps/Supply Chain**: 20 vulns identified via `npm audit` (mostly dev deps like eslint/minimatch, some google-cloud). Add `npm audit fix`, Dependabot, Trivy in CI. Pin versions.
 - **Bulk Mutations**: Gated by `requireSuperAdmin` + auditLog middleware. Add JIT approval for high-risk (e.g. mass Drive changes) in future.
@@ -189,8 +189,9 @@ Required environment variables (stored as secrets):
 - `GOOGLE_REDIRECT_URI`: OAuth2 redirect URI
 - `JWT_SECRET`: Secret for signing JWT tokens
 - `WORKSPACE_DOMAIN`: Your primary Google Workspace domain
-- `CORS_ORIGIN`: Frontend URL for CORS policy (e.g., https://your-app.a.run.app)
-- `GWS_ALLOWED_DOMAINS`: Comma-separated list of trusted domains for cross-domain operations (optional)
+- `CORS_ORIGIN`: Frontend URL for CORS policy (e.g., https://your-app.a.run.app). In production, if unset the app enforces same-origin.
+- `GWS_ALLOWED_DOMAINS`: Comma-separated list of trusted domains for cross-domain operations. Also enforced by the **login-time gate** — sign-in is rejected unless the user's email domain is in this list (or `WORKSPACE_DOMAIN`) **and** they hold a Workspace admin role.
+- `SIGNATURE_TEMPLATE_BUCKET` *(optional)*: GCS bucket for durable persistence of the org signature template. Without it, the template is stored on ephemeral local disk and is lost on redeploy. The deploy script provisions the bucket and grants the runtime SA `roles/storage.objectAdmin` when this is exported.
 
 ## Troubleshooting
 

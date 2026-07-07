@@ -47,9 +47,16 @@ export function createApp(): express.Application {
       referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
     })
   );
+  // Lock CORS to the configured origin(s). In production, if none is set we
+  // disallow cross-origin requests (the SPA is served same-origin by this
+  // service); in development we reflect the origin for convenience.
+  const corsOrigins = (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.use(
     cors({
-      origin: process.env.CORS_ORIGIN || true,
+      origin: corsOrigins.length > 0 ? corsOrigins : process.env.NODE_ENV === 'production' ? false : true,
       credentials: true,
     })
   );
@@ -81,19 +88,10 @@ export function createApp(): express.Application {
 
   app.use(requestLogger);
 
+  // Public, unauthenticated health check for Cloud Run / uptime probes.
+  // Intentionally minimal — no configuration details are disclosed here.
   app.get('/health', (_req, res) => {
-    res.json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV,
-      security: {
-        jwtConfigured: !!process.env.JWT_SECRET,
-        gcpConfigured: !!process.env.GCP_PROJECT_ID,
-        corsOrigin: process.env.CORS_ORIGIN,
-        allowedDomains:
-          process.env.GWS_ALLOWED_DOMAINS?.split(',').map((d) => d.trim()) || [process.env.WORKSPACE_DOMAIN],
-      },
-    });
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
   app.use('/api/auth', authRoutes);

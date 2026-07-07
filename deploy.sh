@@ -1,11 +1,11 @@
 #!/bin/bash
 # Cloud Run deployment via local Docker build + Artifact Registry.
 # Prefer GitHub Actions instead: push to main or run "Deploy to Cloud Run" workflow
-# (see docs/GITHUB_ACTIONS.md) — no local Docker required.
+# (see docs/DEPLOY.md) — no local Docker required.
 
 set -e
 
-PROJECT_ID="${1:-${PROJECT_ID:-${GCP_PROJECT_ID:-admin-assist-492920}}}"
+PROJECT_ID="${1:-${PROJECT_ID:-${GCP_PROJECT_ID:-}}}"
 REGION="${2:-us-central1}"
 SERVICE_NAME="workspace-admin"
 IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/workspace-admin-repo/${SERVICE_NAME}:latest"
@@ -108,4 +108,4 @@ echo "Service account created, all permissions granted, secrets configured, app 
 echo "Everything is done. The app should be live."
 echo ""
 echo "To redeploy: ./deploy.sh $PROJECT_ID $REGION"
-echo "See DEPLOYMENT.md for details."
+echo "See docs/DEPLOY.md for details."

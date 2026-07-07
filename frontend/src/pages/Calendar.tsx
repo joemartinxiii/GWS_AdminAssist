@@ -45,7 +45,9 @@ import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 import { apiClient } from '../services/api.client';
+import { getApiErrorMessage } from '../utils/apiError';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
+import { DateTimePicker } from '../components/DateTimePicker';
 import { FilterToken } from '../components/ui/FilterToken';
 import { T, pick, textSecondary, textTertiary } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
@@ -116,6 +118,7 @@ export function Calendar() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [eventDialogOpen, setEventDialogOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [editMode, setEditMode] = useState<'view' | 'edit' | 'addAttendees' | 'move' | 'transfer'>('view');
@@ -334,9 +337,11 @@ export function Calendar() {
         },
       });
       setEvents(response.data);
+      setLoadError(null);
     } catch (error) {
       console.error('Error fetching events:', error);
       setEvents([]);
+      setLoadError(getApiErrorMessage(error, 'Failed to load calendar data'));
     } finally {
       setLoading(false);
     }
@@ -489,7 +494,7 @@ export function Calendar() {
       console.error('Error saving event:', error);
       setSnackbar({
         open: true,
-        message: error.response?.data?.error || 'Failed to save event',
+        message: getApiErrorMessage(error, 'Failed to save event'),
         severity: 'error',
       });
     }
@@ -527,7 +532,7 @@ export function Calendar() {
       console.error('Error transferring event:', error);
       setSnackbar({
         open: true,
-        message: error.response?.data?.error || 'Failed to transfer event',
+        message: getApiErrorMessage(error, 'Failed to transfer event'),
         severity: 'error',
       });
     }
@@ -546,7 +551,7 @@ export function Calendar() {
       console.error('Error deleting event:', error);
       setSnackbar({
         open: true,
-        message: error.response?.data?.error || 'Failed to delete event',
+        message: getApiErrorMessage(error, 'Failed to delete event'),
         severity: 'error',
       });
     }
@@ -590,7 +595,7 @@ export function Calendar() {
       console.error('Error moving event:', error);
       setSnackbar({
         open: true,
-        message: error.response?.data?.error || 'Failed to move event',
+        message: getApiErrorMessage(error, 'Failed to move event'),
         severity: 'error',
       });
     }
@@ -1064,6 +1069,9 @@ export function Calendar() {
       </Box>
 
       <Box>
+        {loadError && !loading && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>{loadError}</Alert>
+        )}
         {/* Inline collapsible filter panel */}
         {events.length > 0 && viewType === 'table' && (
           <Box sx={{ overflow: 'hidden', maxHeight: filtersVisible ? 320 : 0, opacity: filtersVisible ? 1 : 0, transition: 'max-height 0.3s ease, opacity 0.2s ease, margin 0.3s ease', mb: filtersVisible ? 2 : 0 }}>
@@ -1496,38 +1504,20 @@ export function Calendar() {
               />
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
-                  <TextField
+                  <DateTimePicker
                     label="Start Time"
-                    type="datetime-local"
-                    value={formatDateTimeForInput(eventStart)}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        const date = new Date(e.target.value);
-                        setEventStart(date.toISOString());
-                      } else {
-                        setEventStart('');
-                      }
-                    }}
+                    value={eventStart}
+                    onChange={setEventStart}
                     fullWidth
-                    InputLabelProps={{ shrink: true }}
                     required
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <TextField
+                  <DateTimePicker
                     label="End Time"
-                    type="datetime-local"
-                    value={formatDateTimeForInput(eventEnd)}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        const date = new Date(e.target.value);
-                        setEventEnd(date.toISOString());
-                      } else {
-                        setEventEnd('');
-                      }
-                    }}
+                    value={eventEnd}
+                    onChange={setEventEnd}
                     fullWidth
-                    InputLabelProps={{ shrink: true }}
                     required
                   />
                 </Grid>

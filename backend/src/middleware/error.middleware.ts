@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { normalizeApiError } from '../utils/apiError';
 
 export interface AppError extends Error {
   statusCode?: number;
@@ -9,36 +10,37 @@ export function errorHandler(
   err: AppError,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void {
-  const isDevelopment = process.env.NODE_ENV === 'development';
-  const statusCode = err.statusCode || err.status || 500;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const { status, message, code, hint } = normalizeApiError(err);
 
-  // Log full error details securely
   console.error('Error:', {
-    message: err.message,
-    statusCode,
+    message,
+    code,
+    statusCode: status,
     path: req.path,
     method: req.method,
-    // Only include stack in development
-    ...(isDevelopment && { stack: err.stack })
+    ...(isProduction ? {} : { stack: err.stack }),
   });
 
-  // Generic error messages for production to prevent information disclosure
-  const clientMessage = isDevelopment ? err.message : 'An unexpected error occurred';
+  const isServerError = status >= 500;
+  const clientMessage = isServerError && isProduction ? 'An unexpected error occurred' : message;
 
-  res.status(statusCode).json({
+  res.status(status).json({
     error: clientMessage,
-    ...(isDevelopment && { stack: err.stack })
+    ...(code ? { code } : {}),
+    ...(hint ? { hint } : {}),
+    ...(isProduction ? {} : { stack: err.stack }),
   });
 }
 
 export function notFoundHandler(
   req: Request,
-  res: Response,
-  next: NextFunction
+  _res: Response,
+  _next: NextFunction
 ): void {
-  res.status(404).json({
+  _res.status(404).json({
     error: `Route ${req.method} ${req.path} not found`,
   });
 }

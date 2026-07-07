@@ -7,36 +7,10 @@ import { groupsService } from '../services/groups.service';
 import { auditLogService } from '../services/audit-log.service';
 import { hardeningService } from '../services/hardening.service';
 import { gmailService } from '../services/gmail.service';
+import { sendApiError } from '../utils/apiError';
+import { convertToCSV } from '../utils/csv';
 
 const router = Router();
-
-/**
- * Helper to convert data to CSV
- */
-function convertToCSV(data: any[]): string {
-  if (data.length === 0) return '';
-
-  const headers = Object.keys(data[0]);
-  const csvRows = [headers.join(',')];
-
-  for (const row of data) {
-    const values = headers.map(header => {
-      const value = row[header];
-      if (Array.isArray(value)) {
-        return `"${value.join('; ')}"`;
-      }
-      if (value === null || value === undefined) {
-        return '';
-      }
-      // Escape quotes and wrap in quotes if contains comma
-      const stringValue = String(value).replace(/"/g, '""');
-      return stringValue.includes(',') ? `"${stringValue}"` : stringValue;
-    });
-    csvRows.push(values.join(','));
-  }
-
-  return csvRows.join('\n');
-}
 
 // All routes require authentication
 router.use(authenticateSession);
@@ -83,8 +57,7 @@ router.get('/external-sharing', requireAnyAdmin, async (req: AuthRequest, res: R
       },
     });
   } catch (error: any) {
-    console.error('Error in external sharing audit:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to perform audit' });
+    sendApiError(res, error, 'Failed to perform audit', 'audit.external');
   }
 });
 
@@ -148,8 +121,7 @@ router.get('/permissions', requireAnyAdmin, async (req: AuthRequest, res: Respon
       });
     }
   } catch (error: any) {
-    console.error('Error in permissions audit:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to perform audit' });
+    sendApiError(res, error, 'Failed to perform audit', 'audit.permissions');
   }
 });
 
@@ -175,8 +147,7 @@ router.get('/users', requireAnyAdmin, async (req: AuthRequest, res: Response) =>
       statistics: stats,
     });
   } catch (error: any) {
-    console.error('Error in users audit:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to perform audit' });
+    sendApiError(res, error, 'Failed to perform audit', 'audit.users');
   }
 });
 
@@ -200,8 +171,7 @@ router.get('/groups', requireAnyAdmin, async (req: AuthRequest, res: Response) =
       statistics: stats,
     });
   } catch (error: any) {
-    console.error('Error in groups audit:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to perform audit' });
+    sendApiError(res, error, 'Failed to perform audit', 'audit.groups');
   }
 });
 
@@ -234,8 +204,7 @@ router.get('/users-without-2fa', requireAnyAdmin, async (req: AuthRequest, res: 
       statistics: stats,
     });
   } catch (error: any) {
-    console.error('Error in users without 2FA audit:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to perform audit' });
+    sendApiError(res, error, 'Failed to perform audit', 'audit.2fa');
   }
 });
 
@@ -286,8 +255,7 @@ router.get('/users-without-2fa/export', requireAnyAdmin, async (req: AuthRequest
     res.setHeader('Content-Disposition', `attachment; filename="users-without-2fa-${new Date().toISOString().split('T')[0]}.csv"`);
     res.send(csv);
   } catch (error: any) {
-    console.error('Error exporting users without 2FA:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to export users without 2FA' });
+    sendApiError(res, error, 'Failed to export users without 2FA', 'audit.export');
   }
 });
 
@@ -332,8 +300,7 @@ router.post('/users-without-2fa/export/drive', requireSuperAdmin, async (req: Au
 
     const csv = convertToCSV(allUsersToExport);
     const fileName = `users-without-2fa-${new Date().toISOString().split('T')[0]}.csv`;
-    
-    const { driveService } = require('../services/drive.service');
+
     const result = await driveService.uploadFile(
       req.user!.email,
       fileName,
@@ -348,8 +315,7 @@ router.post('/users-without-2fa/export/drive', requireSuperAdmin, async (req: Au
       message: 'Users without 2FA exported to Google Drive successfully'
     });
   } catch (error: any) {
-    console.error('Error exporting users without 2FA to Drive:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to export users without 2FA to Google Drive' });
+    sendApiError(res, error, 'Failed to export users without 2FA to Google Drive', 'audit.export');
   }
 });
 
@@ -402,8 +368,7 @@ router.post('/users-without-2fa/export/selected', requireSuperAdmin, async (req:
     );
     res.send(csv);
   } catch (error: any) {
-    console.error('Error exporting selected users without 2FA:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to export selected users without 2FA' });
+    sendApiError(res, error, 'Failed to export selected users without 2FA', 'audit.export');
   }
 });
 
@@ -464,8 +429,7 @@ router.post('/users-without-2fa/export/selected/drive', requireSuperAdmin, async
       message: 'Selected users without 2FA exported to Google Drive successfully',
     });
   } catch (error: any) {
-    console.error('Error exporting selected users without 2FA to Drive:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to export selected users without 2FA to Google Drive' });
+    sendApiError(res, error, 'Failed to export selected users without 2FA to Google Drive', 'audit.export');
   }
 });
 
@@ -535,8 +499,7 @@ ${domain}`
       results,
     });
   } catch (error: any) {
-    console.error('Error sending 2FA reminder emails:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to send 2FA reminder emails' });
+    sendApiError(res, error, 'Failed to send 2FA reminder emails', 'audit.2fa');
   }
 });
 
@@ -583,8 +546,7 @@ router.get('/hardening', requireAnyAdmin, async (req: AuthRequest, res: Response
     
     res.json(result);
   } catch (error: any) {
-    console.error('Error running hardening checks:', error);
-    res.status(error.status || 500).json({ error: error.message || 'Failed to run hardening checks' });
+    sendApiError(res, error, 'Failed to run hardening checks', 'audit.hardening');
   }
 });
 

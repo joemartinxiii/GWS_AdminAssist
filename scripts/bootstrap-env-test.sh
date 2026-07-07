@@ -4,7 +4,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${ROOT}/.env.test"
-PROJECT="${GCP_PROJECT_ID:-admin-assist-492920}"
+PROJECT="${GCP_PROJECT_ID:-}"
+if [[ -z "$PROJECT" ]]; then
+  echo "ERROR: Set GCP_PROJECT_ID (e.g. export GCP_PROJECT_ID=your-gcp-project-id)"
+  exit 1
+fi
 
 secret() {
   gcloud secrets versions access latest --secret="$1" --project="$PROJECT" 2>/dev/null

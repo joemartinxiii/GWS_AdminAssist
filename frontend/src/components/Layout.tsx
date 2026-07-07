@@ -17,6 +17,8 @@ import {
   Menu,
   MenuItem,
   Tooltip,
+  Alert,
+  Button as MuiButton,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
@@ -389,6 +391,19 @@ export function Layout({ children }: LayoutProps) {
         }}
       >
         <Toolbar />
+        {permissions.error && (
+          <Alert
+            severity="warning"
+            sx={{ mx: 3, mt: 2 }}
+            action={
+              <MuiButton color="inherit" size="small" onClick={() => permissions.refresh()}>
+                Retry
+              </MuiButton>
+            }
+          >
+            Some permissions couldn't be loaded, so parts of the app may be hidden or disabled. {permissions.error}
+          </Alert>
+        )}
         {children}
       </Box>
     </Box>

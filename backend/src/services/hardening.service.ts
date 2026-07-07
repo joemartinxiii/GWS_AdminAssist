@@ -1,4 +1,3 @@
-// @ts-nocheck - Temporary to allow clean build/deployment (Google API response typing)
 import { WorkspaceService } from './workspace.service';
 import { dnsCheckService } from './dns-check.service';
 import { chromePolicyService } from './chrome-policy.service';

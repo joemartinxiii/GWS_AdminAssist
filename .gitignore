@@ -19,6 +19,9 @@ dist/
 # Vite (pre-bundle cache; do not commit)
 frontend/.vite/
 
+# Runtime data (signature template local fallback store)
+backend/data/
+
 # Environment variables
 .env
 .env.test
@@ -39,13 +42,11 @@ frontend/.vite/
 Thumbs.db
 
 # Service account keys (never commit these!)
-*.json
-!package.json
-!package-lock.json
-!tsconfig.json
+sa-key.json
+github-deploy-key.json
+test-*.json
+*-key.json
+service-account*.json
 
-# Docker
-.dockerignore
-
-# GCP
-.gcloudignore
+# Local scratch
+.tmp-origin-check/

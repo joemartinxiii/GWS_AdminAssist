@@ -2,94 +2,22 @@
 
 This document tracks non-blocking improvements that raise product quality, reliability, and operator efficiency.
 
-## UX Interaction Polish (No Visual Redesign)
+## Completed — 2026-07-06 refactor pass
 
-### Context
+The following were delivered in the codebase-wide reliability/security/UX pass and are no longer outstanding:
 
-The UI style is finalized. Remaining quality gaps are interaction-focused: keyboard efficiency, form focus behavior, and message consistency. The goal is to make admin workflows feel faster and more professional without changing visual design tokens, layout, or component styling.
+- **UX interaction polish (all pages)** — replaced native `window.confirm()` with the `useConfirm` hook, native `alert()` with the `useSnackbar` hook, and the native `datetime-local` inputs in Calendar with the app-styled `DateTimePicker`. Added `loadError` states with MUI `Alert` banners (distinct from empty states) and dialog `autoFocus` across `Users`, `Groups`, `Drive`, `SharedDrives`, `Calendar`, `EmailDelegation`, `EmailSignatures`, and `SecurityAudit`.
+- **Standardized API error handling** — backend `utils/apiError.ts` (`normalizeApiError`/`sendApiError`) resolves the true Google status/message/hint; frontend `utils/apiError.ts` (`getApiErrorMessage`) renders consistent, actionable messages including backend hints.
+- **Reliability/perf** — bounded-concurrency bulk scans (`utils/concurrency.ts`) in Drive/Groups/Gmail services; robust 404/status detection in `withRetry`.
+- **Security** — login-time Workspace-admin + allowed-domain gate, OAuth tokens returned via URL fragment (not query string), CORS locked to `CORS_ORIGIN` in production, trimmed `/health` payload.
+- **Durable signatures** — org signature template persists to GCS when `SIGNATURE_TEMPLATE_BUCKET` is set (falls back to local disk otherwise).
+- **CI** — `npm run check:scopes` now validates both DWD **and** OAuth-consent scopes; deploy script runs a post-deploy `/health` smoke check.
 
-### Scope
+## Remaining follow-ups (deferred)
 
-- Dialog and inline form keyboard flow
-- Smart focus management (open, validate, close)
-- Consistent snackbar/toast message patterns
-- Accessibility-oriented focus behavior
-- Calendar date/time picker consistency with app UI
-
-### Constraints
-
-- Do not alter established UI look and feel
-- Do not redesign component hierarchy
-- Preserve existing role gating and permissions behavior
-
-### Work Plan
-
-#### Phase 1 - Standards
-
-- Define shared interaction rules:
-  - Enter submits valid forms
-  - Enter advances focus when appropriate
-  - Shift+Enter reserved for multiline fields
-  - Escape closes dialogs when safe
-- Define message tone and severity policy:
-  - success, warning (partial), error, info
-
-#### Phase 2 - Shared Helpers
-
-- Add reusable helpers/hooks:
-  - dialog focus open/restore behavior
-  - focus-first-invalid utility
-  - standardized API error extraction
-  - standardized toast copy helpers
-
-#### Phase 3 - High-Impact Pages
-
-- `frontend/src/pages/Calendar.tsx`
-  - refine Enter-to-submit in edit/add-attendees/move/transfer flows
-  - enforce mode-specific autofocus and validation focus
-  - replace native `datetime-local` interaction with a UI-consistent date/time selection pattern that matches app tokens and dialog chrome
-  - ensure date/time popover and controls follow existing component styling conventions in `docs/ui.md`
-- `frontend/src/pages/EmailDelegation.tsx`
-  - first-input autofocus and Enter progression
-  - submit-on-enter when valid
-- `frontend/src/pages/Groups.tsx`
-  - inline add-member keyboard submission
-  - validation focus and clearer partial-success messaging
-- `frontend/src/pages/Drive.tsx`
-  - add-permission keyboard flow and autofocus by permission type
-- `frontend/src/pages/SharedDrives.tsx`
-  - mirror permission dialog behavior and message consistency
-
-#### Phase 4 - Messaging Consistency Sweep
-
-- Standardize message templates across:
-  - `Users`, `Groups`, `Drive`, `SharedDrives`, `Calendar`, `EmailDelegation`, `SecurityAudit`
-- Normalize export wording and failure guidance
-
-#### Phase 5 - QA and Accessibility
-
-- Verify:
-  - tab order and Enter behavior
-  - validation focus movement
-  - focus restore to trigger after close
-  - severity correctness for partial failures
-  - no keyboard traps in dialogs
-
-### Acceptance Criteria
-
-- Operators can complete all common dialog flows without mouse-only steps
-- First invalid field is focused after validation failures
-- Toast messages are consistent in structure and severity
-- No visual regressions in page styling
-- Calendar move/edit date selectors visually match established UI system (no browser-native picker chrome)
-
-### Priority
-
-High (operator productivity and perceived quality)
-
-### Estimated Effort
-
-4-6 hours total implementation + verification.
+- **Large page components** — `Drive.tsx`, `Calendar.tsx`, and `Users.tsx` are large; extract data-fetch/mutation logic into per-feature hooks (e.g. `useDriveFiles`, `useCalendarEvents`) for testability. Structural only; no behavior change.
+- **Full integration security test** — `backend/tests/security.test.ts.disabled` exercises live route + auth + Google API paths and needs a mocking harness (JWT test tokens + nock/MSW for googleapis) before it can be re-enabled in CI. Pure-logic coverage now lives in `security-validation.test.ts` and `permissions-and-errors.test.ts`.
+- **Signature bucket provisioning** — `SIGNATURE_TEMPLATE_BUCKET` provisioning + runtime-SA IAM is wired into `deploy-cloudshell.sh` (opt-in via env). Consider folding it into `bootstrap-tenant.sh` for greenfield tenants.
 
 ## Deployed Bug Backlog (Triage Required)
 
@@ -112,8 +40,7 @@ These are reported from deployed runtime behavior and should be treated as produ
 ### Email Delegation
 
 - Add delegation returns `403 Forbidden` in production:
-  - Request: `POST /api/gmail/{userEmail}/delegations`
-  - Example observed: `POST https://workspace-admin-jevytnm5qa-uc.a.run.app/api/gmail/joe%40befree.wtf/delegations` -> `403`
+  - Request: `POST /api/gmail/{userEmail}/delegations` -> `403`
   - Frontend error surface currently logs axios error and generic failure.
   - Area: `frontend/src/pages/EmailDelegation.tsx`, `backend/src/routes/gmail.routes.ts`, permissions/DWD config.
   - Expected: actionable error surface and successful delegation creation for authorized super admin.
@@ -141,21 +68,9 @@ These are reported from deployed runtime behavior and should be treated as produ
 
 ## Drive Permissions Modal — Remaining Polish
 
-Discovered during 2026-05-19 live testing. Not blocking but degrades UX.
+Discovered during 2026-05-19 live testing.
 
-### Confirm dialogs
-
-Several Drive actions still use `window.confirm()` which is a browser-native modal and inconsistent with app UX:
-- `handleDeletePermission` (`Drive.tsx`) — single permission delete
-- `handleBulkRemovePermissions` (`Drive.tsx`) — bulk permission delete
-- `handleBulkRemoveExternalShares` (`Drive.tsx`) — bulk external share removal
-
-Replace with MUI `<Dialog>` confirmation modal (consistent with the rest of the app).
-
-### Remaining `alert()` calls in Drive.tsx
-
-- `handleUpdatePermission` — uses `alert()` on failure; replace with `setSnackbar`
-- `handleOpenPermissionDialogForReport` — uses `alert()` on failure; replace with `setSnackbar`
+> **Resolved 2026-07-06:** the `window.confirm()` calls (`handleDeletePermission`, `handleBulkRemovePermissions`, `handleBulkRemoveExternalShares`) now use the `useConfirm` MUI dialog, and the `alert()` calls (`handleUpdatePermission`, `handleOpenPermissionDialogForReport`) now use the snackbar. The item below is the only remaining known limitation.
 
 ### File list path shows drive root only
 

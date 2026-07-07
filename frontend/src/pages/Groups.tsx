@@ -50,6 +50,8 @@ import { DotLabel } from '../components/StatusDot';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
 import { useTheme } from '@mui/material/styles';
+import { useConfirm } from '../hooks/useConfirm';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -96,6 +98,7 @@ interface User {
 
 export function Groups() {
   const theme = useTheme();
+  const { confirm, confirmDialog } = useConfirm();
   const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
   const dialogPaperSx = {
     fontFamily: T.font,
@@ -108,6 +111,7 @@ export function Groups() {
   };
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
@@ -471,19 +475,21 @@ export function Groups() {
       setLoading(true);
       const response = await apiClient.get('/groups?maxResults=1000');
       setGroups(Array.isArray(response?.data) ? response.data : []);
+      setLoadError(null);
       if (tabValue === 1) {
         setGroupsWithExternalMembers([]);
       }
     } catch (error) {
       console.error('Error fetching groups:', error);
       setGroups([]);
+      setLoadError(getApiErrorMessage(error, 'Failed to load groups'));
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteGroup = async (groupEmail: string) => {
-    if (!window.confirm('Delete this group? This cannot be undone.')) return;
+    if (!(await confirm({ title: 'Delete group?', message: 'This cannot be undone.', danger: true, confirmLabel: 'Delete' }))) return;
     try {
       await apiClient.delete(`/groups/${encodeURIComponent(groupEmail)}`);
       setGroups(prev => prev.filter(g => g.email !== groupEmail));
@@ -491,13 +497,13 @@ export function Groups() {
       setSnackbar({ open: true, message: 'Group deleted successfully', severity: 'success' });
     } catch (error: any) {
       console.error('Error deleting group:', error);
-      setSnackbar({ open: true, message: error.response?.data?.error || 'Failed to delete group', severity: 'error' });
+      setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to delete group'), severity: 'error' });
     }
   };
 
   const handleBulkDeleteGroups = async () => {
     if (selectedGroups.length === 0) return;
-    if (!window.confirm(`Delete ${selectedGroups.length} group(s)? This cannot be undone.`)) return;
+    if (!(await confirm({ title: `Delete ${selectedGroups.length} groups?`, message: 'This cannot be undone.', danger: true, confirmLabel: 'Delete' }))) return;
     try {
       setDeletingGroups(true);
       await Promise.all(selectedGroups.map(email => apiClient.delete(`/groups/${encodeURIComponent(email)}`)));
@@ -506,7 +512,7 @@ export function Groups() {
       setSnackbar({ open: true, message: `${selectedGroups.length} group(s) deleted successfully`, severity: 'success' });
     } catch (error: any) {
       console.error('Error deleting groups:', error);
-      setSnackbar({ open: true, message: error.response?.data?.error || 'Failed to delete groups', severity: 'error' });
+      setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to delete groups'), severity: 'error' });
     } finally {
       setDeletingGroups(false);
     }
@@ -1057,6 +1063,9 @@ export function Groups() {
         </Box>
       ) : (
       <>
+      {loadError && !loading && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>{loadError}</Alert>
+      )}
       <ListShell>
         <ListHeaderRow>
           <Checkbox
@@ -1367,6 +1376,7 @@ export function Groups() {
                       renderInput={(params) => (
                         <TextField
                           {...params}
+                          autoFocus
                           size="small"
                           placeholder="Type name/email (e.g. joe)"
                           sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
@@ -1497,6 +1507,7 @@ export function Groups() {
               renderInput={(params) => (
                 <TextField
                   {...params}
+                  autoFocus
                   label="User Email or Name"
                   placeholder="Search by name or email, or type an email address"
                   helperText="Search for a user or enter an email address"
@@ -1620,6 +1631,7 @@ export function Groups() {
           {snackbar.message}
         </Alert>
       </Snackbar>
+      {confirmDialog}
     </Box>
   );
 }

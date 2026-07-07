@@ -1,5 +1,7 @@
-// @ts-nocheck - Temporary to allow clean build/deployment (Google API response typing)
 import { WorkspaceService } from './workspace.service';
+import { mapWithConcurrency } from '../utils/concurrency';
+
+const GMAIL_SCAN_CONCURRENCY = Number(process.env.GMAIL_SCAN_CONCURRENCY) || 10;
 
 export interface EmailDelegation {
   delegateEmail: string;
@@ -118,30 +120,25 @@ export class GmailService extends WorkspaceService {
       pageToken = response.data.nextPageToken || undefined;
     } while (pageToken && users.length < maxUsers);
 
-    const allDelegations: Array<{
-      userEmail: string;
-      delegateEmail: string;
-      verificationStatus: string;
-    }> = [];
-
-    // Get delegations for each user
-    for (const user of users) {
+    // Fetch each user's delegations with bounded concurrency. Doing this
+    // sequentially made the endpoint scale linearly with directory size and
+    // time out on larger tenants.
+    const perUser = await mapWithConcurrency(users, GMAIL_SCAN_CONCURRENCY, async (user) => {
       try {
         const delegations = await this.getDelegations(userEmail, user.primaryEmail);
-        for (const delegation of delegations) {
-          allDelegations.push({
-            userEmail: user.primaryEmail,
-            delegateEmail: delegation.delegateEmail,
-            verificationStatus: delegation.verificationStatus,
-          });
-        }
+        return delegations.map((delegation) => ({
+          userEmail: user.primaryEmail,
+          delegateEmail: delegation.delegateEmail,
+          verificationStatus: delegation.verificationStatus,
+        }));
       } catch (error) {
         // Skip users that fail (might not have Gmail enabled)
         console.warn(`Failed to get delegations for ${user.primaryEmail}:`, error);
+        return [];
       }
-    }
+    });
 
-    return allDelegations;
+    return perUser.flat();
   }
 
   /**

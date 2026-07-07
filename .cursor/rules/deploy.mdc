@@ -1,0 +1,24 @@
+---
+description: Deploy, scripts, and CI conventions (Cloud Run)
+globs: scripts/**,Dockerfile,Dockerfile.*,.github/workflows/*.yml,docker-compose.yml
+alwaysApply: false
+---
+
+# Deploy & Scripts
+
+Cloud Run is the **primary** target: one service, Express serves API + built SPA. Full guide: `docs/DEPLOY.md`.
+
+## Paths
+
+- **First-time**: `scripts/bootstrap-tenant.sh` (Cloud Shell wizard) — provisions GCP, guides OAuth/DWD, deploys via `scripts/deploy-cloudshell.sh`.
+- **Ongoing**: push to `main` → `.github/workflows/deploy.yml` (Cloud Build). Manual: `scripts/deploy-cloudshell.sh <project> <region>`.
+- **Fallback**: `deploy.sh` (local Docker). Teardown: `scripts/teardown-project.sh`.
+
+## Rules
+
+- The service deploys with `--allow-unauthenticated --no-invoker-iam-check` (org policies block `allUsers` invoker IAM); access control is enforced in-app. Keep both flags.
+- `--set-env-vars` REPLACES the full env set — when re-updating, re-list all vars (see existing scripts).
+- Runtime config comes from Secret Manager (mapping in `SECURITY.md` / `docs/DEPLOY.md`). Do not bake secrets into the image or env literals.
+- Shared shell config lives in `scripts/lib/` (`common.sh`, `scopes.sh`, `gcp-provision.sh`). `scopes.sh` is the scope source of truth — keep it synced with `backend/src/config/google.config.ts` (`npm run check:scopes`).
+- Never hardcode a project ID, domain, admin email, or repo URL — accept them as flags/env or use placeholders.
+- Keep the post-deploy `/health` smoke check in the deploy scripts.

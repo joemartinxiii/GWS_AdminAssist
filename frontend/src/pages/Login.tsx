@@ -5,6 +5,14 @@ import { authService } from '../services/auth.service';
 import { T } from '../theme/designTokens';
 import { FontLinks } from '../components/FontLinks';
 
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  domain_not_allowed: 'That account is not in an allowed Workspace domain. Sign in with your organization account.',
+  not_admin: 'Your account is not a Google Workspace admin, so it cannot access this tool.',
+  admin_check_failed: 'We could not verify your admin status. Check service-account delegation/scopes and try again.',
+  callback_failed: 'Sign-in failed during the Google callback. Please try again.',
+  no_code: 'Sign-in was interrupted. Please try again.',
+};
+
 export function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -12,11 +20,25 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = searchParams.get('token');
-    const refreshToken = searchParams.get('refreshToken');
+    // Tokens now arrive in the URL fragment (not the query string) to avoid
+    // leaking them via server logs / Referer. Fall back to query params for
+    // backward compatibility, and surface any auth-gate error.
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const token = hashParams.get('token') || searchParams.get('token');
+    const refreshToken = hashParams.get('refreshToken') || searchParams.get('refreshToken');
+    const authError = searchParams.get('error');
+
+    if (authError) {
+      setError(AUTH_ERROR_MESSAGES[authError] || 'Sign-in failed. Please try again.');
+      // Clear the error from the URL so a refresh doesn't re-show it.
+      window.history.replaceState(null, '', window.location.pathname);
+      return;
+    }
 
     if (token) {
       authService.setSessionToken(token, refreshToken || undefined);
+      // Strip the fragment so tokens don't linger in the address bar / history.
+      window.history.replaceState(null, '', window.location.pathname);
       navigate('/users', { replace: true });
       return;
     }

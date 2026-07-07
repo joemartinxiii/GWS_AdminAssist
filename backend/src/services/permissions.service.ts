@@ -49,14 +49,14 @@ export class PermissionsService extends WorkspaceService {
     try {
       await this.initialize(userEmail);
       
-      const response = await this.withRetry<{ data: DirectoryUser }>(() =>
+      const response = await this.withRetry(() =>
         this.admin.users.get({
           userKey: userEmail,
           projection: 'full',
         })
       );
 
-      const user = response.data;
+      const user = response.data as DirectoryUser;
       
       return {
         isSuperAdmin: user.isAdmin === true,
@@ -69,7 +69,7 @@ export class PermissionsService extends WorkspaceService {
       const message = err.message;
       // Provide clear, actionable errors for common Cloud Run / SA / delegation issues
       if (message.includes('secret') || message.includes('SecretManager') || (message.includes('403') && message.includes('access'))) {
-        throw new Error(`Secret Manager or IAM configuration error. Run './setup-secrets.sh <project>' and apply all printed IAM commands (see DEPLOYMENT.md). Details: ${message}`);
+        throw new Error(`Secret Manager or IAM configuration error. Run './setup-secrets.sh <project>' and apply all printed IAM commands (see SECURITY.md). Details: ${message}`);
       }
       if (message.includes('delegation') || message.includes('Forbidden') || message.includes('403') || message.includes('insufficient')) {
         throw new Error(`Domain-wide delegation or admin privileges issue for ${userEmail}. Verify SA scopes in GWS Admin Console match SECURITY.md exactly, and confirm user is a Workspace admin. Details: ${message}`);
