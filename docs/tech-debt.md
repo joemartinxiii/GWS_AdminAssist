@@ -82,6 +82,24 @@ Area: `backend/src/services/drive.service.ts` → `buildFastPath`
 
 Low-medium — UX polish, not functional blockers.
 
+### Manage Permissions modal — major issues (observed 2026-07-07, deployed)
+
+Screenshot: `songs.csv` modal showed **both** rows badged "External", including the **owner** (`joe@befree.wtf`) on the workspace's own domain.
+
+- **Every principal is mis-classified as External (functional bug, not polish).**
+  - Root cause: the modal uses a client-side `isPermissionExternal()` in `frontend/src/pages/Drive.tsx` (~line 191) that compares against a single `WORKSPACE_DOMAIN = import.meta.env.VITE_WORKSPACE_DOMAIN || 'example.com'`. `VITE_WORKSPACE_DOMAIN` is **not set** in the production build (`frontend/.env.production` only defines `VITE_USE_MSW` and `VITE_API_URL`), so it defaults to `example.com` → every real principal ≠ `example.com` is flagged External.
+  - It also (a) does **not** honor the multi-domain allowlist (`GWS_ALLOWED_DOMAINS`) and (b) does **not** skip `role: owner`, unlike the authoritative backend `classifyPermissions()` in `backend/src/utils/externalSharing.ts`.
+  - Fix direction: stop deriving external-ness on the client. Either surface a per-permission `external` flag from the backend (reuse `classifyPermissions`) or, at minimum, feed the modal the allowed-domains list from `/api/auth/me` / config and skip owners. Single source of truth should be the backend classifier.
+- **Layout/UX problems in the same modal:**
+  - Delete (trash) icon renders inside the `EXTERNAL` column and appears on only some rows; edit (pencil) vs. delete affordances are inconsistent per row.
+  - The add-permission `+` control sits alone in a full-width table row with no label — reads as unstyled.
+  - `Rows per page` + `1–2 of 2` pagination chrome shows for tiny (2-row) lists; suppress pagination under one page.
+  - `EXTERNAL` column + colored dot is redundant with role/access info and adds horizontal noise.
+
+Area: `frontend/src/pages/Drive.tsx` (permissions dialog + `isPermissionExternal`), `backend/src/utils/externalSharing.ts`, `frontend/.env.production`.
+
+Priority: the mis-classification is **medium-high** (misleads remediation decisions); the layout items are low-medium.
+
 ---
 
 ## Post-Deployment Verification Checklist (Add to Release SOP)
