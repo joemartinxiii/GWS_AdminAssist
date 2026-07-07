@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install dependencies
         run: npm ci
@@ -45,7 +45,7 @@ jobs:
       # GCP_WIF_PROVIDER + GCP_DEPLOY_SA secrets via scripts/setup-github-ci.sh.
       - name: Authenticate to Google Cloud (Workload Identity Federation)
         if: env.HAS_WIF == 'true'
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
@@ -54,13 +54,13 @@ jobs:
       # Fallback for forks whose org permits SA keys: set GCP_SA_KEY instead.
       - name: Authenticate to Google Cloud (service-account key fallback)
         if: env.HAS_WIF != 'true'
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
           create_credentials_file: true
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Configure project and Docker
         run: |
