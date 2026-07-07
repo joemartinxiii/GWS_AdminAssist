@@ -120,6 +120,8 @@ Cloud Run is the primary way to run this app. Full guide: **[docs/DEPLOY.md](./d
 git clone https://github.com/joemartinxiii/GWS_AdminAssist && cd GWS_AdminAssist && bash scripts/bootstrap-tenant.sh
 ```
 
+You'll see some warnings and red text during the run — that's normal. See [Expected output & harmless warnings](./docs/DEPLOY.md#expected-output--harmless-warnings) for what's safe to ignore; the deploy succeeded if it prints a **Service URL** with `/health responded OK`.
+
 **Ongoing deploys** — push to `main` or run GitHub Actions **Deploy to Cloud Run**. See [docs/DEPLOY.md](./docs/DEPLOY.md#2-ongoing-deploys--github-actions-recommended).
 
 For iterating locally before deploying, see **[docs/LOCAL_DEV.md](./docs/LOCAL_DEV.md)**.

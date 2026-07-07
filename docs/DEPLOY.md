@@ -11,6 +11,25 @@ A local-Docker fallback (`deploy.sh`) exists but is not required.
 
 ---
 
+## What you actually do (start to finish)
+
+One command does all the automation. Your only hands-on work is three console tasks the wizard walks you through with clickable links and copy-paste blocks. Total wall-clock time is ~20–30 min, most of it unattended (Cloud Build takes ~5 min).
+
+1. **Run one command** in Cloud Shell (below). Answer a few prompts — press Enter to accept the smart defaults.
+2. **OAuth consent screen** *(browser, guided)* — paste the read-only scopes, Save.
+3. **Create an OAuth Web client** *(browser, guided)* — paste the placeholder redirect URI, then paste the generated **Client ID** and **Client secret** back into the wizard.
+4. **Domain-wide delegation** *(admin.google.com, guided)* — paste the service account's **numeric client ID** and the DWD scopes, Save.
+5. **Wait** — the wizard verifies delegation, then builds and deploys to Cloud Run.
+6. **Register the real redirect URI** *(browser, guided)* — after deploy, the wizard prints your live Cloud Run URL and pauses; add `https://<your-url>/api/auth/callback` to the OAuth Web client's **Authorized redirect URIs**, Save.
+
+Then open the printed **Service URL** and sign in. That's the whole job.
+
+> **Why step 6 is separate:** the redirect URI must contain the Cloud Run URL, which doesn't exist until the first deploy. The wizard stores it in Secret Manager automatically, but Google requires you to register it on the OAuth client by hand — so the wizard pauses and tells you exactly what to paste.
+
+> **Seeing red text / warnings during the run?** That's expected. See [Expected output & harmless warnings](#expected-output--harmless-warnings) — none of it means the deploy failed.
+
+---
+
 ## Prerequisites
 
 | Requirement | Purpose |
@@ -88,7 +107,7 @@ bash scripts/bootstrap-tenant.sh \
 ### Manual console steps (the wizard guides these)
 
 1. **OAuth consent screen** — add the read-only consent scopes (copy-paste block in [SECURITY.md](../SECURITY.md)).
-2. **OAuth 2.0 Web client** — create it; the redirect URI is `https://<cloud-run-url>/api/auth/callback` (the deploy updates this automatically after the first deploy).
+2. **OAuth 2.0 Web client** — create it with the placeholder redirect URI. **After the first deploy** the wizard pauses and has you add the real `https://<cloud-run-url>/api/auth/callback` to the client's Authorized redirect URIs. (The wizard writes this URI into Secret Manager for the app automatically, but Google requires you to register it on the OAuth client manually.)
 3. **Domain-wide delegation** — in admin.google.com → Security → API controls, add the service account's numeric `client_id` with the DWD scopes (copy-paste block in [SECURITY.md](../SECURITY.md)).
 
 > **Scopes are single-source.** DWD + OAuth-consent scope strings live in [`scripts/lib/scopes.sh`](../scripts/lib/scopes.sh) and must match [`backend/src/config/google.config.ts`](../backend/src/config/google.config.ts). Verify with `npm run check:scopes`.
@@ -207,12 +226,33 @@ Manual cleanup (not automated): remove the DWD entry for the old SA `client_id` 
 
 ---
 
+## Expected output & harmless warnings
+
+During a normal, successful deploy you will see warnings and red/yellow text. **None of these mean the deploy failed.** Here is what's expected and why it's safe:
+
+| What you see | Why | Action |
+|--------------|-----|--------|
+| `Regional Access Boundary HTTP request failed after retries: … Account not found for email: …` | A benign `google-auth` library check for an optional org feature (trust boundary) that your org hasn't enabled. It's logged as a warning but the command still succeeds. Google is downgrading it to DEBUG in newer releases. | Ignore. Our scripts filter it automatically; it only shows if you run raw `gcloud` commands by hand. |
+| `[environment: untagged] Read more to tag: g.co/cloud/project-env-tag.` | A `gcloud` nag about optionally tagging your project's environment. | Ignore. Filtered by our scripts. |
+| npm `deprecated` / `EBADENGINE` / `N vulnerabilities` / funding / "New major version of npm" notices during the Docker build | Standard npm chatter from transitive dependencies. They don't affect the built image. | Ignore. Quieted in the Dockerfile (Node 20 base + `NPM_CONFIG_LOGLEVEL=error`). |
+| `Completed with warnings: Setting IAM policy failed … allUsers … run.invoker` | Many orgs block granting `allUsers` (domain-restricted-sharing policy). The service is instead made public with `--no-invoker-iam-check`, so it's reachable — that's why the `/health` check passes. | Ignore. Access is enforced at the app layer (see [SECURITY.md](../SECURITY.md)). |
+| Two different Service URLs in the logs (`…-<projectnumber>.<region>.run.app` and `…-<hash>-<region>.a.run.app`) | Cloud Run issues both a project-number URL and a classic hash URL; both point to the same service. | Use the URL the wizard prints at the end. |
+| `useradd warning: … uid 1001 is greater than SYS_UID_MAX 999` | Cosmetic warning from creating the non-root container user. | Fixed — no longer appears. |
+| Vite `Some chunks are larger than 500 kB` | Frontend bundle-size hint. | Fixed — vendors are code-split, no longer appears. |
+
+**Real** failures look different: they stop the run with a line beginning `ERROR:` (from our scripts) or a non-zero build/deploy status. If the wizard finishes and prints a **Service URL** with `Deployed successfully — /health responded OK.`, the deploy worked regardless of any warnings above.
+
+To see the raw, unfiltered `gcloud` output for debugging, set `GWS_SHOW_GCLOUD_NOISE=1` before running.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | `unauthorized_client` on DWD test | Use the SA's numeric `client_id`, not the OAuth web client ID. Scopes must match `scopes.sh`. Wait 1–5 min after saving. |
 | SA key creation blocked | Org policy `iam.disableServiceAccountKeyCreation` — use Workload Identity Federation. |
+| `400: redirect_uri_mismatch` on sign-in | The redirect URI the app sends must be registered **exactly** on the OAuth Web client. Confirm the app is sending the real URL (not `PLACEHOLDER`): `gcloud secrets versions access latest --secret=oauth-redirect-uri`. It must equal `https://<cloud-run-url>/api/auth/callback` and be listed under the client's Authorized redirect URIs. Changes take ~1 min to propagate. |
 | OAuth login fails | Redirect URI must exactly match the Cloud Run URL + `/api/auth/callback`. |
 | Billing not enabled | Pass `--billing-account` or link it in the GCP Console. |
 | Permission denied on deploy | Grant `roles/run.admin` + `roles/iam.serviceAccountUser` to `github-deploy-sa`. |
