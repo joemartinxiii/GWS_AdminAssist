@@ -3,6 +3,7 @@ import { authenticateSession, AuthRequest } from '../middleware/auth.middleware'
 import { requirePermission, requireAnyAdmin, requireSuperAdmin } from '../middleware/permissions.middleware';
 import { auditLog } from '../middleware/audit.middleware';
 import { driveService, sharedDriveService } from '../services/drive.service';
+import { searchOrgFiles, DriveSearchCriteria } from '../services/driveSearch.service';
 import { validateEmail, validateDomain } from '../utils/validation';
 import { convertToCSV, generateExportFilename } from '../utils/csv';
 import { sendApiError } from '../utils/apiError';
@@ -11,6 +12,55 @@ const router = Router();
 
 // All routes require authentication
 router.use(authenticateSession);
+
+/**
+ * GET /api/drive/search
+ * Org-wide Drive search. Selective query fanned out across users (and shared
+ * drives) via domain-wide delegation, with one-query fast paths when an owner
+ * or shared drive is specified. Cost scales with user count, not file count.
+ */
+router.get('/search', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const criteria: DriveSearchCriteria = {
+      text: (req.query.text as string) || (req.query.q as string) || undefined,
+      owner: (req.query.owner as string) || undefined,
+      driveId: (req.query.driveId as string) || undefined,
+      mimeType: (req.query.mimeType as string) || undefined,
+      modifiedAfter: (req.query.modifiedAfter as string) || undefined,
+      modifiedBefore: (req.query.modifiedBefore as string) || undefined,
+      createdAfter: (req.query.createdAfter as string) || undefined,
+      createdBefore: (req.query.createdBefore as string) || undefined,
+      includeTrashed: req.query.includeTrashed === 'true',
+      maxResults: req.query.maxResults ? parseInt(req.query.maxResults as string, 10) : undefined,
+    };
+
+    const hasCriteria = !!(
+      criteria.text ||
+      criteria.owner ||
+      criteria.driveId ||
+      criteria.mimeType ||
+      criteria.modifiedAfter ||
+      criteria.modifiedBefore ||
+      criteria.createdAfter ||
+      criteria.createdBefore
+    );
+    if (!hasCriteria) {
+      return res.status(400).json({ error: 'Provide at least one search criterion.' });
+    }
+
+    if (criteria.owner) {
+      const ownerValidation = validateEmail(criteria.owner);
+      if (!ownerValidation.valid) {
+        return res.status(400).json({ error: `Invalid owner email: ${ownerValidation.error}` });
+      }
+    }
+
+    const result = await searchOrgFiles(req.user!.email, criteria);
+    res.json(result);
+  } catch (error: any) {
+    sendApiError(res, error, 'Failed to search Drive', 'drive.search');
+  }
+});
 
 /**
  * GET /api/drive/files

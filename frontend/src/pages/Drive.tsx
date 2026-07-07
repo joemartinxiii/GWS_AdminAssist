@@ -19,6 +19,7 @@ import {
   Grid,
   Popover,
   Checkbox,
+  FormControlLabel,
   Alert,
   Snackbar,
   TablePagination,
@@ -261,6 +262,17 @@ export function Drive() {
   const [externalSearchTerm, setExternalSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filtersVisible, setFiltersVisible] = useState(false);
+
+  // Drive Search tab (org-wide, on-demand — no auto-load).
+  const [searchDriveId, setSearchDriveId] = useState('');
+  const [includeTrashed, setIncludeTrashed] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [searchMeta, setSearchMeta] = useState<{
+    matched: number; truncated: boolean; scope: string;
+    usersScanned?: number; usersTotal?: number; sharedDrivesScanned?: number; durationMs: number;
+  } | null>(null);
+  const [sharedDrivesList, setSharedDrivesList] = useState<Array<{ id: string; name: string }>>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const exportCSVRef = useRef<() => void | Promise<void>>(() => {});
   const exportSelectedCSVRef = useRef<() => void | Promise<void>>(() => {});
@@ -376,16 +388,31 @@ export function Drive() {
     return () => clearTimeout(id);
   }, [externalSearchTerm]);
 
-  // Load report/status when on an audit tab, or files on the files tab.
+  // Load report/status when on an audit tab. The Drive Search tab is on-demand
+  // (an org-wide fan-out is too expensive to auto-run), so it loads only when
+  // the admin explicitly runs a search.
   useEffect(() => {
     if (isAuditTab) {
       void fetchScanStatus();
       void fetchReport();
-    } else if (files.length === 0) {
-      void fetchFiles();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabValue, page, rowsPerPage, debouncedSearch]);
+
+  // Populate the shared-drive picker for the Drive Search tab (once).
+  useEffect(() => {
+    if (!isFilesTab || sharedDrivesList.length > 0) return;
+    (async () => {
+      try {
+        const { data } = await apiClient.get('/drive/shared-drives');
+        const list = Array.isArray(data) ? data : (data?.drives || []);
+        setSharedDrivesList(list.map((d: any) => ({ id: d.id, name: d.name || d.id })));
+      } catch {
+        // Non-fatal: the picker just stays empty.
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFilesTab]);
 
   // Poll status while a scan is running; refresh the report when it finishes.
   useEffect(() => {
@@ -479,14 +506,21 @@ export function Drive() {
     }
   };
 
-  const buildQueryParams = () => {
+  // Map the Drive Search inputs to the org-wide /drive/search endpoint. Only
+  // criteria the search API can push down to Drive's `q` are sent.
+  const buildSearchParams = () => {
     const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value && value.trim() !== '') {
-        params.append(key, value.trim());
-      }
-    });
-    return params.toString();
+    const text = filters.nameContains.trim();
+    if (text) params.append('text', text);
+    if (filters.owner.trim()) params.append('owner', filters.owner.trim());
+    if (searchDriveId) params.append('driveId', searchDriveId);
+    if (filters.mimeType) params.append('mimeType', filters.mimeType);
+    if (filters.modifiedFrom) params.append('modifiedAfter', filters.modifiedFrom);
+    if (filters.modifiedTo) params.append('modifiedBefore', filters.modifiedTo);
+    if (filters.createdFrom) params.append('createdAfter', filters.createdFrom);
+    if (filters.createdTo) params.append('createdBefore', filters.createdTo);
+    if (includeTrashed) params.append('includeTrashed', 'true');
+    return params;
   };
 
   /** Admin-centric full path from backend. */
@@ -495,38 +529,50 @@ export function Drive() {
     return path || 'Unresolved';
   };
 
-  const fetchFiles = async () => {
+  // Org-wide Drive search (on-demand). Fans out across users/shared drives via
+  // the backend; owner/shared-drive inputs hit the one-query fast path.
+  const runDriveSearch = async () => {
+    const params = buildSearchParams();
+    if (!params.toString()) {
+      setSnackbar({ open: true, message: 'Enter a search term or filter first.', severity: 'info' });
+      return;
+    }
     try {
+      setSearching(true);
       setLoading(true);
-      const queryParams = buildQueryParams();
-      const url = queryParams ? `/drive/files?${queryParams}&maxResults=10000` : '/drive/files?maxResults=10000';
-      const response = await apiClient.get(url);
-      const payload = response.data;
-      if (Array.isArray(payload)) {
-        setFiles(payload);
-      } else if (payload && Array.isArray(payload.files)) {
-        setFiles(payload.files);
-      } else {
-        setFiles([]);
-      }
+      const { data } = await apiClient.get(`/drive/search?${params.toString()}`);
+      setFiles(Array.isArray(data.files) ? data.files : []);
+      setSearchMeta({
+        matched: data.matched ?? 0,
+        truncated: !!data.truncated,
+        scope: data.scope || 'org',
+        usersScanned: data.usersScanned,
+        usersTotal: data.usersTotal,
+        sharedDrivesScanned: data.sharedDrivesScanned,
+        durationMs: data.durationMs ?? 0,
+      });
+      setHasSearched(true);
+      setSelectedFiles(new Set());
+      setPage(0);
       setLoadError(null);
     } catch (error: any) {
-      console.error('Error fetching files:', error);
+      console.error('Error searching Drive:', error);
       setFiles([]);
-      setLoadError(getApiErrorMessage(error, 'Failed to load Drive files'));
+      setLoadError(getApiErrorMessage(error, 'Drive search failed.'));
       setSnackbar({
         open: true,
-        message: getApiErrorMessage(error, 'Failed to load Drive files.'),
+        message: getApiErrorMessage(error, 'Drive search failed.'),
         severity: 'error',
       });
     } finally {
+      setSearching(false);
       setLoading(false);
     }
   };
 
   // Refresh whichever dataset the current tab is showing.
   const refreshCurrent = () => {
-    if (isFilesTab) void fetchFiles();
+    if (isFilesTab) { if (hasSearched) void runDriveSearch(); }
     else void fetchReport();
   };
 
@@ -550,10 +596,12 @@ export function Drive() {
       externallyShared: '',
       domain: '',
     });
+    setSearchDriveId('');
+    setIncludeTrashed(false);
   };
 
   const hasActiveFilters = () => {
-    return Object.values(filters).some(v => v && v.trim() !== '');
+    return Object.values(filters).some(v => v && v.trim() !== '') || !!searchDriveId || includeTrashed;
   };
 
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -640,26 +688,47 @@ export function Drive() {
     }
   };
 
+  // Export the current Drive Search results (client-side over the loaded set).
   const handleExportCSV = async () => {
-    try {
-      const queryParams = buildQueryParams();
-      const url = queryParams ? `/drive/files/export?${queryParams}` : '/drive/files/export';
-      const response = await apiClient.get(url, { responseType: 'blob' });
-
-      const blob = new Blob([response.data], { type: 'text/csv' });
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `drive-files-${new Date().toISOString().split('T')[0]}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-      setSnackbar({ open: true, message: 'CSV downloading now.', severity: 'success' });
-    } catch (error) {
-      console.error('Error exporting CSV:', error);
-      setSnackbar({ open: true, message: 'Export failed. Please try again.', severity: 'error' });
+    if (files.length === 0) {
+      setSnackbar({ open: true, message: 'Run a search first.', severity: 'info' });
+      return;
     }
+    const csvData = files.map((file) => ({
+      'File Name': file.name,
+      'File ID': file.id,
+      'Owner': file.owners.map((o: any) => o.emailAddress).join('; '),
+      'Type': file.mimeType,
+      'Created Date': file.createdTime || '',
+      'Modified Date': file.modifiedTime || '',
+      'Size (bytes)': file.size || '',
+      'Shared': file.shared ? 'Yes' : 'No',
+      'Location': file.path || '',
+      'Link': file.webViewLink,
+    }));
+    const headers = Object.keys(csvData[0] || {});
+    const csv = [
+      headers.join(','),
+      ...csvData.map((row) =>
+        headers
+          .map((h) => {
+            const v = row[h as keyof typeof row];
+            const s = v === null || v === undefined ? '' : String(v);
+            return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
+          })
+          .join(',')
+      ),
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `drive-search-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
+    setSnackbar({ open: true, message: 'CSV downloading now.', severity: 'success' });
   };
 
   const handleOpenPermissionDialog = async (file: DriveFile, permission?: any) => {
@@ -925,9 +994,15 @@ export function Drive() {
     setSnackbar({ open: true, message: 'Selected files exported.', severity: 'success' });
   };
 
+  // Save the current Drive Search results to Google Drive (by id, so it exports
+  // exactly what's on screen rather than re-listing the admin's own files).
   const handleExportAllDrive = async () => {
+    if (files.length === 0) {
+      setSnackbar({ open: true, message: 'Run a search first.', severity: 'info' });
+      return;
+    }
     try {
-      const response = await apiClient.post('/drive/files/export/drive', { maxResults: 10000 });
+      const response = await apiClient.post('/drive/files/export/selected/drive', { fileIds: files.map((f) => f.id) });
       if (response.data?.webViewLink) window.open(response.data.webViewLink, '_blank');
       setSnackbar({ open: true, message: 'Saved to Google Drive.', severity: 'success' });
     } catch (err: any) {
@@ -1030,7 +1105,7 @@ export function Drive() {
           Drive
         </Typography>
         <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-          <SegmentedControl value={tabValue} options={['External Shares', 'Public Links', 'All Files']} onChange={(v) => { setTabValue(v); setSelectedFiles(new Set()); setPage(0); }} />
+          <SegmentedControl value={tabValue} options={['External Shares', 'Public Links', 'Drive Search']} onChange={(v) => { setTabValue(v); setSelectedFiles(new Set()); setPage(0); }} />
         </Box>
       </Box>
 
@@ -1073,9 +1148,10 @@ export function Drive() {
         <TextField
           inputRef={searchInputRef}
           size="small"
-          placeholder={isAuditTab ? (auditCategory === 'public' ? 'Search public links…' : 'Search external shares…') : 'Search files…'}
+          placeholder={isAuditTab ? (auditCategory === 'public' ? 'Search public links…' : 'Search external shares…') : 'Search all Drives by file name… (press Enter)'}
           value={isAuditTab ? externalSearchTerm : filters.nameContains}
           onChange={(e) => isAuditTab ? setExternalSearchTerm(e.target.value) : handleFilterChange('nameContains', e.target.value)}
+          onKeyDown={(e) => { if (!isAuditTab && e.key === 'Enter') { e.preventDefault(); void runDriveSearch(); } }}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -1105,6 +1181,19 @@ export function Drive() {
             },
           })}
         />
+
+        {isFilesTab && (
+          <Button
+            size="small"
+            variant="contained"
+            onClick={() => void runDriveSearch()}
+            disabled={searching}
+            startIcon={searching ? <CircularProgress size={14} color="inherit" /> : <Search size={15} strokeWidth={1.75} />}
+            sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 32, px: 2, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
+          >
+            {searching ? 'Searching…' : 'Search'}
+          </Button>
+        )}
 
         {isFilesTab && (
           <Tooltip title="Filters">
@@ -1186,16 +1275,17 @@ export function Drive() {
         )}
       </Box>
 
-      {/* Filter panel (collapsible, All Files tab only) */}
+      {/* Drive Search refine panel (collapsible, Drive Search tab) */}
       {isFilesTab && (
         <>
-          <Box sx={{ overflow: 'hidden', maxHeight: filtersVisible ? 320 : 0, transition: 'max-height 0.25s ease, opacity 0.2s ease', opacity: filtersVisible ? 1 : 0, mb: filtersVisible ? 2 : 0 }}>
+          <Box sx={{ overflow: 'hidden', maxHeight: filtersVisible ? 360 : 0, transition: 'max-height 0.25s ease, opacity 0.2s ease', opacity: filtersVisible ? 1 : 0, mb: filtersVisible ? 2 : 0 }}>
             <Box sx={(theme: any) => ({
               display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center',
               p: 1.5, borderRadius: T.radius, border: `1px solid ${pick(theme, T.border, '#3f3f46')}`, bgcolor: pick(theme, T.surface, '#27272a'),
             })}>
-              <TextField size="small" placeholder="Owner" value={filters.owner} onChange={(e) => handleFilterChange('owner', e.target.value)}
-                sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }, maxWidth: 160 }} />
+              <TextField size="small" placeholder="Owner email (fast path)" value={filters.owner} onChange={(e) => handleFilterChange('owner', e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void runDriveSearch(); } }}
+                sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }, maxWidth: 220 }} />
               <FormControl size="small" sx={{ minWidth: 140 }}>
                 <Select
                   value={filters.mimeType} displayEmpty
@@ -1204,55 +1294,26 @@ export function Drive() {
                   MenuProps={selectMenuProps}
                   sx={{ fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }}
                 >
-                  <MenuItem value="">Any</MenuItem>
+                  <MenuItem value="">Any type</MenuItem>
                   {DRIVE_MIME_OPTIONS.filter((o) => o.value).map((opt) => (
                     <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
-              <TextField size="small" placeholder="Path" value={filters.pathContains} onChange={(e) => handleFilterChange('pathContains', e.target.value)}
-                sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }, maxWidth: 140 }} />
-              <FormControl size="small" sx={{ minWidth: 120 }}>
+              <FormControl size="small" sx={{ minWidth: 180 }}>
                 <Select
-                  value={filters.shared} displayEmpty
-                  renderValue={(v) => (v === 'true' ? 'Shared' : v === 'false' ? 'Not Shared' : 'Shared?')}
-                  onChange={(e) => handleFilterChange('shared', e.target.value)}
+                  value={searchDriveId} displayEmpty
+                  renderValue={(v) => (v ? (sharedDrivesList.find((d) => d.id === v)?.name || 'Shared drive') : 'Shared drive (fast path)')}
+                  onChange={(e) => setSearchDriveId(e.target.value)}
                   MenuProps={selectMenuProps}
                   sx={{ fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }}
                 >
-                  <MenuItem value="">Any</MenuItem>
-                  <MenuItem value="true">Shared</MenuItem>
-                  <MenuItem value="false">Not Shared</MenuItem>
+                  <MenuItem value="">Any drive</MenuItem>
+                  {sharedDrivesList.map((d) => (
+                    <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>
+                  ))}
                 </Select>
               </FormControl>
-              <FormControl size="small" sx={{ minWidth: 140 }}>
-                <Select
-                  value={filters.externallyShared} displayEmpty
-                  renderValue={(v) => (v === 'true' ? 'External' : v === 'false' ? 'Not External' : 'External?')}
-                  onChange={(e) => handleFilterChange('externallyShared', e.target.value)}
-                  MenuProps={selectMenuProps}
-                  sx={{ fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }}
-                >
-                  <MenuItem value="">Any</MenuItem>
-                  <MenuItem value="true">Externally Shared</MenuItem>
-                  <MenuItem value="false">Not Externally Shared</MenuItem>
-                </Select>
-              </FormControl>
-              <TextField size="small" placeholder="Domain" value={filters.domain} onChange={(e) => handleFilterChange('domain', e.target.value)}
-                sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }, maxWidth: 130 }} />
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                <Typography component="span" sx={{ fontFamily: T.font, fontSize: '0.75rem', fontWeight: 500, color: (t: any) => textTertiary(t), whiteSpace: 'nowrap' }}>Created</Typography>
-                <Button size="small" variant="outlined" startIcon={<Calendar size={18} strokeWidth={1.75} />}
-                  onClick={(e) => setCreatedDateAnchor(e.currentTarget)}
-                  sx={(theme: any) => ({ fontFamily: T.font, fontSize: '0.75rem', textTransform: 'none', borderRadius: T.radiusSm, borderColor: pick(theme, T.border, '#5f6368'), color: textSecondary(theme), py: 0.5, '&:hover': { borderColor: pick(theme, T.accent, '#8ab4f8'), bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.08)') } })}>
-                  {formatFilterDateRange(filters.createdFrom, filters.createdTo)}
-                </Button>
-              </Box>
-              <Popover open={!!createdDateAnchor} anchorEl={createdDateAnchor} onClose={() => setCreatedDateAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
-                <Box sx={{ p: 2 }}>
-                  <DateRangeCalendar mode="single-or-range" value={{ from: filters.createdFrom, to: filters.createdTo }} onChange={(v) => { const r = typeof v === 'string' ? { from: v, to: v } : v; handleFilterChange('createdFrom', r.from); handleFilterChange('createdTo', r.to); }} onClose={() => setCreatedDateAnchor(null)} />
-                </Box>
-              </Popover>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                 <Typography component="span" sx={{ fontFamily: T.font, fontSize: '0.75rem', fontWeight: 500, color: (t: any) => textTertiary(t), whiteSpace: 'nowrap' }}>Modified</Typography>
                 <Button size="small" variant="outlined" startIcon={<Calendar size={18} strokeWidth={1.75} />}
@@ -1266,10 +1327,23 @@ export function Drive() {
                   <DateRangeCalendar mode="single-or-range" value={{ from: filters.modifiedFrom, to: filters.modifiedTo }} onChange={(v) => { const r = typeof v === 'string' ? { from: v, to: v } : v; handleFilterChange('modifiedFrom', r.from); handleFilterChange('modifiedTo', r.to); }} onClose={() => setModifiedDateAnchor(null)} />
                 </Box>
               </Popover>
-              <TextField size="small" placeholder="Min size" type="number" value={filters.minSize} onChange={(e) => handleFilterChange('minSize', e.target.value)}
-                sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }, maxWidth: 100 }} />
-              <TextField size="small" placeholder="Max size" type="number" value={filters.maxSize} onChange={(e) => handleFilterChange('maxSize', e.target.value)}
-                sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }, maxWidth: 100 }} />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Typography component="span" sx={{ fontFamily: T.font, fontSize: '0.75rem', fontWeight: 500, color: (t: any) => textTertiary(t), whiteSpace: 'nowrap' }}>Created</Typography>
+                <Button size="small" variant="outlined" startIcon={<Calendar size={18} strokeWidth={1.75} />}
+                  onClick={(e) => setCreatedDateAnchor(e.currentTarget)}
+                  sx={(theme: any) => ({ fontFamily: T.font, fontSize: '0.75rem', textTransform: 'none', borderRadius: T.radiusSm, borderColor: pick(theme, T.border, '#5f6368'), color: textSecondary(theme), py: 0.5, '&:hover': { borderColor: pick(theme, T.accent, '#8ab4f8'), bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.08)') } })}>
+                  {formatFilterDateRange(filters.createdFrom, filters.createdTo)}
+                </Button>
+              </Box>
+              <Popover open={!!createdDateAnchor} anchorEl={createdDateAnchor} onClose={() => setCreatedDateAnchor(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}>
+                <Box sx={{ p: 2 }}>
+                  <DateRangeCalendar mode="single-or-range" value={{ from: filters.createdFrom, to: filters.createdTo }} onChange={(v) => { const r = typeof v === 'string' ? { from: v, to: v } : v; handleFilterChange('createdFrom', r.from); handleFilterChange('createdTo', r.to); }} onClose={() => setCreatedDateAnchor(null)} />
+                </Box>
+              </Popover>
+              <FormControlLabel
+                control={<Checkbox size="small" checked={includeTrashed} onChange={(e) => setIncludeTrashed(e.target.checked)} />}
+                label={<Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t: any) => textSecondary(t) }}>Include trashed</Typography>}
+              />
               {hasActiveFilters() && (
                 <Button size="small" onClick={clearFilters} sx={{ fontFamily: T.font, fontSize: '0.75rem', textTransform: 'none', color: (t: any) => textSecondary(t) }}>
                   Clear all
@@ -1289,6 +1363,24 @@ export function Drive() {
               ))}
             </Box>
           )}
+
+          {searchMeta && (
+            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', mb: 1.5 }}>
+              <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                {`Found ${searchMeta.matched} file${searchMeta.matched === 1 ? '' : 's'}`}
+                {searchMeta.scope === 'org' && typeof searchMeta.usersScanned === 'number'
+                  ? ` · scanned ${searchMeta.usersScanned}/${searchMeta.usersTotal ?? '?'} users${searchMeta.sharedDrivesScanned ? ` + ${searchMeta.sharedDrivesScanned} shared drives` : ''}`
+                  : searchMeta.scope === 'owner' ? ' · owner fast path'
+                  : searchMeta.scope === 'shared-drive' ? ' · shared-drive fast path' : ''}
+                {` · ${(searchMeta.durationMs / 1000).toFixed(1)}s`}
+              </Typography>
+              {searchMeta.truncated && (
+                <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: '#f59e0b' }}>
+                  Results capped — narrow your search (add an owner or shared drive) to see everything.
+                </Typography>
+              )}
+            </Box>
+          )}
         </>
       )}
 
@@ -1301,7 +1393,7 @@ export function Drive() {
             {loading && (
               <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
-                  Loading files...
+                  Searching Drives across the org…
                 </Typography>
                 <Box sx={{ flex: 1, maxWidth: 300 }}>
                   <LinearProgress variant="indeterminate" />
@@ -1361,10 +1453,19 @@ export function Drive() {
                   </Box>
                 </ListHeaderRow>
               {files.length === 0 ? (
-                <Box sx={{ py: 6, textAlign: 'center' }}>
+                <Box sx={{ py: 6, textAlign: 'center', px: 2 }}>
                   <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>
-                    {loading ? 'Loading files...' : 'No files found'}
+                    {loading
+                      ? 'Searching…'
+                      : hasSearched
+                        ? 'No files matched your search.'
+                        : 'Search across every user’s Drive and all shared drives.'}
                   </Typography>
+                  {!loading && !hasSearched && (
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t), mt: 1, maxWidth: 520, mx: 'auto' }}>
+                      Type a file name and press Enter, or use Filters to target an owner or shared drive. Owner and shared-drive searches return instantly; a name-only search fans out across the whole org.
+                    </Typography>
+                  )}
                 </Box>
               ) : (
                 files.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((file, fIdx, arr) => {
