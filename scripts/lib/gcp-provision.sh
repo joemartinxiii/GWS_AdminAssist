@@ -236,6 +236,28 @@ provision_artifact_registry() {
     --project="$project_id" --quiet 2>/dev/null || true
 }
 
+# `gcloud builds submit` runs the build as the Compute Engine default service
+# account. On new projects the org policy iam.automaticIamGrantsForDefaultServiceAccounts
+# suppresses the automatic role grant, so that SA can't read the uploaded source
+# tarball or push the image. Grant it the Cloud Build builder role explicitly so
+# builds work turnkey. Idempotent and best-effort.
+grant_cloudbuild_permissions() {
+  local project_id="$1"
+  local project_number
+  project_number="$(gcloud projects describe "$project_id" --format='value(projectNumber)' 2>/dev/null)"
+  if [[ -z "$project_number" ]]; then
+    warn "Could not resolve project number; skipping Cloud Build SA grant"
+    return 0
+  fi
+
+  local compute_sa="${project_number}-compute@developer.gserviceaccount.com"
+  log "Granting Cloud Build permissions to ${compute_sa}..."
+  gcloud projects add-iam-policy-binding "$project_id" \
+    --member="serviceAccount:${compute_sa}" \
+    --role="roles/cloudbuild.builds.builder" --quiet >/dev/null 2>&1 || \
+    warn "Could not grant roles/cloudbuild.builds.builder to ${compute_sa}"
+}
+
 # The domain-wide-delegation client ID is the service account's OAuth2 client
 # ID (a.k.a. its unique numeric ID). With keyless auth there is no key file to
 # read it from, so query the SA directly.
