@@ -117,8 +117,14 @@ jobs:
           IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:${GITHUB_SHA}"
           SCAN_BUCKET="${{ env.PROJECT_ID }}-workspace-admin-scans"
           RUNTIME_SA="workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
-          gcloud storage buckets describe "gs://${SCAN_BUCKET}" &>/dev/null \
-            || gcloud storage buckets create "gs://${SCAN_BUCKET}" --project="${{ env.PROJECT_ID }}" --location="${{ env.REGION }}" --uniform-bucket-level-access --quiet
+          # The scan bucket + IAM bindings are one-time provisioning owned by the
+          # owner-run bootstrap-tenant.sh / deploy-cloudshell.sh. The CI deploy SA is
+          # least-privilege and cannot create buckets or edit project IAM, so treat
+          # these as best-effort; only the job deploy below must succeed.
+          if ! gcloud storage buckets describe "gs://${SCAN_BUCKET}" &>/dev/null; then
+            gcloud storage buckets create "gs://${SCAN_BUCKET}" --project="${{ env.PROJECT_ID }}" --location="${{ env.REGION }}" --uniform-bucket-level-access --quiet \
+              || echo "NOTE: CI could not verify/create gs://${SCAN_BUCKET} (expected for least-privilege CI). It is provisioned by the owner-run bootstrap-tenant.sh / deploy-cloudshell.sh; continuing."
+          fi
           gcloud storage buckets add-iam-policy-binding "gs://${SCAN_BUCKET}" \
             --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin" --quiet || true
           gcloud projects add-iam-policy-binding "${{ env.PROJECT_ID }}" \
