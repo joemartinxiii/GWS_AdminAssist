@@ -26,7 +26,11 @@ export function DialogListPagination({
   onRowsPerPageChange: (rows: number) => void;
   rowsPerPageOptions?: number[];
 }) {
-  if (total <= 0) return null;
+  // Hide the whole footer when the list fits within the smallest page size:
+  // there's nothing to page through and no reason to change rows-per-page, so
+  // "Rows per page … 1–2 of 2" is just noise on tiny lists.
+  const minOption = rowsPerPageOptions.length ? Math.min(...rowsPerPageOptions) : DIALOG_LIST_PAGE_SIZE;
+  if (total <= 0 || total <= minOption) return null;
 
   const safeRows = Math.max(1, rowsPerPage);
   const lastPage = Math.max(0, Math.ceil(total / safeRows) - 1);

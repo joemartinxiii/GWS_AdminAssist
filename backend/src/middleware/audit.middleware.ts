@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth.middleware';
 import { auditLogService } from '../services/audit-log.service';
 
@@ -8,8 +8,6 @@ import { auditLogService } from '../services/audit-log.service';
  */
 export function auditLog(action: string, resourceType: string) {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
-    const startTime = Date.now();
-    
     // Capture original response methods
     const originalJson = res.json.bind(res);
     const originalSend = res.send.bind(res);

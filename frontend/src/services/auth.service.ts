@@ -4,6 +4,8 @@ export interface User {
   email: string;
   name: string;
   picture?: string;
+  /** Internal domains (WORKSPACE_DOMAIN + GWS_ALLOWED_DOMAINS) for external-share classification. */
+  allowedDomains?: string[];
 }
 
 class AuthService {

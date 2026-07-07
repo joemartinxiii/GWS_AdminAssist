@@ -3,7 +3,7 @@ import { getAuthUrl } from '../config/google.config';
 import { authService } from '../services/auth.service';
 import { authenticateSession, AuthRequest } from '../middleware/auth.middleware';
 import { permissionsService } from '../services/permissions.service';
-import { isEmailInAllowedDomain } from '../utils/validation';
+import { isEmailInAllowedDomain, getAllowedDomains } from '../utils/validation';
 import { sendApiError } from '../utils/apiError';
 
 const router = Router();
@@ -94,10 +94,18 @@ router.get('/callback', async (req: Request, res: Response) => {
  */
 router.get('/me', authenticateSession, async (req: any, res: Response) => {
   try {
+    // Authoritative internal-domain list (WORKSPACE_DOMAIN + GWS_ALLOWED_DOMAINS),
+    // unioned with the signed-in user's own domain as a safety net. The client
+    // uses this to classify Drive permissions as internal/external instead of a
+    // hardcoded default.
+    const allowedDomains = getAllowedDomains();
+    const selfDomain = req.user?.email?.split('@')[1]?.toLowerCase();
+    if (selfDomain && !allowedDomains.includes(selfDomain)) allowedDomains.push(selfDomain);
     res.json({
       email: req.user?.email,
       name: req.user?.name,
       picture: req.user?.picture,
+      allowedDomains,
     });
   } catch (error) {
     console.error('Error getting user info:', error);

@@ -199,7 +199,6 @@ router.get('/export/stream', requireAnyAdmin, async (req: AuthRequest, res: Resp
     ];
     res.write(headers.join(',') + '\n');
 
-    let totalProcessed = 0;
     const workspaceDomain = process.env.WORKSPACE_DOMAIN || '';
 
     await driveService.streamAllFiles(
@@ -229,8 +228,6 @@ router.get('/export/stream', requireAnyAdmin, async (req: AuthRequest, res: Resp
           res.write(csvRow.join(',') + '\n');
         }
 
-        totalProcessed += files.length;
-
         // Check if client disconnected
         if (res.destroyed) {
           return false; // Stop processing
@@ -256,10 +253,7 @@ router.get('/export/stream', requireAnyAdmin, async (req: AuthRequest, res: Resp
 router.get('/external-sharing', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const domain = req.query.domain as string | undefined;
-    let progressCallback: ((processed: number) => void) | undefined;
 
-    // For demo purposes, we'll track progress but can't stream it back in this GET request
-    // In a real implementation, you'd use WebSockets or Server-Sent Events
     const reports = await driveService.getFilesSharedWithExternalDomains(
       req.user!.email,
       domain,

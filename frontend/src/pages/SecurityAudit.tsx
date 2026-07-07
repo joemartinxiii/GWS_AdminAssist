@@ -99,6 +99,50 @@ function persistWaiveReasons(reasons: Record<string, string>) {
   localStorage.setItem(WAIVE_REASONS_STORAGE_KEY, JSON.stringify(reasons));
 }
 
+/**
+ * The audit result is cached per browser tab (sessionStorage) so navigating
+ * away and back — or refreshing — restores the last run instead of silently
+ * re-running it (a re-run can transiently flip Policy-API checks to "manual"
+ * and reset the score). Only the explicit "Run audit" button re-runs.
+ */
+const AUDIT_RESULT_STORAGE_KEY = 'gws-hardening-result';
+
+interface CachedAuditResult {
+  data: HardeningData;
+  ranAt: string;
+}
+
+function loadCachedAuditResult(): CachedAuditResult | null {
+  try {
+    const raw = sessionStorage.getItem(AUDIT_RESULT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'data' in parsed &&
+      'ranAt' in parsed &&
+      Array.isArray((parsed as CachedAuditResult).data?.checks)
+    ) {
+      return parsed as CachedAuditResult;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function persistCachedAuditResult(data: HardeningData, ranAt: Date) {
+  try {
+    sessionStorage.setItem(
+      AUDIT_RESULT_STORAGE_KEY,
+      JSON.stringify({ data, ranAt: ranAt.toISOString() } satisfies CachedAuditResult)
+    );
+  } catch {
+    // sessionStorage may be unavailable (private mode / quota) — non-fatal.
+  }
+}
+
 // SegmentedControl extracted to shared component
 
 interface HardeningCheck {
@@ -338,7 +382,7 @@ export function SecurityAudit() {
   const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [hardeningData, setHardeningData] = useState<HardeningData | null>(null);
+  const [hardeningData, setHardeningData] = useState<HardeningData | null>(() => loadCachedAuditResult()?.data ?? null);
   const [exportAnchorEl, setExportAnchorEl] = useState<null | HTMLElement>(null);
   const [auditTab, setAuditTab] = useState(0);
   const [ignoredIds, setIgnoredIds] = useState<Set<string>>(loadIgnoredIdsFromStorage);
@@ -346,7 +390,10 @@ export function SecurityAudit() {
   const [detailCheckId, setDetailCheckId] = useState<string | null>(null);
   const [reasonEditing, setReasonEditing] = useState(false);
   const [reasonDraft, setReasonDraft] = useState('');
-  const [lastRunAt, setLastRunAt] = useState<Date | null>(null);
+  const [lastRunAt, setLastRunAt] = useState<Date | null>(() => {
+    const cached = loadCachedAuditResult();
+    return cached ? new Date(cached.ranAt) : null;
+  });
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({ open: false, message: '', severity: 'success' });
   const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' = 'success') => setSnackbar({ open: true, message, severity });
 
@@ -415,8 +462,10 @@ export function SecurityAudit() {
     try {
       setLoading(true);
       const response = await apiClient.get('/audit/hardening');
+      const ranAt = new Date();
       setHardeningData(response.data);
-      setLastRunAt(new Date());
+      setLastRunAt(ranAt);
+      persistCachedAuditResult(response.data, ranAt);
       setLoadError(null);
     } catch (error) {
       console.error('Error fetching hardening checks:', error);
@@ -432,10 +481,9 @@ export function SecurityAudit() {
     return `Last run: ${lastRunAt.toLocaleString()}`;
   }, [loading, lastRunAt]);
 
-  useEffect(() => {
-    fetchHardening();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // No auto-run: the audit only runs when the user clicks "Run audit". On mount
+  // we restore the cached result (if any) so navigating back or refreshing never
+  // silently re-runs and resets the score.
 
   useEffect(() => {
     if (!hardeningData?.checks?.length) return;
@@ -945,7 +993,16 @@ export function SecurityAudit() {
                 </Box>
               )}
             </>
-          ) : null}
+          ) : (
+            <Box sx={{ py: 8, textAlign: 'center' }}>
+              <Typography sx={{ fontFamily: T.font, fontSize: '1rem', fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa'), mb: 1 }}>
+                No audit yet
+              </Typography>
+              <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
+                Click <Box component="span" sx={{ fontWeight: 600 }}>Run audit</Box> to evaluate your Workspace against the hardening checklist.
+              </Typography>
+            </Box>
+          )}
     </Box>
       <Dialog open={Boolean(detailCheck)} onClose={closeDetail} maxWidth="sm" fullWidth>
         {detailCheck && (

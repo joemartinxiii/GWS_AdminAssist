@@ -188,13 +188,22 @@ const FILE_ROLE_LABEL: Record<string, string> = Object.fromEntries(FILE_PERMISSI
 // Owner is not editable; show as-is.
 const getFileRoleLabel = (role: string) => (role === 'owner' ? 'Owner' : FILE_ROLE_LABEL[role] || role);
 
-const WORKSPACE_DOMAIN = import.meta.env.VITE_WORKSPACE_DOMAIN || 'example.com';
-function isPermissionExternal(perm: { type: string; domain?: string; emailAddress?: string }): boolean {
+// Classify a permission as external using the org's authoritative allowed-domain
+// list (sourced from /auth/me) rather than a hardcoded default. Owners are never
+// external, and when the domain list is unknown we don't flag (avoids labelling
+// the owner / internal users as external in the modal).
+function isPermissionExternal(
+  perm: { type: string; role?: string; domain?: string; emailAddress?: string },
+  allowedDomains: string[]
+): boolean {
+  if (perm.role === 'owner') return false;
   if (perm.type === 'anyone') return true;
-  if (perm.type === 'domain' && perm.domain) return perm.domain.toLowerCase() !== WORKSPACE_DOMAIN.toLowerCase();
+  const domains = allowedDomains.map((d) => d.toLowerCase()).filter(Boolean);
+  if (domains.length === 0) return false;
+  if (perm.type === 'domain' && perm.domain) return !domains.includes(perm.domain.toLowerCase());
   if ((perm.type === 'user' || perm.type === 'group') && perm.emailAddress) {
     const domain = perm.emailAddress.split('@')[1]?.toLowerCase();
-    return !!domain && domain !== WORKSPACE_DOMAIN.toLowerCase();
+    return !!domain && !domains.includes(domain);
   }
   return false;
 }
@@ -228,6 +237,7 @@ export function Drive() {
     '& .MuiTypography-root, & .MuiInputBase-root': { fontFamily: T.font },
   };
   const [tabValue, setTabValue] = useState(TAB_EXTERNAL);
+  const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -303,6 +313,17 @@ export function Drive() {
   const isFilesTab = tabValue === TAB_FILES;
   const isAuditTab = tabValue === TAB_EXTERNAL || tabValue === TAB_PUBLIC;
   const auditCategory: 'external' | 'public' = tabValue === TAB_PUBLIC ? 'public' : 'external';
+
+  // Load the org's authoritative internal-domain list once, for classifying
+  // Drive permissions as internal/external in the permissions modal.
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .get('/auth/me')
+      .then((r) => { if (!cancelled) setAllowedDomains(Array.isArray(r.data?.allowedDomains) ? r.data.allowedDomains : []); })
+      .catch(() => { /* non-fatal: modal falls back to not flagging */ });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!permissionDialogOpen) return;
@@ -1845,7 +1866,7 @@ export function Drive() {
                         </Box>
                       </Box>
                       <Box sx={{ width: 88, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                        {isPermissionExternal(permission) ? (
+                        {isPermissionExternal(permission, allowedDomains) ? (
                           <DotLabel dotColor={T.warning}>External</DotLabel>
                         ) : (
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>—</Typography>
