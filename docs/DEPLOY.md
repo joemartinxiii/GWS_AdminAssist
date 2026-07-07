@@ -29,7 +29,7 @@ The wizard automates GCP provisioning, guides the manual OAuth + DWD console ste
 Open Cloud Shell and run this **single command** — no editing required. The wizard prompts for everything with smart defaults (your signed-in account becomes the admin, the domain is derived from it, it offers to create a new project, and it auto-selects your billing account):
 
 ```bash
-git clone <YOUR_REPO_URL> && cd GWS_AdminAssist && bash scripts/bootstrap-tenant.sh
+git clone https://github.com/joemartinxiii/GWS_AdminAssist && cd GWS_AdminAssist && bash scripts/bootstrap-tenant.sh
 ```
 
 Just press **Enter** to accept each `[default]`, or type a new value. That's it.

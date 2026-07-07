@@ -75,7 +75,7 @@ Options:
   -h, --help             Show this help
 
 Example (one command, no editing required):
-  git clone <YOUR_REPO_URL> && cd GWS_AdminAssist && bash scripts/bootstrap-tenant.sh
+  git clone https://github.com/joemartinxiii/GWS_AdminAssist && cd GWS_AdminAssist && bash scripts/bootstrap-tenant.sh
 EOF
 }
 
