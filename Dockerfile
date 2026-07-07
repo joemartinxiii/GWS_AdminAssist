@@ -1,7 +1,7 @@
 # Fixed for Cloud Run: backend-only production dependencies to avoid ESM/CJS conflicts (jsdom, encoding-lite, etc.)
 # Frontend is built and its dist/ is copied statically. No frontend deps in runtime image.
 
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 
 WORKDIR /app
 
@@ -29,7 +29,7 @@ ENV VITE_USE_MSW=false
 RUN npm run build
 
 # Production stage
-FROM node:20-slim
+FROM node:24-slim
 
 WORKDIR /app
 
