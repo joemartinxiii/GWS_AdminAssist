@@ -11,6 +11,39 @@ Sign-in uses Google OAuth; API access uses a **service account with domain-wide 
 
 **Error messages** have been improved to provide actionable guidance for Secret Manager, IAM, and delegation issues (see Troubleshooting below). Network-level controls (for example **Identity-Aware Proxy** and OAuth client restrictions) are separate; they do not replace this in-app enforcement.
 
+## Network access & the `allUsers` warning (expected and safe)
+
+During deploy you will see:
+
+```
+Completed with warnings:
+  Setting IAM policy failed, try "gcloud beta run services add-iam-policy-binding ... --member=allUsers --role=roles/run.invoker ..."
+```
+
+**This is expected. It does not mean the tool is open to the public.** It is worth understanding the distinction:
+
+- **Who can *reach* the URL (network layer):** The Cloud Run service is intentionally **publicly reachable**. A browser-based OAuth app must be — real admins sign in with their Google account and do not carry a Cloud Run IAM invoker token to put in an `Authorization` header. Many organizations also block granting `allUsers` the invoker role via the `iam.allowedPolicyMemberDomains` (domain-restricted-sharing) org policy, which is why that IAM binding "fails" — so the service is instead made reachable with `--no-invoker-iam-check`. The two approaches are equivalent for reachability.
+- **Who can *use* the tool (application layer):** Reaching the URL only gets you a login page. Authorization is enforced by the app, in layers:
+
+| Gate | What it enforces | Where |
+|------|------------------|-------|
+| OAuth sign-in | Must authenticate with a Google account | `backend/src/routes/auth.routes.ts` (`/callback`) |
+| Allowed-domain check | Email domain must be in `WORKSPACE_DOMAIN` / `GWS_ALLOWED_DOMAINS`; **fails closed** if none set | `backend/src/utils/validation.ts` |
+| **Workspace-admin check** | Login is **rejected** (`not_admin`) unless the Directory API reports the user as `isAdmin` or `isDelegatedAdmin` | `backend/src/services/permissions.service.ts` |
+| Per-route permissions | `requireAnyAdmin` / `requireSuperAdmin` / `requirePermission(...)` re-checked on protected routes | `backend/src/middleware/permissions.middleware.ts` |
+
+**No privilege escalation:** domain-wide delegation impersonates the **signed-in user's own email** (`req.user.email`), never a fixed super-admin. Every Google API call runs with that person's real Workspace privileges, and delegated (view-only) admins are additionally blocked from mutations by the permission middleware.
+
+**Net effect:** a stranger with no domain account is stopped at the domain check; a non-admin employee who signs in is stopped at the admin check; only real Workspace admins get a session, acting only as themselves.
+
+### Optional hardening (not required)
+
+The current posture is correct for a browser OAuth app. If you later want defense-in-depth to shrink the public *network* surface:
+
+- **External HTTPS Load Balancer + Cloud Armor** in front of Cloud Run — adds edge rate-limiting, WAF rules, and geo/IP allow-listing before traffic reaches the app. This is the recommended upgrade if you want one (adds some setup and a small monthly cost).
+- **Ingress restriction** (`--ingress=internal-and-cloud-load-balancing`) once a load balancer is in place, or IP allow-listing — only practical if your admins connect from known egress IPs.
+- **Identity-Aware Proxy (IAP):** possible, but it layers a *second* Google sign-in in front of the app's own OAuth flow, which is redundant and can be confusing. Prefer the Load Balancer + Cloud Armor route unless you specifically need IAP's context-aware access policies.
+
 ## Copy-paste scope strings (full URLs, comma-delimited)
 
 Use **no spaces** after commas. Some UIs accept one line; others let you add scopes one-by-one (split on commas).
@@ -141,8 +174,8 @@ The tool protects against these specific attack vectors:
 
 **Key Risks and Mitigations** (evaluated as seasoned security engineer):
 
-- **Network Exposure (High)**: Cloud Run is deployed with `--allow-unauthenticated` + `--no-invoker-iam-check` (see [.github/workflows/deploy.yml](.github/workflows/deploy.yml) and [scripts/deploy-cloudshell.sh](scripts/deploy-cloudshell.sh)) because common org policies block `allUsers` invoker IAM bindings. Access control is therefore enforced at the **application layer**: Google OAuth sign-in, a login-time Workspace-admin + allowed-domain gate, and per-request super-admin/role checks. CORS is locked to `CORS_ORIGIN` in production. **Recommendation**: For zero-trust network isolation, front the service with an external HTTPS Load Balancer + Identity-Aware Proxy (IAP) and restrict ingress to `internal-and-cloud-load-balancing`.
-- **Domain-Wide Delegation/Impersonation**: Broad SA scopes (full Drive, Gmail send, Admin Directory). Per-request `subject = userEmail` + super-admin gating in [permissions.middleware.ts](backend/src/middleware/permissions.middleware.ts) and [permissions.service.ts](backend/src/services/permissions.service.ts). **Mitigation**: Split clients by permission level; regular SA key rotation via Secret Manager; monitor Cloud Logging for anomalous API calls.
+- **Network Exposure (High)**: Cloud Run is deployed with `--allow-unauthenticated` + `--no-invoker-iam-check` (see [.github/workflows/deploy.yml](.github/workflows/deploy.yml) and [scripts/deploy-cloudshell.sh](scripts/deploy-cloudshell.sh)) because common org policies block `allUsers` invoker IAM bindings. This is expected and safe — see [Network access & the `allUsers` warning](#network-access--the-allusers-warning-expected-and-safe) for the full explanation. Access control is enforced at the **application layer**: Google OAuth sign-in, a login-time Workspace-admin + allowed-domain gate, and per-request super-admin/role checks. CORS is locked to `CORS_ORIGIN` in production. **Optional hardening**: front the service with an external HTTPS Load Balancer + Cloud Armor and restrict ingress to `internal-and-cloud-load-balancing`. (IAP is possible but redundant with the app's own OAuth.)
+- **Domain-Wide Delegation/Impersonation**: Broad SA scopes (full Drive, Gmail send, Admin Directory). Per-request `subject = userEmail` (the signed-in user, never a fixed super-admin) + super-admin gating in [permissions.middleware.ts](backend/src/middleware/permissions.middleware.ts) and [permissions.service.ts](backend/src/services/permissions.service.ts). **Auth is keyless** — the runtime SA signs its own short-lived delegation tokens via the IAM Credentials API, so there is **no service-account key to leak or rotate**. **Mitigation**: monitor Cloud Logging for anomalous API calls; consider splitting scopes by permission level in future.
 - **Privilege Escalation**: Delegated admins limited to read-only via `isAdmin` check from Admin SDK and permission cache. Tested in security-validation.test.ts.
 - **Input/XSS**: Centralized validation in [utils/validation.ts](backend/src/utils/validation.ts) (email, domain, delegation) + sanitizeText + DOMPurify. CSV/exports now centralized in [utils/csv.ts](backend/src/utils/csv.ts). Route-specific checks added (e.g. [users.routes.ts](backend/src/routes/users.routes.ts)).
 - **Session/Auth**: JWT with short expiry, verified in [auth.service.ts](backend/src/services/auth.service.ts). A **login-time gate** in [auth.routes.ts](backend/src/routes/auth.routes.ts) rejects any account that is not a Workspace admin in an allowed domain before a session is issued. OAuth callback tokens are returned in the URL **fragment** (`#`, never sent to servers/logs) rather than the query string. The `/health` endpoint returns only `{ status, timestamp }` and discloses no configuration.
