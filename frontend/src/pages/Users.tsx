@@ -1017,7 +1017,7 @@ export function Users() {
                     >
                       <Checkbox size="small" checked={isSelected} sx={{ p: 0.25, mr: 0.5 }} onClick={(e) => e.stopPropagation()} onChange={() => toggleUser(user.primaryEmail)} />
                       <Initials name={user.name.fullName} suspended={user.suspended} />
-                      <Box sx={{ width: '22%', minWidth: '22%', overflow: 'hidden' }}>
+                      <Box sx={{ width: '22%', minWidth: '22%', flexShrink: 0, overflow: 'hidden' }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (theme) => pick(theme, T.text, '#fafafa'), textDecoration: user.suspended ? 'line-through' : 'none', opacity: user.suspended ? 0.5 : 1 }}>
                           {user.name.fullName}
                         </Typography>
@@ -1027,11 +1027,11 @@ export function Users() {
                           {user.primaryEmail}
                         </Typography>
                       </Box>
-                      <Box sx={{ width: 80, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <Box sx={{ width: 80, minWidth: 80, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 0.75 }}>
                         <StatusDot color={user.suspended ? T.danger : T.success} label={user.suspended ? 'Suspended' : 'Active'} />
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t) }}>{user.suspended ? 'Off' : 'Active'}</Typography>
                       </Box>
-                      <Box sx={{ width: 80, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <Box sx={{ width: 80, minWidth: 80, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 0.75 }}>
                         <StatusDot
                           color={user.isEnrolledIn2Sv ? T.success : user.isEnforcedIn2Sv ? T.warning : textTertiary(theme)}
                           label={user.isEnrolledIn2Sv ? 'Enrolled' : user.isEnforcedIn2Sv ? 'Enforced' : 'None'}
@@ -1041,7 +1041,7 @@ export function Users() {
                         </Typography>
                       </Box>
                       {isAdminsTab ? (
-                        <Box sx={{ width: 120, minWidth: 120, flexShrink: 1, alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}>
+                        <Box sx={{ width: 120, minWidth: 120, flexShrink: 0, alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}>
                           <Tooltip title={describeAdminType(user)} placement="top">
                             <Typography
                               sx={{
@@ -1061,14 +1061,14 @@ export function Users() {
                           </Tooltip>
                         </Box>
                       ) : (
-                        <Box sx={{ width: 120 }}>
+                        <Box sx={{ width: 120, minWidth: 120, flexShrink: 0 }}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', fontWeight: user.isAdmin ? 600 : 400, color: (t) => (user.isAdmin ? T.accent : textSecondary(t)) }}>
                             {isWorkspaceAdmin(user) ? 'Admin' : 'User'}
                           </Typography>
                         </Box>
                       )}
                       {isMdUp && (
-                        <Box sx={{ width: 100, textAlign: 'right' }}>
+                        <Box sx={{ width: 100, minWidth: 100, flexShrink: 0, textAlign: 'right' }}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
                             {formatRelative(user.lastLoginTime)}
                           </Typography>
