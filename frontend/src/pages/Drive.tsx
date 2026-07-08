@@ -46,13 +46,14 @@ import { apiClient } from '../services/api.client';
 import { getApiErrorMessage } from '../utils/apiError';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
+import { ActionTooltip } from '../components/ActionTooltip';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
-import { DotLabel } from '../components/StatusDot';
+import { DotLabel, StatusDot } from '../components/StatusDot';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
 import { useTheme } from '@mui/material/styles';
@@ -1217,7 +1218,7 @@ export function Drive() {
         )}
 
         {isFilesTab && (
-          <Tooltip title="Filters">
+          <ActionTooltip title="Filters">
             <IconButton
               size="small"
               onClick={() => setFiltersVisible((v) => !v)}
@@ -1230,10 +1231,10 @@ export function Drive() {
             >
               <ListFilter size={18} strokeWidth={1.75} />
             </IconButton>
-          </Tooltip>
+          </ActionTooltip>
         )}
 
-        <Tooltip title="Refresh data">
+        <ActionTooltip title="Refresh data">
           <IconButton
             size="small"
             onClick={refreshCurrent}
@@ -1242,7 +1243,7 @@ export function Drive() {
           >
             <RefreshCw size={18} strokeWidth={1.75} />
           </IconButton>
-        </Tooltip>
+        </ActionTooltip>
 
         <Box sx={{ flex: 1 }} />
 
@@ -1517,18 +1518,18 @@ export function Drive() {
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getFileLocationLabel(file)}</Typography>
                       </Box>
                       <Box sx={{ width: 48, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                        <Tooltip title="Open in Google Drive">
+                        <ActionTooltip title="Open in Google Drive">
                           <Link href={file.webViewLink} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
                             <ExternalLink size={16} strokeWidth={1.75} />
                           </Link>
-                        </Tooltip>
+                        </ActionTooltip>
                       </Box>
                       <Box sx={{ width: 52, flexShrink: 0, display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
-                        <Tooltip title="Manage Permissions">
+                        <ActionTooltip title="Manage Permissions">
                           <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); handleOpenPermissionDialog(file); }} aria-label="Manage Permissions" sx={{ p: 0.5 }}>
                             <Pencil size={16} strokeWidth={1.75} />
                           </IconButton>
-                        </Tooltip>
+                        </ActionTooltip>
                       </Box>
                     </ListDataRow>
                   );
@@ -1669,21 +1670,21 @@ export function Drive() {
                       </Box>
                       <Box sx={{ width: 48, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
                         {f.webViewLink ? (
-                          <Tooltip title="Open in Google Drive">
+                          <ActionTooltip title="Open in Google Drive">
                             <Link href={f.webViewLink} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
                               <ExternalLink size={16} strokeWidth={1.75} />
                             </Link>
-                          </Tooltip>
+                          </ActionTooltip>
                         ) : (
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t) }}>—</Typography>
                         )}
                       </Box>
                       <Box sx={{ width: 52, flexShrink: 0, display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
-                        <Tooltip title="Manage Permissions">
+                        <ActionTooltip title="Manage Permissions">
                           <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); handleOpenPermissionDialogForRecord(record); }} aria-label="Manage Permissions" sx={{ p: 0.5 }}>
                             <Pencil size={16} strokeWidth={1.75} />
                           </IconButton>
-                        </Tooltip>
+                        </ActionTooltip>
                       </Box>
                     </ListDataRow>
                   );
@@ -1752,11 +1753,11 @@ export function Drive() {
               <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1 }}>Permissions</Typography>
               {selectedPermissionIds.size > 0 && (
                 <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mb: 1.5 }}>
-                  <Tooltip title={`Remove selected (${selectedPermissionIds.size})`}>
+                  <ActionTooltip title={`Remove selected (${selectedPermissionIds.size})`}>
                     <IconButton size="small" color="error" onClick={handleBulkRemovePermissions} aria-label="Remove selected">
                       <Trash2 size={16} strokeWidth={1.75} />
                     </IconButton>
-                  </Tooltip>
+                  </ActionTooltip>
                 </Box>
               )}
               <ListShell>
@@ -1781,10 +1782,9 @@ export function Drive() {
                     <Box sx={{ width: 42, mr: 0.5, flexShrink: 0 }} />
                   )}
                   <ColumnHeader label="Type" columnId="dt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} />
-                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="18%" />
-                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="30%" />
-                  <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="20%" />
-                  <ColumnHeader label="External" columnId="dx" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} align="center" />
+                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="18%" minWidth={120} />
+                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="30%" minWidth={160} />
+                  <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={140} />
                   <ColumnHeader label="Remove" columnId="drm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="center" />
                 </ListHeaderRow>
                 {(selectedFile.permissions ?? []).length === 0 && !addPermissionDialogOpen && (
@@ -1810,7 +1810,7 @@ export function Drive() {
                       <Box sx={{ width: 72, flexShrink: 0 }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{permission.type}</Typography>
                       </Box>
-                      <Box sx={{ width: '18%', minWidth: 0, overflow: 'hidden' }}>
+                      <Box sx={{ width: '18%', minWidth: 120, overflow: 'hidden' }}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.displayName || '')} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
@@ -1819,7 +1819,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ width: '30%', minWidth: 0, overflow: 'hidden' }}>
+                      <Box sx={{ width: '30%', minWidth: 160, overflow: 'hidden' }}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.emailAddress || permission.domain || '')} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
@@ -1828,7 +1828,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ width: '20%', minWidth: 110 }}>
+                      <Box sx={{ flex: 1, minWidth: 140 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: 32 }}>
                           {isEditing ? (
                             <Select
@@ -1853,32 +1853,28 @@ export function Drive() {
                             <>
                               <Box sx={{ width: 34, height: 34, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {!isOwner ? (
-                                  <Tooltip title="Change role">
+                                  <ActionTooltip title="Change role">
                                     <IconButton size="small" onClick={() => handleOpenPermissionDialog(selectedFile, permission)} sx={{ p: 0.25, color: T.accent }}>
                                       <Pencil size={16} strokeWidth={1.75} />
                                     </IconButton>
-                                  </Tooltip>
+                                  </ActionTooltip>
                                 ) : null}
                               </Box>
                               <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>{getFileRoleLabel(permission.role)}</Typography>
+                              {isPermissionExternal(permission, allowedDomains) && (
+                                <StatusDot color={T.warning} label="External" />
+                              )}
                             </>
                           )}
                         </Box>
                       </Box>
-                      <Box sx={{ width: 88, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                        {isPermissionExternal(permission, allowedDomains) ? (
-                          <DotLabel dotColor={T.warning}>External</DotLabel>
-                        ) : (
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>—</Typography>
-                        )}
-                      </Box>
                       <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
                         {!isOwner && (
-                          <Tooltip title="Remove permission">
+                          <ActionTooltip title="Remove permission">
                             <IconButton size="small" color="error" onClick={() => handleDeletePermission(selectedFile.id, permission.id)} sx={{ p: 0.5 }}>
                               <Trash2 size={16} strokeWidth={1.75} />
                             </IconButton>
-                          </Tooltip>
+                          </ActionTooltip>
                         )}
                       </Box>
                     </ListDataRow>
@@ -1955,7 +1951,7 @@ export function Drive() {
                         />
                       )}
                     </Box>
-                    <Box sx={{ width: '28%', minWidth: 120 }}>
+                    <Box sx={{ width: '28%', minWidth: 140 }}>
                       <FormControl size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0.5 } } }}>
                         <Select value={newPermissionRole} onChange={(e) => setNewPermissionRole(e.target.value as 'reader' | 'commenter' | 'writer')}>
                           <MenuItem value="reader">Viewer</MenuItem>
@@ -1964,16 +1960,13 @@ export function Drive() {
                         </Select>
                       </FormControl>
                     </Box>
-                    <Box sx={{ width: 88, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                      <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>—</Typography>
-                    </Box>
                     <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center', gap: 0.5 }}>
-                      <Tooltip title="Cancel">
+                      <ActionTooltip title="Cancel">
                         <IconButton size="small" onClick={() => { setAddPermissionDialogOpen(false); setNewPermissionEmail(''); setNewPermissionDomain(''); }} aria-label="Cancel">
                           <X size={18} strokeWidth={1.75} />
                         </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Add">
+                      </ActionTooltip>
+                      <ActionTooltip title="Add">
                         <IconButton
                           size="small"
                           color="primary"
@@ -1983,16 +1976,21 @@ export function Drive() {
                         >
                           <Check size={18} strokeWidth={1.75} />
                         </IconButton>
-                      </Tooltip>
+                      </ActionTooltip>
                     </Box>
                   </Box>
                 ) : (
                   <Box sx={(t) => ({ px: 2, py: 1, borderTop: (selectedFile.permissions ?? []).length > 0 ? `1px solid ${pick(t, T.borderSubtle, '#27272a')}` : 'none' })}>
-                    <Tooltip title="Add user or group">
-                      <IconButton size="small" color="primary" onClick={() => setAddPermissionDialogOpen(true)} aria-label="Add permission">
-                        <Plus size={16} strokeWidth={1.75} />
-                      </IconButton>
-                    </Tooltip>
+                    <Button
+                      size="small"
+                      variant="text"
+                      color="primary"
+                      onClick={() => setAddPermissionDialogOpen(true)}
+                      startIcon={<Plus size={15} strokeWidth={1.75} />}
+                      sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 600 }}
+                    >
+                      Add user or group
+                    </Button>
                   </Box>
                 )}
               </ListShell>

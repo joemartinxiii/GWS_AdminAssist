@@ -81,6 +81,11 @@ export function Layout({ children }: LayoutProps) {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [currentUser, setCurrentUser] = useState<{ email: string; name: string; picture?: string } | null>(null);
+  // Nav tooltips are explicitly controlled (rather than left to MUI's own
+  // hover/focus tracking) so a click always closes them deterministically,
+  // instead of relying on a mouseleave/blur that may not fire for every
+  // input method.
+  const [openNavTooltip, setOpenNavTooltip] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const permissions = usePermissions(); // Full hook for role display + hasPermission
@@ -180,12 +185,22 @@ export function Layout({ children }: LayoutProps) {
           const active = location.pathname === item.path;
           return (
             <ListItem key={item.text} disablePadding sx={{ display: 'block', mb: 0.25 }}>
-              <Tooltip title={collapsed ? item.text : ''} placement="right" disableHoverListener={!collapsed}>
+              <Tooltip
+                title={collapsed ? item.text : ''}
+                placement="right"
+                disableHoverListener={!collapsed}
+                disableInteractive
+                open={collapsed && openNavTooltip === item.text}
+                onOpen={() => setOpenNavTooltip(item.text)}
+                onClose={() => setOpenNavTooltip(null)}
+              >
                 <ListItemButton
                   selected={active}
-                  onClick={() => {
+                  onClick={(e) => {
                     navigate(item.path);
                     setMobileOverlayOpen(false);
+                    setOpenNavTooltip(null);
+                    e.currentTarget.blur();
                   }}
                   sx={(th) => ({
                     borderRadius: '8px',

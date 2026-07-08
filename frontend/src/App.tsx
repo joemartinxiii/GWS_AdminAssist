@@ -266,6 +266,12 @@ function App() {
       MuiTab: {
         styleOverrides: { root: { fontFamily: T.font, textTransform: 'none' } },
       },
+      MuiTooltip: {
+        // `disableInteractive` drops the "stays open while pointer moves onto
+        // the tooltip" tracking, which is what let tooltips get stuck open
+        // (and stack up) after clicking icon buttons that receive focus.
+        defaultProps: { disableInteractive: true },
+      },
     },
   });
 

@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { Button, Menu, MenuItem, IconButton, Tooltip, Box, useTheme } from '@mui/material';
+import { Button, Menu, MenuItem, IconButton, Box, useTheme } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material/styles';
 import { Download, CloudUpload, ChevronDown } from 'lucide-react';
 import { menuPaperProps } from '../theme/designTokens';
+import { ActionTooltip } from './ActionTooltip';
 
 const LU = { s: 1.75 as const };
 
@@ -130,7 +131,7 @@ export function ExportButton({
   const chevTrigger = <ChevronDown size={20} strokeWidth={LU.s} />;
 
   const trigger = iconOnly ? (
-    <Tooltip title={tooltipTitle}>
+    <ActionTooltip title={tooltipTitle}>
       <span>
         <IconButton
           onClick={handleClick}
@@ -141,9 +142,9 @@ export function ExportButton({
           {chevTrigger}
         </IconButton>
       </span>
-    </Tooltip>
+    </ActionTooltip>
   ) : (
-    <Tooltip title={tooltipTitle}>
+    <ActionTooltip title={tooltipTitle}>
       <span>
         <Button
           variant={variant}
@@ -164,7 +165,7 @@ export function ExportButton({
           {getPrimaryLabel()}
         </Button>
       </span>
-    </Tooltip>
+    </ActionTooltip>
   );
 
   return (

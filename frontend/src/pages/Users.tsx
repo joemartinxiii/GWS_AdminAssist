@@ -38,6 +38,7 @@ import { apiClient } from '../services/api.client';
 import { usePermissions } from '../hooks/usePermissions';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
+import { ActionTooltip } from '../components/ActionTooltip';
 import { useTheme } from '@mui/material/styles';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { EditUserDialog } from '../components/EditUserDialog';
@@ -649,12 +650,12 @@ export function Users() {
   // Column header helper
   // -------------------------------------------------------------------------
 
-  const ColHeader = ({ label, sortId, width, align }: { label: string; sortId: SortKey; width?: string | number; align?: string }) => (
+  const ColHeader = ({ label, sortId, width, minWidth, align }: { label: string; sortId: SortKey; width?: string | number; minWidth?: string | number; align?: string }) => (
     <Box
       onClick={() => handleSort(sortId)}
       sx={(theme) => ({
         width,
-        minWidth: width,
+        minWidth: minWidth ?? width,
         flexShrink: width ? 0 : 1,
         flex: width ? undefined : 1,
         display: 'flex',
@@ -753,7 +754,7 @@ export function Users() {
                 })}
               />
 
-              <Tooltip title="Filters">
+              <ActionTooltip title="Filters">
                 <IconButton
                   size="small"
                   onClick={() => setFiltersVisible((v) => !v)}
@@ -766,13 +767,13 @@ export function Users() {
                 >
                   <ListFilter size={18} strokeWidth={1.75} />
                 </IconButton>
-              </Tooltip>
+              </ActionTooltip>
 
-              <Tooltip title="Refresh">
+              <ActionTooltip title="Refresh">
                 <IconButton size="small" onClick={fetchUsers} sx={{ color: (t) => textSecondary(t) }}>
                   <RefreshCw size={18} strokeWidth={1.75} />
                 </IconButton>
-              </Tooltip>
+              </ActionTooltip>
 
               <Box sx={{ flex: 1 }} />
 
@@ -932,7 +933,8 @@ export function Users() {
             <Box sx={(theme) => ({
               border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
               borderRadius: T.radiusLg,
-              overflow: 'hidden',
+              overflowX: 'auto',
+              overflowY: 'hidden',
               bgcolor: pick(theme, T.surface, '#18181b'),
             })}>
               {/* Header row */}
@@ -949,7 +951,7 @@ export function Users() {
                 />
                 <Box sx={{ width: 34 }} />
                 <ColHeader label="Name" sortId="name" width="22%" />
-                <ColHeader label="Email" sortId="email" />
+                <ColHeader label="Email" sortId="email" minWidth={180} />
                 <ColHeader label="Status" sortId="status" width={80} />
                 <ColHeader label="2FA" sortId="2fa" width={80} />
                 {isAdminsTab ? (
@@ -1020,7 +1022,7 @@ export function Users() {
                           {user.name.fullName}
                         </Typography>
                       </Box>
-                      <Box sx={{ flex: 1, overflow: 'hidden' }}>
+                      <Box sx={{ flex: 1, minWidth: 180, overflow: 'hidden' }}>
                         <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {user.primaryEmail}
                         </Typography>
@@ -1078,11 +1080,11 @@ export function Users() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         {canTakeAction && hasPermission('users.update') && (
-                          <Tooltip title="Edit">
+                          <ActionTooltip title="Edit">
                             <IconButton size="small" data-testid="edit-user" onClick={() => handleOpenEdit(user)} sx={{ p: 0.5, color: T.accent, '&:hover': { color: T.accentHover } }}>
                               <Pencil size={16} strokeWidth={1.75} />
                             </IconButton>
-                          </Tooltip>
+                          </ActionTooltip>
                         )}
                       </Box>
                     </Box>
@@ -1177,11 +1179,11 @@ export function Users() {
                       {usersWithout2FAData.usersWithout2FA.length} people need to enroll
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Tooltip title="Refresh">
+                      <ActionTooltip title="Refresh">
                         <IconButton size="small" onClick={fetchUsersWithout2FA} sx={{ color: (t) => textSecondary(t) }}>
                           <RefreshCw size={18} strokeWidth={1.75} />
                         </IconButton>
-                      </Tooltip>
+                      </ActionTooltip>
                       <ExportButton
                         iconOnly={!isMdUp}
                         tooltipTitle="Export 2FA report"
@@ -1204,7 +1206,7 @@ export function Users() {
                         }}
                         triggerSx={exportToolbarButtonSx()}
                       />
-                      <Tooltip title={selectedUsersWithout2FA.size > 0 ? `Send to ${selectedUsersWithout2FA.size} selected` : 'Send reminders to all'}>
+                      <ActionTooltip title={selectedUsersWithout2FA.size > 0 ? `Send to ${selectedUsersWithout2FA.size} selected` : 'Send reminders to all'}>
                         <span>
                           <Button
                             size="small"
@@ -1218,7 +1220,7 @@ export function Users() {
                             Send reminders
                           </Button>
                         </span>
-                      </Tooltip>
+                      </ActionTooltip>
                     </Box>
                   </Box>
                 )}
@@ -1281,11 +1283,11 @@ export function Users() {
                             <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t) }}>{user.isEnforcedIn2Sv ? 'Yes' : 'No'}</Typography>
                           </Box>
                           <Box className="notify-action" sx={{ width: 36, display: 'flex', justifyContent: 'center', opacity: 0, transition: 'opacity 0.15s ease' }} onClick={(e) => e.stopPropagation()}>
-                            <Tooltip title="Send reminder">
+                            <ActionTooltip title="Send reminder">
                               <IconButton size="small" disabled={sending2FAEmails} onClick={() => openSingle2FAConfirm(user)} sx={{ color: T.accent }}>
                                 <Mail size={16} strokeWidth={1.75} />
                               </IconButton>
-                            </Tooltip>
+                            </ActionTooltip>
                           </Box>
                         </Box>
                       );

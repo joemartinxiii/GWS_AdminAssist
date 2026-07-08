@@ -7,7 +7,10 @@ export function listShellSx(theme: Theme) {
   return {
     border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
     borderRadius: T.radiusLg,
-    overflow: 'hidden' as const,
+    // Horizontal scroll (rather than squeezing columns unreadably) when the
+    // viewport is too narrow to fit every column at its minimum width.
+    overflowX: 'auto' as const,
+    overflowY: 'hidden' as const,
     bgcolor: pick(theme, T.surface, '#18181b'),
   };
 }

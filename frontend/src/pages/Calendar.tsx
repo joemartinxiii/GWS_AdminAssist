@@ -18,7 +18,6 @@ import {
   FormControl,
   Select,
   MenuItem,
-  Tooltip,
   Autocomplete,
   TablePagination,
   InputAdornment,
@@ -46,6 +45,7 @@ import { apiClient } from '../services/api.client';
 import { getApiErrorMessage } from '../utils/apiError';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { DateTimePicker } from '../components/DateTimePicker';
+import { ActionTooltip } from '../components/ActionTooltip';
 import { FilterToken } from '../components/ui/FilterToken';
 import { T, pick, textSecondary, textTertiary } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
@@ -982,7 +982,7 @@ export function Calendar() {
             '& .MuiInputLabel-root': { display: 'none' },
           })}
         />
-        <Tooltip title="Refresh data">
+        <ActionTooltip title="Refresh data">
           <span>
             <IconButton
               size="small"
@@ -994,7 +994,7 @@ export function Calendar() {
               {loading ? <CircularProgress size={18} /> : <RefreshCw size={18} strokeWidth={1.75} />}
             </IconButton>
           </span>
-        </Tooltip>
+        </ActionTooltip>
         <Box sx={{ flex: 1 }} />
         {events.length > 0 && viewType === 'table' && (
           <TextField
@@ -1038,7 +1038,7 @@ export function Calendar() {
           />
         )}
         {events.length > 0 && viewType === 'table' && (
-          <Tooltip title="Filters">
+          <ActionTooltip title="Filters">
             <IconButton
               size="small"
               onClick={() => setFiltersVisible((v) => !v)}
@@ -1051,7 +1051,7 @@ export function Calendar() {
             >
               <ListFilter size={18} strokeWidth={1.75} />
             </IconButton>
-          </Tooltip>
+          </ActionTooltip>
         )}
       </Box>
 
@@ -1070,7 +1070,7 @@ export function Calendar() {
                     {filterDateFrom === filterDateTo ? filterDateFrom : `${filterDateFrom} – ${filterDateTo}`}
                   </Typography>
                 )}
-                <Tooltip title="Pick date or range">
+                <ActionTooltip title="Pick date or range">
                   <IconButton
                     size="small"
                     onClick={(e) => setFilterDateAnchor(e.currentTarget)}
@@ -1079,7 +1079,7 @@ export function Calendar() {
                   >
                     <CalendarIcon size={16} strokeWidth={1.75} />
                   </IconButton>
-                </Tooltip>
+                </ActionTooltip>
                 <Popover
                   open={Boolean(filterDateAnchor)}
                   anchorEl={filterDateAnchor}
@@ -1210,16 +1210,16 @@ export function Calendar() {
             <>
             <ListShell>
               <ListHeaderRow>
-                <ColumnHeader label="Event" columnId="ev" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width="22%" />
+                <ColumnHeader label="Event" columnId="ev" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width="22%" minWidth={160} />
                 <ColumnHeader label="Start" columnId="st" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width={140} />
                 <ColumnHeader label="End" columnId="en" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width={140} />
-                <ColumnHeader label="Location" columnId="loc" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width="14%" />
-                <ColumnHeader label="Attendees" columnId="att" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} />
+                <ColumnHeader label="Location" columnId="loc" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width="14%" minWidth={110} />
+                <ColumnHeader label="Attendees" columnId="att" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} minWidth={160} />
                 <ColumnHeader label="Actions" columnId="act" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width={100} align="right" />
               </ListHeaderRow>
               {pagedTableEvents.map((event, idx) => (
                 <ListDataRow key={event.id} last={idx === pagedTableEvents.length - 1}>
-                  <Box sx={{ width: '22%', minWidth: 0 }}>
+                  <Box sx={{ width: '22%', minWidth: 160 }}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (th) => pick(th, T.text, '#fafafa') }}>
                       {event.summary || 'No Title'}
                     </Typography>
@@ -1236,12 +1236,12 @@ export function Calendar() {
                   <Box sx={{ width: 140, flexShrink: 0 }}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (th) => textSecondary(th) }}>{formatDateTime(event.end?.dateTime, event.end?.date)}</Typography>
                   </Box>
-                  <Box sx={{ width: '14%', minWidth: 0 }}>
+                  <Box sx={{ width: '14%', minWidth: 110 }}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (th) => textSecondary(th), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {event.location || '—'}
                     </Typography>
                   </Box>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Box sx={{ flex: 1, minWidth: 160 }}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (th) => textSecondary(th), lineHeight: 1.45 }}>
                       {event.attendees?.length
                         ? [
@@ -1252,16 +1252,16 @@ export function Calendar() {
                     </Typography>
                   </Box>
                   <Box sx={{ width: 100, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
-                    <Tooltip title="View / Edit">
+                    <ActionTooltip title="View / Edit">
                       <IconButton size="small" color="primary" onClick={() => handleOpenEventDialog(event, 'view')} aria-label="View or edit" sx={{ p: 0.5 }}>
                         <Pencil size={16} strokeWidth={1.75} />
                       </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Delete">
+                    </ActionTooltip>
+                    <ActionTooltip title="Delete">
                       <IconButton size="small" color="error" onClick={() => handleDeleteEvent(event)} aria-label="Delete" sx={{ p: 0.5 }}>
                         <Trash2 size={16} strokeWidth={1.75} />
                       </IconButton>
-                    </Tooltip>
+                    </ActionTooltip>
                   </Box>
                 </ListDataRow>
               ))}
@@ -1336,11 +1336,6 @@ export function Calendar() {
                 </Typography>
               )}
             </Box>
-            <Tooltip title="Close">
-              <IconButton size="small" onClick={handleCloseEventDialog} aria-label="Close" sx={{ alignSelf: 'flex-start', mt: -0.25 }}>
-                <X size={18} strokeWidth={1.75} />
-              </IconButton>
-            </Tooltip>
           </Box>
           {editMode === 'view' && selectedEvent && (
             <Box
@@ -1561,11 +1556,11 @@ export function Calendar() {
                     {newAttendees.map((email, idx) => (
                       <Box key={idx} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, py: 0.25 }}>
                         <Typography sx={{ fontFamily: T.mono, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{email}</Typography>
-                        <Tooltip title="Remove">
+                        <ActionTooltip title="Remove">
                           <IconButton size="small" onClick={() => handleRemoveAttendee(email)} aria-label={`Remove ${email}`} sx={{ p: 0.25 }}>
                             <X size={14} strokeWidth={1.75} />
                           </IconButton>
-                        </Tooltip>
+                        </ActionTooltip>
                       </Box>
                     ))}
                   </Box>

@@ -94,6 +94,19 @@ export const handlers = [
   http.get('*/api/drive/files/export', () => new HttpResponse('name,mime\n', { headers: { 'Content-Type': 'text/csv' } })),
   http.get('*/api/drive/external-sharing/export', () => new HttpResponse('csv', { headers: { 'Content-Type': 'text/csv' } })),
   http.get('*/api/drive/files', () => json(driveFiles)),
+  http.get('*/api/drive/search', ({ request }) => {
+    const url = new URL(request.url);
+    const name = (url.searchParams.get('name') || '').toLowerCase().trim();
+    const ownerEmail = (url.searchParams.get('ownerEmail') || '').toLowerCase().trim();
+    const driveId = url.searchParams.get('driveId') || '';
+    const matches = driveFiles.filter((f) => {
+      if (name && !f.name.toLowerCase().includes(name)) return false;
+      if (ownerEmail && !f.owners?.some((o) => o.emailAddress.toLowerCase().includes(ownerEmail))) return false;
+      if (driveId && (f as any).driveId !== driveId) return false;
+      return true;
+    });
+    return json({ files: matches, matched: matches.length, truncated: false, scope: 'org', durationMs: 42 });
+  }),
   http.get('*/api/drive/files/:fileId', ({ params }) => {
     const f = driveFiles.find((x) => x.id === params.fileId);
     return f ? json(f) : new HttpResponse(null, { status: 404 });

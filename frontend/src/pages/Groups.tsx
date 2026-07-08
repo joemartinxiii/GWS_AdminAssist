@@ -41,6 +41,7 @@ import { apiClient } from '../services/api.client';
 import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
+import { ActionTooltip } from '../components/ActionTooltip';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
@@ -894,7 +895,7 @@ export function Groups() {
           />
         )}
         {tabValue === 0 && (
-          <Tooltip title="Filters">
+          <ActionTooltip title="Filters">
             <IconButton
               size="small"
               onClick={() => setFiltersVisible((v) => !v)}
@@ -907,9 +908,9 @@ export function Groups() {
             >
               <ListFilter size={18} strokeWidth={1.75} />
             </IconButton>
-          </Tooltip>
+          </ActionTooltip>
         )}
-        <Tooltip title="Refresh data">
+        <ActionTooltip title="Refresh data">
           <IconButton
             size="small"
             onClick={() => {
@@ -928,7 +929,7 @@ export function Groups() {
           >
             <RefreshCw size={18} strokeWidth={1.75} />
           </IconButton>
-        </Tooltip>
+        </ActionTooltip>
         <Box sx={{ flex: 1 }} />
         {selectedGroups.length > 0 && (
           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t: any) => textSecondary(t) }}>
@@ -936,13 +937,13 @@ export function Groups() {
           </Typography>
         )}
         {tabValue === 2 && selectedGroups.length > 0 && (
-          <Tooltip title="Delete selected groups">
+          <ActionTooltip title="Delete selected groups">
             <span>
               <IconButton size="small" onClick={handleBulkDeleteGroups} disabled={deletingGroups} aria-label="Delete selected groups">
                 <Trash2 size={18} strokeWidth={1.75} />
               </IconButton>
             </span>
-          </Tooltip>
+          </ActionTooltip>
         )}
         <Button
           size="small"
@@ -1010,11 +1011,11 @@ export function Groups() {
                   {filters.createdFrom === filters.createdTo ? filters.createdFrom : `${filters.createdFrom} – ${filters.createdTo}`}
                 </Typography>
               )}
-              <Tooltip title="Pick date or range">
+              <ActionTooltip title="Pick date or range">
                 <IconButton size="small" onClick={(e) => setCreatedDateAnchor(e.currentTarget)} sx={{ color: (t: any) => textSecondary(t) }}>
                   <Calendar size={18} strokeWidth={1.75} />
                 </IconButton>
-              </Tooltip>
+              </ActionTooltip>
               <Popover
                 open={Boolean(createdDateAnchor)}
                 anchorEl={createdDateAnchor}
@@ -1096,6 +1097,15 @@ export function Groups() {
                           ? 120
                           : undefined
               }
+              minWidth={
+                col.id === 'name'
+                  ? 160
+                  : col.id === 'email'
+                    ? 180
+                    : col.id === 'description'
+                      ? 160
+                      : undefined
+              }
               align={col.id === 'directMembersCount' || col.id === 'creationTime' ? 'left' : 'left'}
             />
           ))}
@@ -1131,17 +1141,17 @@ export function Groups() {
                   onChange={() => handleSelectGroup(group.email)}
                   sx={{ p: 0.25, mr: 0.5 }}
                 />
-                <Box sx={{ width: '22%', minWidth: '22%', overflow: 'hidden' }}>
+                <Box sx={{ width: '22%', minWidth: 160, overflow: 'hidden' }}>
                   <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (theme) => pick(theme, T.text, '#fafafa') }}>
                     {group.name}
                   </Typography>
                 </Box>
-                <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                <Box sx={{ flex: 1, minWidth: 180, overflow: 'hidden' }}>
                   <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {group.email}
                   </Typography>
                 </Box>
-                <Box sx={{ flex: 1.2, minWidth: 0, overflow: 'hidden' }}>
+                <Box sx={{ flex: 1.2, minWidth: 160, overflow: 'hidden' }}>
                   <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {group.description || '—'}
                   </Typography>
@@ -1157,17 +1167,17 @@ export function Groups() {
                   </Typography>
                 </Box>
                 <Box sx={{ width: 96, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.5, '& .MuiIconButton-root': { color: T.accent } }}>
-                  <Tooltip title="Edit Group">
+                  <ActionTooltip title="Edit Group">
                     <IconButton size="small" onClick={() => handleOpenEditDialog(group)} sx={{ p: 0.5 }} className="edit-action">
                       <Pencil size={16} strokeWidth={1.75} />
                     </IconButton>
-                  </Tooltip>
+                  </ActionTooltip>
                   {tabValue === 2 && (
-                    <Tooltip title="Delete Group">
+                    <ActionTooltip title="Delete Group">
                       <IconButton size="small" color="error" onClick={() => handleDeleteGroup(group.email)}>
                         <Trash2 size={18} strokeWidth={1.75} />
                       </IconButton>
-                    </Tooltip>
+                    </ActionTooltip>
                   )}
                 </Box>
               </ListDataRow>
@@ -1224,11 +1234,11 @@ export function Groups() {
         <DialogContent sx={{ pt: '20px !important' }}>
           <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1.5 }}>Members</Typography>
           <Box ref={editDialogSearchContainerRef} display="flex" alignItems="center" gap={0.5} mb={1.5}>
-            <Tooltip title="Search members by email">
+            <ActionTooltip title="Search members by email">
               <IconButton size="small" onClick={() => setMemberSearchOpen((o) => !o)} aria-label="Search members" sx={{ p: 0.5 }}>
                 <Search size={18} strokeWidth={1.75} />
               </IconButton>
-            </Tooltip>
+            </ActionTooltip>
             {selectedMembers.length > 0 && (
               <Button
                 size="small"
@@ -1287,7 +1297,7 @@ export function Groups() {
                 ) : (
                   <Box sx={{ width: 34, mr: 0.5, flexShrink: 0 }} />
                 )}
-                <ColumnHeader label="Email" columnId="em" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} />
+                <ColumnHeader label="Email" columnId="em" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={180} />
                 <ColumnHeader label="Role" columnId="rl" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={100} />
                 <ColumnHeader label="Type" columnId="ty" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={96} />
                 <ColumnHeader label="Status" columnId="st" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
@@ -1308,8 +1318,8 @@ export function Groups() {
                 return (
                 <ListDataRow key={member.id} last={globalMidx === filteredMembersForDialog.length - 1 && addMemberInlineOpen}>
                   <Checkbox size="small" checked={selectedMembers.includes(member.email)} onChange={() => handleSelectMember(member.email)} sx={{ p: 0.25, mr: 0.5 }} />
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t) }}>{member.email}</Typography>
+                  <Box sx={{ flex: 1, minWidth: 180, overflow: 'hidden' }}>
+                    <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.email}</Typography>
                   </Box>
                   <Box sx={{ width: 100, flexShrink: 0 }}>
                     <DotLabel
@@ -1327,11 +1337,11 @@ export function Groups() {
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{member.status}</Typography>
                   </Box>
                   <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
-                    <Tooltip title="Remove member">
+                    <ActionTooltip title="Remove member">
                       <IconButton size="small" color="error" onClick={() => handleRemoveMember(member.email)} sx={{ p: 0.5 }}>
                         <Trash2 size={16} strokeWidth={1.75} />
                       </IconButton>
-                    </Tooltip>
+                    </ActionTooltip>
                   </Box>
                 </ListDataRow>
               );
@@ -1415,11 +1425,16 @@ export function Groups() {
                 </Box>
               ) : (
                 <Box sx={(t) => ({ px: 2, py: 1, borderTop: members.length > 0 ? `1px solid ${pick(t, T.borderSubtle, '#27272a')}` : 'none' })}>
-                  <Tooltip title="Add member">
-                    <IconButton size="small" color="primary" onClick={() => setAddMemberInlineOpen(true)} aria-label="Add member">
-                      <Plus size={16} strokeWidth={1.75} />
-                    </IconButton>
-                  </Tooltip>
+                  <Button
+                    size="small"
+                    variant="text"
+                    color="primary"
+                    onClick={() => setAddMemberInlineOpen(true)}
+                    startIcon={<Plus size={15} strokeWidth={1.75} />}
+                    sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 600 }}
+                  >
+                    Add member
+                  </Button>
                 </Box>
               )}
             </ListShell>
@@ -1567,9 +1582,9 @@ export function Groups() {
                     onChange={handleSelectAllGroupsForUser}
                     sx={{ p: 0.25, mr: 0.5 }}
                   />
-                  <ColumnHeader label="Name" columnId="gn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="22%" />
-                  <ColumnHeader label="Email" columnId="ge" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} />
-                  <ColumnHeader label="Description" columnId="gd" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} />
+                  <ColumnHeader label="Name" columnId="gn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="22%" minWidth={160} />
+                  <ColumnHeader label="Email" columnId="ge" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={180} />
+                  <ColumnHeader label="Description" columnId="gd" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={160} />
                   <ColumnHeader label="Members" columnId="gm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
                 </ListHeaderRow>
                 {pagedGroupsForPicker.map((group, gidx) => {
@@ -1577,13 +1592,13 @@ export function Groups() {
                   return (
                   <ListDataRow key={group.id} last={globalGidx === groups.length - 1} selected={selectedGroupsForUser.includes(group.email)}>
                     <Checkbox size="small" checked={selectedGroupsForUser.includes(group.email)} onChange={() => handleSelectGroupForUser(group.email)} sx={{ p: 0.25, mr: 0.5 }} />
-                    <Box sx={{ width: '22%', minWidth: 0, overflow: 'hidden' }}>
+                    <Box sx={{ width: '22%', minWidth: 160, overflow: 'hidden' }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (t) => pick(t, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.name}</Typography>
                     </Box>
-                    <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                    <Box sx={{ flex: 1, minWidth: 180, overflow: 'hidden' }}>
                       <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.email}</Typography>
                     </Box>
-                    <Box sx={{ flex: 1.2, minWidth: 0, overflow: 'hidden' }}>
+                    <Box sx={{ flex: 1.2, minWidth: 160, overflow: 'hidden' }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.description || '—'}</Typography>
                     </Box>
                     <Box sx={{ width: 88, flexShrink: 0 }}>

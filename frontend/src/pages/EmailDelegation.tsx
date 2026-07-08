@@ -12,7 +12,6 @@ import {
   Checkbox,
   IconButton,
   Button,
-  Tooltip,
   Typography,
   FormControl,
   Select,
@@ -27,6 +26,7 @@ import { Plus, Search, Trash2, RefreshCw, ListFilter, X } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
+import { ActionTooltip } from '../components/ActionTooltip';
 import { FilterToken } from '../components/ui/FilterToken';
 import { T, pick, textSecondary, textTertiary, exportToolbarButtonSx, selectMenuProps } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
@@ -424,7 +424,7 @@ export function EmailDelegation() {
           })}
         />
 
-        <Tooltip title="Filters">
+        <ActionTooltip title="Filters">
           <IconButton
             size="small"
             onClick={() => setFiltersVisible((v) => !v)}
@@ -437,15 +437,15 @@ export function EmailDelegation() {
           >
             <ListFilter size={18} strokeWidth={1.75} />
           </IconButton>
-        </Tooltip>
+        </ActionTooltip>
 
-        <Tooltip title="Refresh data">
+        <ActionTooltip title="Refresh data">
           <span>
             <IconButton size="small" onClick={fetchAllDelegations} disabled={loading} aria-label="Refresh data" sx={{ color: (t) => textSecondary(t) }}>
               {loading ? <CircularProgress size={20} /> : <RefreshCw size={18} strokeWidth={1.75} />}
             </IconButton>
           </span>
-        </Tooltip>
+        </ActionTooltip>
 
         <Box sx={{ flex: 1 }} />
 
@@ -585,6 +585,7 @@ export function EmailDelegation() {
                   sortConfig={sortConfig}
                   onSort={handleSort}
                   width={col.id === 'userEmail' ? '28%' : col.id === 'delegateEmail' ? '28%' : undefined}
+                  minWidth={col.id === 'userEmail' || col.id === 'delegateEmail' ? 170 : undefined}
                 />
               ))}
               <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={88} align="right" />
@@ -597,12 +598,12 @@ export function EmailDelegation() {
               data.map((delegation, index) => (
                 <ListDataRow key={`${delegation.userEmail}-${delegation.delegateEmail}-${index}`} last={index === data.length - 1} selected={isSelected(delegation)}>
                   <Checkbox size="small" checked={isSelected(delegation)} onChange={() => handleSelectOne(delegation)} sx={{ p: 0.25, mr: 0.5 }} />
-                  <Box sx={{ width: '28%', minWidth: 0, overflow: 'hidden' }}>
+                  <Box sx={{ width: '28%', minWidth: 170, overflow: 'hidden' }}>
                     <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {delegation.userEmail}
                     </Typography>
                   </Box>
-                  <Box sx={{ width: '28%', minWidth: 0, overflow: 'hidden' }}>
+                  <Box sx={{ width: '28%', minWidth: 170, overflow: 'hidden' }}>
                     <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {delegation.delegateEmail}
                     </Typography>
@@ -613,11 +614,11 @@ export function EmailDelegation() {
                     </DotLabel>
                   </Box>
                   <Box sx={{ width: 88, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
-                    <Tooltip title="Remove delegation">
+                    <ActionTooltip title="Remove delegation">
                       <IconButton size="small" onClick={() => handleRemoveOne(delegation)} sx={{ p: 0.5, color: T.danger }}>
                         <Trash2 size={16} strokeWidth={1.75} />
                       </IconButton>
-                    </Tooltip>
+                    </ActionTooltip>
                   </Box>
                 </ListDataRow>
               ))
@@ -653,11 +654,6 @@ export function EmailDelegation() {
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>Add email delegation</Typography>
           </Box>
-          <Tooltip title="Close">
-            <IconButton size="small" onClick={() => { setDialogOpen(false); setNewUserEmail(''); setNewDelegateEmail(''); }} aria-label="Close" sx={{ alignSelf: 'flex-start' }}>
-              <X size={18} strokeWidth={1.75} />
-            </IconButton>
-          </Tooltip>
         </DialogTitle>
         <DialogContent sx={{ pt: '20px !important' }}>
           <Box sx={{ '& .MuiTextField-root': { mb: 1.5 } }}>

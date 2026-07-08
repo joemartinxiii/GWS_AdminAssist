@@ -14,6 +14,7 @@ interface ColumnHeaderProps {
   sortConfig: SortConfigLite;
   onSort: (columnId: string) => void;
   width?: string | number;
+  minWidth?: string | number;
   align?: 'left' | 'right' | 'center';
   sortable?: boolean;
 }
@@ -27,6 +28,7 @@ export function ColumnHeader({
   sortConfig,
   onSort,
   width,
+  minWidth,
   align = 'left',
   sortable = true,
 }: ColumnHeaderProps) {
@@ -36,7 +38,7 @@ export function ColumnHeader({
       onClick={() => (sortable ? onSort(columnId) : undefined)}
       sx={(theme: Theme) => ({
         width,
-        minWidth: width,
+        minWidth: minWidth ?? width,
         flexShrink: width ? 0 : 1,
         flex: width ? undefined : 1,
         display: 'flex',

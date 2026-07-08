@@ -18,7 +18,6 @@ import {
   Snackbar,
   TablePagination,
   Checkbox,
-  Tooltip,
   Popover,
   Grid,
   Link,
@@ -42,6 +41,7 @@ import { apiClient } from '../services/api.client';
 import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
+import { ActionTooltip } from '../components/ActionTooltip';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
@@ -641,7 +641,7 @@ export function SharedDrives() {
           })}
         />
 
-        <Tooltip title="Filters">
+        <ActionTooltip title="Filters">
           <IconButton
             size="small"
             onClick={() => setFiltersVisible((v) => !v)}
@@ -654,13 +654,13 @@ export function SharedDrives() {
           >
             <ListFilter size={18} strokeWidth={1.75} />
           </IconButton>
-        </Tooltip>
+        </ActionTooltip>
 
-        <Tooltip title="Refresh data">
+        <ActionTooltip title="Refresh data">
           <IconButton size="small" onClick={fetchSharedDrives} aria-label="Refresh data" sx={{ color: (t: any) => textSecondary(t) }}>
             <RefreshCw size={18} strokeWidth={1.75} />
           </IconButton>
-        </Tooltip>
+        </ActionTooltip>
 
         <Box sx={{ flex: 1 }} />
 
@@ -790,9 +790,10 @@ export function SharedDrives() {
                   sortConfig={sortConfig}
                   onSort={handleSort}
                   width={col.id === 'name' ? '24%' : col.id === 'hidden' ? 120 : col.id === 'createdTime' ? 120 : undefined}
+                  minWidth={col.id === 'name' ? 160 : col.id === 'creator' ? 140 : undefined}
                 />
               ))}
-              <ColumnHeader label="Open in Drive" columnId="__o" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={56} align="center" />
+              <ColumnHeader label="Open" columnId="__o" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={56} align="center" />
               <ColumnHeader label="Details" columnId="__d" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={72} align="center" />
             </ListHeaderRow>
             {tableData.length === 0 ? (
@@ -803,7 +804,7 @@ export function SharedDrives() {
               tableData.map((drive, idx) => (
                 <ListDataRow key={drive.id} last={idx === tableData.length - 1} selected={isDriveSelected(drive)}>
                   <Checkbox size="small" checked={isDriveSelected(drive)} onChange={() => handleSelectDrive(drive)} sx={{ p: 0.25, mr: 0.5 }} />
-                  <Box sx={{ width: '24%', minWidth: 0, overflow: 'hidden' }}>
+                  <Box sx={{ width: '24%', minWidth: 160, overflow: 'hidden' }}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (theme) => pick(theme, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {drive.name}
                     </Typography>
@@ -816,24 +817,24 @@ export function SharedDrives() {
                       {drive.createdTime ? new Date(drive.createdTime).toLocaleDateString() : '—'}
                     </Typography>
                   </Box>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Box sx={{ flex: 1, minWidth: 140 }}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {drive.creator ?? '—'}
                     </Typography>
                   </Box>
                   <Box sx={{ width: 56, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                    <Tooltip title="Open in Google Drive">
+                    <ActionTooltip title="Open in Google Drive">
                       <Link href={getSharedDriveUrl(drive.id)} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
                         <ExternalLink size={16} strokeWidth={1.75} />
                       </Link>
-                    </Tooltip>
+                    </ActionTooltip>
                   </Box>
                   <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
-                    <Tooltip title="Details & Permissions">
+                    <ActionTooltip title="Details & Permissions">
                       <IconButton size="small" onClick={() => handleViewPermissions(drive)} sx={{ p: 0.5 }} aria-label="Details">
                         <Pencil size={16} strokeWidth={1.75} />
                       </IconButton>
-                    </Tooltip>
+                    </ActionTooltip>
                   </Box>
                 </ListDataRow>
               ))
@@ -922,11 +923,11 @@ export function SharedDrives() {
             <>
               {selectedPermissionIds.size > 0 && (
                 <Box display="flex" gap={0.5} alignItems="center" mb={1.5}>
-                  <Tooltip title={`Remove selected (${selectedPermissionIds.size})`}>
+                  <ActionTooltip title={`Remove selected (${selectedPermissionIds.size})`}>
                     <IconButton size="small" color="error" onClick={handleBulkRemovePermissions} aria-label="Remove selected">
                       <Trash2 size={16} strokeWidth={1.75} />
                     </IconButton>
-                  </Tooltip>
+                  </ActionTooltip>
                 </Box>
               )}
 
@@ -985,11 +986,11 @@ export function SharedDrives() {
                       <DotLabel dotColor={getRoleDotColor(permission.role)}>{permission.role}</DotLabel>
                     </Box>
                     <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                      <Tooltip title="Remove permission">
+                      <ActionTooltip title="Remove permission">
                         <IconButton size="small" color="error" onClick={() => handleRemovePermission(permission.id)} sx={{ p: 0.5 }}>
                           <Trash2 size={16} strokeWidth={1.75} />
                         </IconButton>
-                      </Tooltip>
+                      </ActionTooltip>
                     </Box>
                   </ListDataRow>
                   );
@@ -1076,12 +1077,12 @@ export function SharedDrives() {
                       </FormControl>
                     </Box>
                     <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center', gap: 0.5 }}>
-                      <Tooltip title="Cancel">
+                      <ActionTooltip title="Cancel">
                         <IconButton size="small" onClick={() => { setAddPermissionDialogOpen(false); setNewPermissionEmail(''); setNewPermissionDomain(''); }} aria-label="Cancel">
                           <X size={18} strokeWidth={1.75} />
                         </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Add">
+                      </ActionTooltip>
+                      <ActionTooltip title="Add">
                         <IconButton
                           size="small"
                           color="primary"
@@ -1091,16 +1092,21 @@ export function SharedDrives() {
                         >
                           <Check size={18} strokeWidth={1.75} />
                         </IconButton>
-                      </Tooltip>
+                      </ActionTooltip>
                     </Box>
                   </Box>
                 ) : (
                   <Box sx={(t) => ({ px: 2, py: 1, borderTop: permissions.length > 0 ? `1px solid ${pick(t, T.borderSubtle, '#27272a')}` : 'none' })}>
-                    <Tooltip title="Add user or group">
-                      <IconButton size="small" color="primary" onClick={() => setAddPermissionDialogOpen(true)} aria-label="Add permission">
-                        <Plus size={16} strokeWidth={1.75} />
-                      </IconButton>
-                    </Tooltip>
+                    <Button
+                      size="small"
+                      variant="text"
+                      color="primary"
+                      onClick={() => setAddPermissionDialogOpen(true)}
+                      startIcon={<Plus size={15} strokeWidth={1.75} />}
+                      sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 600 }}
+                    >
+                      Add user or group
+                    </Button>
                   </Box>
                 )}
               </ListShell>

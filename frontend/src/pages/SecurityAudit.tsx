@@ -7,7 +7,6 @@ import {
   Button,
   Menu,
   IconButton,
-  Tooltip,
   useMediaQuery,
   useTheme,
   Snackbar,
@@ -24,6 +23,7 @@ import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
 import { T, pick, menuPaperProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { ExportMenuRow } from '../components/ExportButton';
+import { ActionTooltip } from '../components/ActionTooltip';
 import { getApiErrorMessage } from '../utils/apiError';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
@@ -675,7 +675,7 @@ export function SecurityAudit() {
           <SegmentedControl value={auditTab} options={[...AUDIT_TABS]} onChange={setAuditTab} />
           {!loading && hardeningData && (
           <>
-            <Tooltip title="Export to CSV or Google Drive">
+            <ActionTooltip title="Export to CSV or Google Drive">
               <span>
                 {isMdUp ? (
                   <Button
@@ -696,7 +696,7 @@ export function SecurityAudit() {
                   </IconButton>
                 )}
               </span>
-            </Tooltip>
+            </ActionTooltip>
             <Menu
               anchorEl={exportAnchorEl}
               open={Boolean(exportAnchorEl)}
@@ -854,10 +854,10 @@ export function SecurityAudit() {
                       </Typography>
                       <ListShell>
                         <ListHeaderRow>
-                          <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="26%" />
+                          <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="26%" minWidth={180} />
                           <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
-                          <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="16%" />
-                          <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} />
+                          <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="16%" minWidth={120} />
+                          <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} minWidth={160} />
                           <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={40} align="right" />
                         </ListHeaderRow>
                         {categoryChecks.map((check, idx) => {
@@ -870,12 +870,12 @@ export function SecurityAudit() {
                               }}
                             >
                               <ListDataRow last={idx === categoryChecks.length - 1} onClick={() => openDetail(check.id)}>
-                                <Box sx={{ width: '26%', minWidth: 0 }}>{checkNameBlock(check)}</Box>
+                                <Box sx={{ width: '26%', minWidth: 180 }}>{checkNameBlock(check)}</Box>
                                 {statusCell(check, true)}
-                                <Box sx={{ width: '16%', minWidth: 0 }}>
+                                <Box sx={{ width: '16%', minWidth: 120 }}>
                                   <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{String(check.currentValue ?? 'N/A')}</Typography>
                                 </Box>
-                                <Box sx={{ flex: 1, minWidth: 0 }}>{recommendedTargetInline(check)}</Box>
+                                <Box sx={{ flex: 1, minWidth: 160 }}>{recommendedTargetInline(check)}</Box>
                                 {chevronCell()}
                               </ListDataRow>
                             </Box>
@@ -895,24 +895,24 @@ export function SecurityAudit() {
                   ) : (
                     <ListShell>
                       <ListHeaderRow>
-                        <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="20%" />
+                        <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="20%" minWidth={160} />
                         <ColumnHeader label="Category" columnId="cat" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={120} />
                         <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
-                        <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="14%" />
-                        <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} />
+                        <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="14%" minWidth={120} />
+                        <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} minWidth={160} />
                         <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={40} align="right" />
                       </ListHeaderRow>
                       {passingChecks.map((check, idx) => (
                         <ListDataRow key={check.id} last={idx === passingChecks.length - 1} onClick={() => openDetail(check.id)}>
-                          <Box sx={{ width: '20%', minWidth: 0 }}>{checkNameBlock(check)}</Box>
+                          <Box sx={{ width: '20%', minWidth: 160 }}>{checkNameBlock(check)}</Box>
                           <Box sx={{ width: 120, flexShrink: 0 }}>
                             <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{check.category}</Typography>
                           </Box>
                           {statusCell(check, false)}
-                          <Box sx={{ width: '14%', minWidth: 0 }}>
+                          <Box sx={{ width: '14%', minWidth: 120 }}>
                             <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{String(check.currentValue ?? 'N/A')}</Typography>
                           </Box>
-                          <Box sx={{ flex: 1, minWidth: 0 }}>{recommendedTargetInline(check)}</Box>
+                          <Box sx={{ flex: 1, minWidth: 160 }}>{recommendedTargetInline(check)}</Box>
                           {chevronCell()}
                         </ListDataRow>
                       ))}
@@ -930,24 +930,24 @@ export function SecurityAudit() {
                   ) : (
                     <ListShell>
                       <ListHeaderRow>
-                        <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="20%" />
+                        <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="20%" minWidth={160} />
                         <ColumnHeader label="Category" columnId="cat" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={120} />
                         <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
-                        <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="14%" />
-                        <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} />
+                        <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="14%" minWidth={120} />
+                        <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} minWidth={160} />
                         <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={40} align="right" />
                       </ListHeaderRow>
                       {failingChecks.map((check, idx) => (
                         <ListDataRow key={check.id} last={idx === failingChecks.length - 1} onClick={() => openDetail(check.id)}>
-                          <Box sx={{ width: '20%', minWidth: 0 }}>{checkNameBlock(check)}</Box>
+                          <Box sx={{ width: '20%', minWidth: 160 }}>{checkNameBlock(check)}</Box>
                           <Box sx={{ width: 120, flexShrink: 0 }}>
                             <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{check.category}</Typography>
                           </Box>
                           {statusCell(check, false)}
-                          <Box sx={{ width: '14%', minWidth: 0 }}>
+                          <Box sx={{ width: '14%', minWidth: 120 }}>
                             <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{String(check.currentValue ?? 'N/A')}</Typography>
                           </Box>
-                          <Box sx={{ flex: 1, minWidth: 0 }}>{recommendedTargetInline(check)}</Box>
+                          <Box sx={{ flex: 1, minWidth: 160 }}>{recommendedTargetInline(check)}</Box>
                           {chevronCell()}
                         </ListDataRow>
                       ))}
@@ -967,24 +967,24 @@ export function SecurityAudit() {
                   ) : (
                     <ListShell>
                       <ListHeaderRow>
-                        <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="20%" />
+                        <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="20%" minWidth={160} />
                         <ColumnHeader label="Category" columnId="cat" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={120} />
                         <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
-                        <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="14%" />
-                        <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} />
+                        <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="14%" minWidth={120} />
+                        <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} minWidth={160} />
                         <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={40} align="right" />
                       </ListHeaderRow>
                       {ignoredChecks.map((check, idx) => (
                         <ListDataRow key={check.id} last={idx === ignoredChecks.length - 1} onClick={() => openDetail(check.id)}>
-                          <Box sx={{ width: '20%', minWidth: 0 }}>{checkNameBlock(check)}</Box>
+                          <Box sx={{ width: '20%', minWidth: 160 }}>{checkNameBlock(check)}</Box>
                           <Box sx={{ width: 120, flexShrink: 0 }}>
                             <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{check.category}</Typography>
                           </Box>
                           {statusCell(check, true)}
-                          <Box sx={{ width: '14%', minWidth: 0 }}>
+                          <Box sx={{ width: '14%', minWidth: 120 }}>
                             <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{String(check.currentValue ?? 'N/A')}</Typography>
                           </Box>
-                          <Box sx={{ flex: 1, minWidth: 0 }}>{recommendedTargetInline(check)}</Box>
+                          <Box sx={{ flex: 1, minWidth: 160 }}>{recommendedTargetInline(check)}</Box>
                           {chevronCell()}
                         </ListDataRow>
                       ))}

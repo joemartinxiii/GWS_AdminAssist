@@ -18,13 +18,13 @@ import {
   Divider,
   Checkbox,
   Tooltip,
-  Alert,
 } from '@mui/material';
 import type { AlertColor } from '@mui/material';
 import { Trash2 } from 'lucide-react';
 import { useTheme } from '@mui/material/styles';
 import { apiClient } from '../services/api.client';
 import { ConfirmDialog } from './ConfirmDialog';
+import { ActionTooltip } from './ActionTooltip';
 import { T, pick, selectMenuProps, textSecondary, textTertiary } from '../theme/designTokens';
 import { ColumnHeader } from './ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from './ui/ListShell';
@@ -524,7 +524,9 @@ export function EditUserDialog({
               {loadingGroups ? (
                 <Box display="flex" justifyContent="center" p={3}><CircularProgress size={24} /></Box>
               ) : userGroups.length === 0 ? (
-                <Alert severity="info" sx={{ fontFamily: T.font }}>Not a member of any groups</Alert>
+                <Box sx={{ py: 4, textAlign: 'center' }}>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>Not a member of any groups</Typography>
+                </Box>
               ) : (
                 <ListShell>
                   <ListHeaderRow>
@@ -535,8 +537,8 @@ export function EditUserDialog({
                       onChange={(e) => setSelectedGroups(e.target.checked ? new Set(userGroups.map((g) => g.email)) : new Set())}
                       sx={{ p: 0.25, mr: 0.5 }}
                     />
-                    <ColumnHeader label="Name" columnId="gn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="30%" />
-                    <ColumnHeader label="Email" columnId="ge" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} />
+                    <ColumnHeader label="Name" columnId="gn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="30%" minWidth={140} />
+                    <ColumnHeader label="Email" columnId="ge" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={180} />
                     <ColumnHeader label="" columnId="gr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={56} align="right" />
                   </ListHeaderRow>
                   {pagedUserGroups.map((group, idx) => {
@@ -545,17 +547,17 @@ export function EditUserDialog({
                     <ListDataRow key={group.id} last={globalIdx === userGroups.length - 1}>
                       <Checkbox size="small" checked={selectedGroups.has(group.email)} onChange={() => setSelectedGroups(toggleSet(selectedGroups, group.email))} sx={{ p: 0.25, mr: 0.5 }} />
                       <Tooltip title={group.description || ''} placement="top" disableHoverListener={!group.description}>
-                        <Box sx={{ width: '30%', minWidth: 0, overflow: 'hidden' }}>
+                        <Box sx={{ width: '30%', minWidth: 140, overflow: 'hidden' }}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (t) => pick(t, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.name}</Typography>
                         </Box>
                       </Tooltip>
-                      <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                      <Box sx={{ flex: 1, minWidth: 180, overflow: 'hidden' }}>
                         <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.email}</Typography>
                       </Box>
                       <Box sx={{ width: 56, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
-                        <Tooltip title="Remove from group">
+                        <ActionTooltip title="Remove from group">
                           <IconButton size="small" sx={{ color: T.danger }} onClick={() => handleRemoveGroup(group.email)}><Trash2 size={15} strokeWidth={1.75} /></IconButton>
-                        </Tooltip>
+                        </ActionTooltip>
                       </Box>
                     </ListDataRow>
                   );
@@ -596,7 +598,9 @@ export function EditUserDialog({
               {loadingApps ? (
                 <Box display="flex" justifyContent="center" p={3}><CircularProgress size={24} /></Box>
               ) : thirdPartyApps.length === 0 ? (
-                <Alert severity="info" sx={{ fontFamily: T.font }}>No third-party apps connected</Alert>
+                <Box sx={{ py: 4, textAlign: 'center' }}>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>No third-party apps connected</Typography>
+                </Box>
               ) : (
                 <ListShell>
                   <ListHeaderRow>
@@ -607,8 +611,8 @@ export function EditUserDialog({
                       onChange={(e) => setSelectedApps(e.target.checked ? new Set(thirdPartyApps.map((a) => a.clientId)) : new Set())}
                       sx={{ p: 0.25, mr: 0.5 }}
                     />
-                    <ColumnHeader label="App" columnId="an" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="22%" />
-                    <ColumnHeader label="Scopes" columnId="sc" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} />
+                    <ColumnHeader label="App" columnId="an" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="22%" minWidth={140} />
+                    <ColumnHeader label="Scopes" columnId="sc" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={160} />
                     <ColumnHeader label="Type" columnId="tp" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={64} />
                     <ColumnHeader label="" columnId="rm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={56} align="right" />
                   </ListHeaderRow>
@@ -618,11 +622,11 @@ export function EditUserDialog({
                     <ListDataRow key={app.clientId} last={globalIdx === thirdPartyApps.length - 1}>
                       <Checkbox size="small" checked={selectedApps.has(app.clientId)} onChange={() => setSelectedApps(toggleSet(selectedApps, app.clientId))} sx={{ p: 0.25, mr: 0.5 }} />
                       <Tooltip title={app.clientId} placement="top">
-                        <Box sx={{ width: '22%', minWidth: 0, overflow: 'hidden' }}>
+                        <Box sx={{ width: '22%', minWidth: 140, overflow: 'hidden' }}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (t) => pick(t, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{app.displayText}</Typography>
                         </Box>
                       </Tooltip>
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Box sx={{ flex: 1, minWidth: 160 }}>
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
                           {app.scopes.slice(0, 3).map((scope, i) => (
                             <DotLabel key={i} dotColor={textTertiary(theme)}>
@@ -642,9 +646,9 @@ export function EditUserDialog({
                         </DotLabel>
                       </Box>
                       <Box sx={{ width: 56, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
-                        <Tooltip title="Revoke app">
+                        <ActionTooltip title="Revoke app">
                           <IconButton size="small" onClick={() => handleRevokeApp(app.clientId)} sx={{ p: 0.5, color: T.danger }}><Trash2 size={15} strokeWidth={1.75} /></IconButton>
-                        </Tooltip>
+                        </ActionTooltip>
                       </Box>
                     </ListDataRow>
                   );
