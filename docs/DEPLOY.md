@@ -135,6 +135,8 @@ git clone https://github.com/joemartinxiii/GWS_AdminAssist && cd GWS_AdminAssist
 - Requires the tenant to already be bootstrapped (`scripts/bootstrap-tenant.sh` created the secrets + runtime SA). The script refuses to run otherwise.
 - `<PROJECT_ID>` is optional if `gcloud config set project` is already pointed at the right project; a second arg overrides the region (default `us-central1`).
 - Re-run it any time you `git pull` new code. It's idempotent.
+- **Enables every required API on each run** (`gcloud services enable "${GCP_APIS[@]}"` from [`scripts/lib/scopes.sh`](../scripts/lib/scopes.sh)) — a no-op when they're already on, so a newly added API dep (e.g. Cloud Identity Policy) turns on automatically with the code that needs it. **No manual `gcloud services enable`.**
+- **Surfaces the DWD scopes** at the end of every deploy — the exact scope string + the SA Client ID + the admin.google.com link. DWD authorization is the one step Google has no API for, so this keeps it to a 10-second copy-paste only when scopes actually change. Add `DWD_ADMIN_EMAIL=<super-admin@domain>` to also live-verify the full scope set.
 
 ### 2b. GitHub Actions (auto-deploy on push) — recommended
 
@@ -161,15 +163,16 @@ If the `gh` CLI is authenticated it offers to set the secrets and trigger the wo
 
 > **Fork whose org allows SA keys?** The workflow also supports a key fallback: skip `GCP_WIF_PROVIDER` and instead set `GCP_SA_KEY` to a deploy-SA key JSON (plus `GCP_PROJECT_ID`). The workflow picks WIF automatically whenever `GCP_WIF_PROVIDER` is present, and only falls back to the key when it isn't.
 
-> CI only needs **deploy** permissions (push images, deploy the service + scan job, add the redirect-URI secret version, `actAs` the runtime SA). The Cloud Run **runtime** still uses `workspace-admin-sa`, never the deploy SA.
+> CI only needs **deploy** permissions (push images, deploy the service + scan job, add the redirect-URI secret version, `actAs` the runtime SA, and `serviceusage.serviceUsageAdmin` to keep the enabled API set in sync). The Cloud Run **runtime** still uses `workspace-admin-sa`, never the deploy SA.
 
 ### What the workflow does
 
 1. `npm ci` → type-check, scope check, security tests (lint is informational)
-2. Docker build (`linux/amd64`) → Artifact Registry `workspace-admin-repo`
-3. `gcloud run deploy workspace-admin` (with `--no-invoker-iam-check`)
-4. Updates `CORS_ORIGIN` and the `oauth-redirect-uri` secret
-5. Configures the external-sharing scan (bucket + Cloud Run Job `workspace-admin-scan`)
+2. Enables every required API (`gcloud services enable "${GCP_APIS[@]}"` from [`scripts/lib/scopes.sh`](../scripts/lib/scopes.sh)) — no-op when already on, so new API deps ship automatically
+3. Docker build (`linux/amd64`) → Artifact Registry `workspace-admin-repo`
+4. `gcloud run deploy workspace-admin` (with `--no-invoker-iam-check`)
+5. Updates `CORS_ORIGIN` and the `oauth-redirect-uri` secret
+6. Configures the external-sharing scan (bucket + Cloud Run Job `workspace-admin-scan`)
 
 ### Local-Docker alternative
 
@@ -216,6 +219,25 @@ The deploy (`scripts/deploy-cloudshell.sh`, `deploy.sh`, and the GitHub workflow
 **Usage:** open Drive → *External Shares* (or *Public Links*) → **Run scan** (super admin only). The header shows *Last scan {date}* and live progress. Results are cached, so subsequent visits load instantly. Re-scan as often as you like — this tool is typically run quarterly.
 
 **Cost:** idle cost is ~$0 (the job scales to zero and the bucket holds a few small JSON blobs). Each scan bills only for the minutes it runs. Tune throughput/cost with `SCAN_USER_CONCURRENCY`.
+
+---
+
+## Security Audit (Cloud Identity Policy API)
+
+The **Security Audit** page (`/audit`) automates most hardening checks by reading org policies from the **Cloud Identity Policy API**. This needs two things beyond a normal deploy:
+
+- **API enabled:** `cloudidentity.googleapis.com` (and `chromepolicy.googleapis.com` for the Chrome checks). **Every deploy path enables these automatically** — the bootstrap wizard, `deploy-cloudshell.sh`, and the GitHub Actions workflow all run `gcloud services enable "${GCP_APIS[@]}"` from the single source of truth in [`scripts/lib/scopes.sh`](../scripts/lib/scopes.sh). Add a new API dependency there once and it ships on the next deploy — no manual `gcloud services enable`.
+- **DWD scope:** `https://www.googleapis.com/auth/cloud-identity.policies.readonly`, authorized on the service account's domain-wide delegation (part of the copy-paste block in [SECURITY.md](../SECURITY.md#copy-paste-scope-strings-full-urls-comma-delimited)).
+- **Super admin:** the audit reads org policy as the **signed-in user**, so run it while signed in as a Workspace super admin.
+
+> **APIs are never a manual step.** Since API enablement is idempotent, re-running it on every deploy is a no-op when everything is already on — so updating an existing tenant just means `git pull && bash scripts/deploy-cloudshell.sh <PROJECT_ID>` (or a push to `main` for CI). Any newly added API is turned on automatically.
+>
+> **The one step Google keeps manual is DWD authorization** — there is no gcloud/API equivalent for adding delegation scopes; a super admin must paste them in [admin.google.com → DWD](https://admin.google.com/ac/owl/domainwidedelegation). To make that painless, **every deploy prints the exact scope string + the SA Client ID + the console link.** If you added a scope, paste the printed line into the existing entry for that Client ID. To have the deploy *verify* the whole scope set for you (it mints a delegated token requesting every scope), export a super-admin subject first:
+> ```bash
+> DWD_ADMIN_EMAIL=admin@your-domain.com bash scripts/deploy-cloudshell.sh <PROJECT_ID>
+> ```
+
+If the API or scope is missing, the audit still loads — the affected checks just show **Manual** with a one-line notice instead of failing.
 
 ---
 

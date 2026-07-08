@@ -62,6 +62,18 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v3
 
+      # Keep the enabled API set in sync on every deploy so new API deps (e.g. the
+      # Cloud Identity Policy API for the Security Audit) ship without a manual
+      # step. scripts/lib/scopes.sh is the single source of truth for GCP_APIS.
+      # Best-effort: a fork whose deploy SA lacks serviceusage.serviceUsageAdmin
+      # will no-op here (APIs are then enabled by the owner-run bootstrap/deploy).
+      - name: Enable required Google APIs
+        run: |
+          # shellcheck source=scripts/lib/scopes.sh
+          source scripts/lib/scopes.sh
+          gcloud services enable "${GCP_APIS[@]}" --project="${{ env.PROJECT_ID }}" --quiet 2>/dev/null \
+            || echo "NOTE: could not enable APIs from CI (deploy SA lacks serviceusage.serviceUsageAdmin?). Run scripts/setup-github-ci.sh to grant it, or enable via bootstrap-tenant.sh. Continuing."
+
       - name: Configure project and Docker
         run: |
           gcloud config set project "${{ env.PROJECT_ID }}" --quiet

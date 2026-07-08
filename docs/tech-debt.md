@@ -117,7 +117,7 @@ Add a lightweight verification pass after each production deploy to catch config
 
 ### Drive and Shared Drives
 
-- Verify both `Drive` tabs load data: `External Shares` and `All Files`.
+- Verify the `Drive` tabs: `External Shares` / `Public Links` (Run scan → results) and `Drive Search` (query returns files).
 - Open shared drive details dialog and verify permissions/member list loads.
 - Add/remove drive permission and verify data refresh.
 

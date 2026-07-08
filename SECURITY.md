@@ -57,10 +57,16 @@ https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/u
 **Google Workspace Admin — domain-wide delegation** (admin.google.com → Security → API controls → Domain-wide delegation). Use the **`client_id`** from the **service account JSON** (not the OAuth web client ID). Scopes must match `backend/src/config/google.config.ts` and [`scripts/lib/scopes.sh`](scripts/lib/scopes.sh) (`getServiceAccountClient`):
 
 ```
-https://www.googleapis.com/auth/admin.directory.user,https://www.googleapis.com/auth/admin.directory.group,https://www.googleapis.com/auth/admin.directory.orgunit.readonly,https://www.googleapis.com/auth/admin.directory.user.security,https://www.googleapis.com/auth/apps.security,https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/gmail.settings.basic,https://www.googleapis.com/auth/gmail.settings.sharing,https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/calendar,https://www.googleapis.com/auth/admin.directory.resource.calendar,https://www.googleapis.com/auth/chrome.management.policy
+https://www.googleapis.com/auth/admin.directory.user,https://www.googleapis.com/auth/admin.directory.group,https://www.googleapis.com/auth/admin.directory.orgunit.readonly,https://www.googleapis.com/auth/admin.directory.user.security,https://www.googleapis.com/auth/apps.security,https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/gmail.settings.basic,https://www.googleapis.com/auth/gmail.settings.sharing,https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/calendar,https://www.googleapis.com/auth/admin.directory.resource.calendar,https://www.googleapis.com/auth/chrome.management.policy,https://www.googleapis.com/auth/cloud-identity.policies.readonly
 ```
 
-Enable the Chrome Policy API in GCP if you use the last scope (`gcloud services enable chromepolicy.googleapis.com`).
+The last two scopes power the **Security Audit** automated checks. Their APIs are enabled automatically on **every** deploy path — the bootstrap wizard, `deploy-cloudshell.sh`, and the GitHub Actions workflow all run `gcloud services enable "${GCP_APIS[@]}"` from [`scripts/lib/scopes.sh`](scripts/lib/scopes.sh), so a newly added API dependency ships with the code that needs it (no manual enable). The equivalent one-liner, if you ever want to enable them by hand:
+
+```bash
+gcloud services enable chromepolicy.googleapis.com cloudidentity.googleapis.com --project=YOUR_PROJECT_ID
+```
+
+DWD scope authorization is the only step with no gcloud/API equivalent, so every deploy prints the required scope string + SA Client ID + the admin.google.com link. If the API or scope is missing the audit still runs — the affected checks just fall back to "manual".
 
 ## Prerequisites & Setup (Simplified)
 
@@ -71,7 +77,8 @@ Key security setup (one-time):
 1. **Enable APIs** (done automatically by the bootstrap wizard):
    ```bash
    gcloud services enable run.googleapis.com secretmanager.googleapis.com cloudbuild.googleapis.com \
-     artifactregistry.googleapis.com admin.googleapis.com drive.googleapis.com gmail.googleapis.com calendar-json.googleapis.com
+     artifactregistry.googleapis.com admin.googleapis.com drive.googleapis.com gmail.googleapis.com calendar-json.googleapis.com \
+     iamcredentials.googleapis.com chromepolicy.googleapis.com cloudidentity.googleapis.com
    ```
 
 2. **Service Account (`workspace-admin-sa`)**:

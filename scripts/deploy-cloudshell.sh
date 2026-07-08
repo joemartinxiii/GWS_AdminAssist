@@ -35,6 +35,11 @@ fi
 
 # shellcheck source=scripts/lib/gcp-provision.sh
 source "${SCRIPT_DIR}/lib/gcp-provision.sh"
+# Keep the enabled API set in sync on every deploy (idempotent; a no-op when
+# already enabled). Ensures new APIs added to scripts/lib/scopes.sh — e.g. the
+# Cloud Identity Policy API for the Security Audit — are turned on for existing
+# tenants without a manual step.
+provision_apis "$PROJECT_ID"
 provision_artifact_registry "$PROJECT_ID" "$REGION"
 grant_cloudbuild_permissions "$PROJECT_ID"
 
@@ -169,3 +174,9 @@ echo "Service URL:   ${SERVICE_URL}"
 echo "Redirect URI:  ${REDIRECT_URI}"
 echo ""
 echo "Add the redirect URI to your OAuth Web client in GCP Console if not already done."
+
+# APIs are enabled automatically above (provision_apis). Domain-wide delegation
+# is the only step Google has no CLI/API for, so surface the exact scopes +
+# Client ID + console link here (and live-verify when DWD_ADMIN_EMAIL is set).
+# Non-fatal: the app degrades gracefully if a scope isn't yet authorized.
+check_dwd_scopes "$PROJECT_ID" || true

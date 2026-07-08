@@ -92,7 +92,9 @@ provision_deploy_sa() {
     --display-name="GitHub Actions deploy" \
     --project="$project_id" --quiet 2>/dev/null || true
 
-  for role in roles/run.admin roles/artifactregistry.writer roles/iam.serviceAccountUser roles/secretmanager.secretAccessor; do
+  # serviceusage.serviceUsageAdmin lets the CI deploy path keep the enabled API
+  # set in sync (gcloud services enable) so new API deps ship without a manual step.
+  for role in roles/run.admin roles/artifactregistry.writer roles/iam.serviceAccountUser roles/secretmanager.secretAccessor roles/serviceusage.serviceUsageAdmin; do
     gcloud projects add-iam-policy-binding "$project_id" \
       --member="serviceAccount:${sa_email}" \
       --role="$role" --quiet >/dev/null 2>&1 || true
@@ -267,6 +269,42 @@ get_sa_oauth_client_id() {
   gcloud iam service-accounts describe \
     "${sa_name}@${project_id}.iam.gserviceaccount.com" \
     --project="$project_id" --format='value(oauth2ClientId)'
+}
+
+# Domain-wide-delegation authorization lives in the Google Admin console and has
+# no gcloud/API equivalent, so we can't add scopes automatically the way we do
+# with `gcloud services enable`. Instead, surface the exact scope string + SA
+# client_id + console link on every deploy (so a scope change is a 10-second
+# copy-paste, never a forgotten manual step), and — when DWD_ADMIN_EMAIL is set —
+# live-verify the FULL scope set by minting a delegated token (verify-dwd.ts
+# requests every SERVICE_ACCOUNT_SCOPE, so the token exchange fails if any scope
+# is unauthorized). Best-effort: never blocks a deploy.
+check_dwd_scopes() {
+  local project_id="$1"
+  local sa_email="${RUNTIME_SA}@${project_id}.iam.gserviceaccount.com"
+  local client_id
+  client_id="$(get_sa_oauth_client_id "$project_id" "$RUNTIME_SA" 2>/dev/null || true)"
+
+  echo ""
+  log "Domain-wide delegation scopes (Admin console — the one step Google keeps manual):"
+  echo "  Console:   https://admin.google.com/ac/owl/domainwidedelegation"
+  echo "  Client ID: ${client_id:-<query: gcloud iam service-accounts describe ${sa_email} --format='value(oauth2ClientId)'>}"
+  echo "  Scopes:"
+  echo "    ${DWD_SCOPES}"
+  echo "  If you added or changed a scope, paste the line above into the console entry for this Client ID."
+
+  local admin_email="${DWD_ADMIN_EMAIL:-}"
+  if [[ -z "$admin_email" ]]; then
+    echo "  Tip: set DWD_ADMIN_EMAIL=<super-admin@your-domain> to auto-verify all scopes on every deploy."
+    return 0
+  fi
+
+  log "Verifying all DWD scopes as ${admin_email} (keyless)..."
+  if (cd "${REPO_ROOT:-.}" && npx tsx scripts/verify-dwd.ts "$sa_email" "$admin_email"); then
+    log "DWD scopes verified — the Admin console grant covers every required scope."
+  else
+    warn "DWD scope check did not pass. If you just added a scope, paste the block above into the console (propagation takes 1-5 min)."
+  fi
 }
 
 # Best-effort SA key creation for the (optional) GitHub Actions deploy SA.

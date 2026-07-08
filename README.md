@@ -12,10 +12,10 @@ This tool handles sensitive Google Workspace administrative operations. **All us
 - **Groups**: Group creation, membership management, and permissions (`/groups`)
 - **Calendar**: Calendar sharing and resource management (`/calendar`)
 - **Email Delegation**: Secure delegation and send-as configuration with domain restrictions (`/email-delegation`)
-- **Drive File Explorer**: Browse files, external-sharing visibility, and permission management (`/drive`)
+- **Drive**: Org-wide **Drive Search** (find any file by name/owner/type/date), external-sharing & public-link audit (on-demand async scan across all users + shared drives), and permission management (`/drive`)
 - **Shared Drives**: Shared drive listing and permissions (`/shared-drives`)
 - **Email Signatures**: Organization-wide signature templates with HTML sanitization (`/email-signatures`)
-- **Security Audit**: GWS hardening checklist with compliance score and export (CSV, PDF, Drive) (`/audit`)
+- **Security Audit**: GWS hardening checklist, mostly **automated** via the Cloud Identity Policy API (on-demand runs, org-dependent "info" items, waivers with notes) plus compliance score and export (CSV, PDF, Drive) (`/audit`)
 
 ## Scope and Limitations (Effectiveness Evaluation)
 
@@ -95,7 +95,7 @@ The app stays within GCP's free tier for most small-to-medium Google Workspace o
 
 1. Google Cloud Project with billing enabled (free tier sufficient)
 2. Google Workspace domain with admin access
-3. Node.js 18+ and npm
+3. Node.js 20+ and npm (CI and the production container use Node 24 LTS)
 
 ### The fastest path
 
