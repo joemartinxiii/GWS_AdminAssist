@@ -45,10 +45,11 @@ import { ActionTooltip } from '../components/ActionTooltip';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
-import { DotLabel } from '../components/StatusDot';
+import { DotLabel, ExternalChip } from '../components/StatusDot';
 import { FilterToken } from '../components/ui/FilterToken';
 import { useTheme } from '@mui/material/styles';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -68,12 +69,23 @@ interface SharedDrive {
   kind: string;
   createdTime?: string;
   hidden?: boolean;
-  organizationalUnit?: string;
-  creator?: string;
-  storageUsed?: number | string;
-  storageLimit?: number | string;
-  itemCap?: number | string;
+  // The Drive API `drives` resource exposes sharing restrictions + capabilities
+  // (not storage/OU/creator — those aren't available for shared drives).
+  restrictions?: {
+    adminManagedRestrictions?: boolean;
+    copyRequiresWriterPermission?: boolean;
+    domainUsersOnly?: boolean;
+    driveMembersOnly?: boolean;
+    sharingFoldersRequiresOrganizerPermission?: boolean;
+  };
 }
+
+// A shared drive allows external members unless it's locked to the domain.
+function allowsExternalMembers(drive: SharedDrive): boolean {
+  return drive.restrictions?.domainUsersOnly !== true;
+}
+
+const EXTERNAL_DOMAIN_RE = /@([^\s@]+)$/;
 
 interface SharedDrivePermission {
   id: string;
@@ -98,7 +110,15 @@ export function SharedDrives() {
     '& .MuiTypography-root, & .MuiInputBase-root': { fontFamily: T.font },
   };
   const [drives, setDrives] = useState<SharedDrive[]>([]);
+  const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  // 0 = All drives, 1 = Externally shared, 2 = No members.
+  const [tabValue, setTabValue] = useState(0);
+  // Member counts are not in the list response; fetched lazily for the "No
+  // members" tab. -1 means the per-drive lookup failed (treated as unknown).
+  const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
+  const [countsLoading, setCountsLoading] = useState(false);
+  const [countsFetched, setCountsFetched] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedDrive, setSelectedDrive] = useState<SharedDrive | null>(null);
   const [permissions, setPermissions] = useState<SharedDrivePermission[]>([]);
@@ -125,26 +145,18 @@ export function SharedDrives() {
 
   interface SharedDriveFiltersType {
     name: string;
-    organizationalUnit: string;
     status: string;
+    sharing: string;
     dateCreatedFrom: string;
     dateCreatedTo: string;
-    creator: string;
-    storageUsed: string;
-    storageLimit: string;
-    itemCap: string;
     sharedDriveId: string;
   }
   const [filters, setFilters] = useState<SharedDriveFiltersType>({
     name: '',
-    organizationalUnit: '',
     status: '',
+    sharing: '',
     dateCreatedFrom: '',
     dateCreatedTo: '',
-    creator: '',
-    storageUsed: '',
-    storageLimit: '',
-    itemCap: '',
     sharedDriveId: '',
   });
   const [filtersVisible, setFiltersVisible] = useState(false);
@@ -166,14 +178,10 @@ export function SharedDrives() {
   const clearFilters = () => {
     setFilters({
       name: '',
-      organizationalUnit: '',
       status: '',
+      sharing: '',
       dateCreatedFrom: '',
       dateCreatedTo: '',
-      creator: '',
-      storageUsed: '',
-      storageLimit: '',
-      itemCap: '',
       sharedDriveId: '',
     });
   };
@@ -181,26 +189,30 @@ export function SharedDrives() {
   const activeFilterLabels = useMemo(() => {
     const tokens: Array<{ label: string; key: keyof SharedDriveFiltersType }> = [];
     if (filters.name) tokens.push({ label: `Name: ${filters.name}`, key: 'name' });
-    if (filters.organizationalUnit) tokens.push({ label: `OU: ${filters.organizationalUnit}`, key: 'organizationalUnit' });
     if (filters.status) tokens.push({ label: filters.status === 'active' ? 'Active' : 'Hidden', key: 'status' });
+    if (filters.sharing) tokens.push({ label: filters.sharing === 'external' ? 'External allowed' : 'Domain only', key: 'sharing' });
     if (filters.dateCreatedFrom) {
       const fmt = (s: string) => { const d = new Date(`${s}T12:00:00`); return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); };
       tokens.push({ label: `Created ${fmt(filters.dateCreatedFrom)}${filters.dateCreatedTo && filters.dateCreatedTo !== filters.dateCreatedFrom ? ` \u2013 ${fmt(filters.dateCreatedTo)}` : ''}`, key: 'dateCreatedFrom' });
     }
-    if (filters.creator) tokens.push({ label: `Creator: ${filters.creator}`, key: 'creator' });
-    if (filters.storageUsed) tokens.push({ label: `Storage \u2265 ${filters.storageUsed}`, key: 'storageUsed' });
-    if (filters.storageLimit) tokens.push({ label: `Limit \u2264 ${filters.storageLimit}`, key: 'storageLimit' });
-    if (filters.itemCap) tokens.push({ label: `Cap \u2265 ${filters.itemCap}`, key: 'itemCap' });
     if (filters.sharedDriveId) tokens.push({ label: `ID: ${filters.sharedDriveId}`, key: 'sharedDriveId' });
     return tokens;
   }, [filters]);
 
+  // Tab filter (composes with search + column filters, doesn't replace them).
+  const tabFilteredDrives = useMemo(() => {
+    if (tabValue === 1) return drives.filter((d) => allowsExternalMembers(d));
+    if (tabValue === 2) return drives.filter((d) => memberCounts[d.id] === 0);
+    return drives;
+  }, [drives, tabValue, memberCounts]);
+
   const filteredByColumnFilters = useMemo(() => {
-    return drives.filter((d) => {
+    return tabFilteredDrives.filter((d) => {
       if (filters.name.trim() && !String(d.name ?? '').toLowerCase().includes(filters.name.toLowerCase())) return false;
-      if (filters.organizationalUnit.trim() && !String(d.organizationalUnit ?? '').toLowerCase().includes(filters.organizationalUnit.toLowerCase())) return false;
       if (filters.status === 'active' && d.hidden) return false;
       if (filters.status === 'hidden' && !d.hidden) return false;
+      if (filters.sharing === 'external' && !allowsExternalMembers(d)) return false;
+      if (filters.sharing === 'domain' && allowsExternalMembers(d)) return false;
       if (filters.dateCreatedFrom.trim() || filters.dateCreatedTo.trim()) {
         if (!d.createdTime) return false;
         const startStr = filters.dateCreatedFrom || filters.dateCreatedTo;
@@ -210,30 +222,18 @@ export function SharedDrives() {
         const t = new Date(d.createdTime);
         if (t < from || t > to) return false;
       }
-      if (filters.creator.trim() && !String(d.creator ?? '').toLowerCase().includes(filters.creator.toLowerCase())) return false;
-      if (filters.storageUsed.trim()) {
-        const num = Number(filters.storageUsed);
-        if (Number.isNaN(num) || (typeof d.storageUsed === 'number' && d.storageUsed < num)) return false;
-      }
-      if (filters.storageLimit.trim()) {
-        const num = Number(filters.storageLimit);
-        if (Number.isNaN(num) || (typeof d.storageLimit === 'number' && d.storageLimit > num)) return false;
-      }
-      if (filters.itemCap.trim()) {
-        const num = Number(filters.itemCap);
-        if (Number.isNaN(num) || (typeof d.itemCap === 'number' && d.itemCap < num)) return false;
-      }
       if (filters.sharedDriveId.trim() && !String(d.id ?? '').toLowerCase().includes(filters.sharedDriveId.toLowerCase())) return false;
       return true;
     });
-  }, [drives, filters]);
+  }, [tabFilteredDrives, filters]);
 
-  // Table columns (Name, Status, Date created, Creator — mirroring Drive File Explorer; Org Unit, Drive ID, Storage in Details dialog)
+  // Table columns. Creator/OU/storage aren't exposed by the Drive API for shared
+  // drives, so we surface external-sharing status (from restrictions) instead.
   const columns: TableColumn<SharedDrive>[] = [
     { id: 'name', label: 'Name', sortable: true, getValue: (row) => row.name },
     { id: 'hidden', label: 'Status', sortable: true, getValue: (row) => row.hidden ? 'Hidden' : 'Active' },
     { id: 'createdTime', label: 'Date created', sortable: true, getValue: (row) => row.createdTime ? new Date(row.createdTime).getTime() : 0 },
-    { id: 'creator', label: 'Creator', sortable: true, getValue: (row) => row.creator ?? '' },
+    { id: 'sharing', label: 'External sharing', sortable: true, getValue: (row) => allowsExternalMembers(row) ? 'External allowed' : 'Domain only' },
   ];
 
   const getSharedDriveUrl = (driveId: string) => `https://drive.google.com/drive/folders/${driveId}`;
@@ -255,7 +255,50 @@ export function SharedDrives() {
 
   useEffect(() => {
     fetchSharedDrives();
+    // Authoritative internal-domain list for external-collaborator classification.
+    apiClient
+      .get('/auth/me')
+      .then((r) => setAllowedDomains(Array.isArray(r.data?.allowedDomains) ? r.data.allowedDomains : []))
+      .catch(() => setAllowedDomains([]));
   }, []);
+
+  // Lazily resolve member counts the first time the "No members" tab is opened.
+  useEffect(() => {
+    if (tabValue !== 2 || countsFetched || countsLoading) return;
+    const fetchCounts = async () => {
+      setCountsLoading(true);
+      try {
+        const res = await apiClient.get('/drive/shared-drives/member-counts');
+        setMemberCounts(res.data?.counts && typeof res.data.counts === 'object' ? res.data.counts : {});
+        setCountsFetched(true);
+      } catch (error) {
+        console.error('Error fetching shared drive member counts:', error);
+        setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to load member counts.'), severity: 'error' });
+      } finally {
+        setCountsLoading(false);
+      }
+    };
+    void fetchCounts();
+  }, [tabValue, countsFetched, countsLoading]);
+
+  // Reset paging + selection when switching tabs.
+  useEffect(() => {
+    setPage(0);
+    setSelectedDriveIds(new Set());
+  }, [tabValue, setPage]);
+
+  // A shared-drive permission is external when the principal's domain isn't in
+  // the org's allowed list (or it's an "anyone" link). Unknown domains don't flag.
+  const isPermissionExternal = (permission: SharedDrivePermission): boolean => {
+    if (permission.type === 'anyone') return true;
+    const domains = allowedDomains.map((d) => d.toLowerCase()).filter(Boolean);
+    if (domains.length === 0) return false;
+    if (permission.type === 'domain' && permission.domain) return !domains.includes(permission.domain.toLowerCase());
+    const email = permission.emailAddress || '';
+    const match = email.match(EXTERNAL_DOMAIN_RE);
+    const domain = match?.[1]?.toLowerCase();
+    return !!domain && !domains.includes(domain);
+  };
 
 
   const isDriveSelected = (drive: SharedDrive) => selectedDriveIds.has(drive.id);
@@ -405,6 +448,10 @@ export function SharedDrives() {
   const fetchSharedDrives = async () => {
     try {
       setLoading(true);
+      // Cached member counts are keyed to the current drive set; invalidate them
+      // so the "No members" tab re-resolves after a refresh.
+      setMemberCounts({});
+      setCountsFetched(false);
       const response = await apiClient.get('/drive/shared-drives');
       const payload = response.data;
       if (Array.isArray(payload)) {
@@ -588,12 +635,20 @@ export function SharedDrives() {
     }
   };
 
-  const sdPermMaxPage = Math.max(0, Math.ceil(permissions.length / sdPermissionsRowsPerPage) - 1);
+  // Organizers (the shared-drive equivalent of an owner) pinned to the top;
+  // otherwise original order preserved (stable via index tiebreaker).
+  const sortedPermissions = useMemo(() => {
+    return permissions
+      .map((p, i) => ({ p, i }))
+      .sort((a, b) => (a.p.role === 'organizer' ? 0 : 1) - (b.p.role === 'organizer' ? 0 : 1) || a.i - b.i)
+      .map((x) => x.p);
+  }, [permissions]);
+  const sdPermMaxPage = Math.max(0, Math.ceil(sortedPermissions.length / sdPermissionsRowsPerPage) - 1);
   const sdPermPageSafe = Math.min(sdPermissionsPage, sdPermMaxPage);
   const pagedSharedDrivePermissions = useMemo(() => {
     const start = sdPermPageSafe * sdPermissionsRowsPerPage;
-    return permissions.slice(start, start + sdPermissionsRowsPerPage);
-  }, [permissions, sdPermPageSafe, sdPermissionsRowsPerPage]);
+    return sortedPermissions.slice(start, start + sdPermissionsRowsPerPage);
+  }, [sortedPermissions, sdPermPageSafe, sdPermissionsRowsPerPage]);
 
   return (
     <Box sx={{ fontFamily: T.font, minHeight: '100vh' }}>
@@ -602,6 +657,9 @@ export function SharedDrives() {
         <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (theme: any) => pick(theme, T.text, '#fafafa') }}>
           Shared drives
         </Typography>
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+          <SegmentedControl value={tabValue} options={['All drives', 'Externally shared', 'No members']} onChange={setTabValue} />
+        </Box>
       </Box>
 
       {/* Toolbar — always visible */}
@@ -694,7 +752,6 @@ export function SharedDrives() {
           p: 1.5, borderRadius: T.radius, border: `1px solid ${pick(theme, T.border, '#3f3f46')}`, bgcolor: pick(theme, T.surface, '#27272a'),
         })}>
           <TextField size="small" placeholder="Name..." value={filters.name} onChange={(e) => handleFilterChange('name', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 120, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
-          <TextField size="small" placeholder="Org unit..." value={filters.organizationalUnit} onChange={(e) => handleFilterChange('organizationalUnit', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 120, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
           <FormControl size="small" sx={{ minWidth: 110 }}>
             <Select
               value={filters.status} displayEmpty
@@ -706,6 +763,19 @@ export function SharedDrives() {
               <MenuItem value="">Any</MenuItem>
               <MenuItem value="active">Active</MenuItem>
               <MenuItem value="hidden">Hidden</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <Select
+              value={filters.sharing} displayEmpty
+              renderValue={(v) => (v ? (v === 'external' ? 'External allowed' : 'Domain only') : 'External sharing')}
+              onChange={(e) => handleFilterChange('sharing', e.target.value)}
+              MenuProps={selectMenuProps}
+              sx={{ fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }}
+            >
+              <MenuItem value="">Any</MenuItem>
+              <MenuItem value="external">External allowed</MenuItem>
+              <MenuItem value="domain">Domain only</MenuItem>
             </Select>
           </FormControl>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -739,10 +809,6 @@ export function SharedDrives() {
               <DateRangeCalendar mode="single-or-range" value={{ from: filters.dateCreatedFrom, to: filters.dateCreatedTo }} onChange={(v) => { const r = typeof v === 'string' ? { from: v, to: v } : v; handleFilterChange('dateCreatedFrom', r.from); handleFilterChange('dateCreatedTo', r.to); }} onClose={() => setDateCreatedAnchor(null)} />
             </Box>
           </Popover>
-          <TextField size="small" placeholder="Creator..." value={filters.creator} onChange={(e) => handleFilterChange('creator', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 120, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
-          <TextField size="small" placeholder="Storage min..." value={filters.storageUsed} onChange={(e) => handleFilterChange('storageUsed', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 100, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
-          <TextField size="small" placeholder="Storage max..." value={filters.storageLimit} onChange={(e) => handleFilterChange('storageLimit', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 100, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
-          <TextField size="small" placeholder="Item cap..." value={filters.itemCap} onChange={(e) => handleFilterChange('itemCap', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 100, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
           <TextField size="small" placeholder="Drive ID..." value={filters.sharedDriveId} onChange={(e) => handleFilterChange('sharedDriveId', e.target.value)} sx={{ fontFamily: T.font, fontSize: '0.8125rem', minWidth: 120, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', borderRadius: T.radiusSm } }} />
           {hasActiveFilters() && (
             <Button size="small" onClick={clearFilters} sx={{ fontFamily: T.font, fontSize: '0.75rem', textTransform: 'none', color: (t: any) => textSecondary(t) }}>
@@ -764,9 +830,14 @@ export function SharedDrives() {
         </Box>
       )}
 
-      {loading ? (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      {loading || (tabValue === 2 && countsLoading) ? (
+        <Box display="flex" flexDirection="column" gap={1.5} justifyContent="center" alignItems="center" minHeight="400px">
           <CircularProgress size={28} thickness={4} sx={{ color: T.accent }} />
+          {tabValue === 2 && countsLoading && !loading && (
+            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+              Checking membership on each shared drive…
+            </Typography>
+          )}
         </Box>
       ) : (
         <>
@@ -790,7 +861,7 @@ export function SharedDrives() {
                   sortConfig={sortConfig}
                   onSort={handleSort}
                   width={col.id === 'name' ? '24%' : col.id === 'hidden' ? 120 : col.id === 'createdTime' ? 120 : undefined}
-                  minWidth={col.id === 'name' ? 160 : col.id === 'creator' ? 140 : undefined}
+                  minWidth={col.id === 'name' ? 160 : col.id === 'sharing' ? 140 : undefined}
                 />
               ))}
               <ColumnHeader label="Open" columnId="__o" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={56} align="center" />
@@ -798,7 +869,13 @@ export function SharedDrives() {
             </ListHeaderRow>
             {tableData.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>
-                <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>No shared drives found</Typography>
+                <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>
+                  {tabValue === 1
+                    ? 'No externally shared drives found'
+                    : tabValue === 2
+                      ? 'No shared drives without members'
+                      : 'No shared drives found'}
+                </Typography>
               </Box>
             ) : (
               tableData.map((drive, idx) => (
@@ -818,9 +895,9 @@ export function SharedDrives() {
                     </Typography>
                   </Box>
                   <Box sx={{ flex: 1, minWidth: 140 }}>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {drive.creator ?? '—'}
-                    </Typography>
+                    <DotLabel dotColor={allowsExternalMembers(drive) ? T.warning : T.success}>
+                      {allowsExternalMembers(drive) ? 'External allowed' : 'Domain only'}
+                    </DotLabel>
                   </Box>
                   <Box sx={{ width: 56, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
                     <ActionTooltip title="Open in Google Drive">
@@ -879,36 +956,32 @@ export function SharedDrives() {
               <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1 }}>Drive details</Typography>
               <Grid container spacing={1.5} sx={{ mb: 2 }}>
                 <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Organizational unit</Typography>
-                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>{selectedDrive.organizationalUnit ?? '–'}</Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
                   <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Shared drive ID</Typography>
                   <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8125rem', wordBreak: 'break-all' }}>{selectedDrive.id}</Typography>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Storage used</Typography>
-                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
-                    {selectedDrive.storageUsed != null
-                      ? (typeof selectedDrive.storageUsed === 'number'
-                          ? `${(selectedDrive.storageUsed / 1024 / 1024 / 1024).toFixed(2)} GB`
-                          : String(selectedDrive.storageUsed))
-                      : '–'}
-                  </Typography>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Created</Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>{selectedDrive.createdTime ? new Date(selectedDrive.createdTime).toLocaleDateString() : '–'}</Typography>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Storage limit</Typography>
-                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>
-                    {selectedDrive.storageLimit != null
-                      ? (typeof selectedDrive.storageLimit === 'number'
-                          ? `${(selectedDrive.storageLimit / 1024 / 1024 / 1024).toFixed(2)} GB`
-                          : String(selectedDrive.storageLimit))
-                      : '–'}
-                  </Typography>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Status</Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>{selectedDrive.hidden ? 'Hidden' : 'Active'}</Typography>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Item cap</Typography>
-                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>{selectedDrive.itemCap != null ? String(selectedDrive.itemCap) : '–'}</Typography>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">External sharing</Typography>
+                  <Box sx={{ mt: 0.25 }}>
+                    <DotLabel dotColor={allowsExternalMembers(selectedDrive) ? T.warning : T.success}>
+                      {allowsExternalMembers(selectedDrive) ? 'External members allowed' : 'Restricted to domain'}
+                    </DotLabel>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Access</Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>{selectedDrive.restrictions?.driveMembersOnly ? 'Members only' : 'People with file access'}</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Copy / download / print</Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>{selectedDrive.restrictions?.copyRequiresWriterPermission ? 'Editors only' : 'Viewers & commenters allowed'}</Typography>
                 </Grid>
               </Grid>
               <Divider sx={{ my: 2 }} />
@@ -975,12 +1048,13 @@ export function SharedDrives() {
                         {permission.type === 'anyone' ? 'Anyone with link' : permission.displayName || '—'}
                       </Typography>
                     </Box>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), wordBreak: 'break-word' }}>
                         {permission.type === 'anyone'
                           ? 'Anyone with link'
                           : permission.emailAddress || permission.domain || permission.id || '—'}
                       </Typography>
+                      {isPermissionExternal(permission) && <ExternalChip />}
                     </Box>
                     <Box sx={{ width: 120, flexShrink: 0 }}>
                       <DotLabel dotColor={getRoleDotColor(permission.role)}>{permission.role}</DotLabel>

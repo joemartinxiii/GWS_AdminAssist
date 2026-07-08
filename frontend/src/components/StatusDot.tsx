@@ -25,6 +25,31 @@ export function StatusDot({ color, label }: { color: string; label?: string }) {
   );
 }
 
+/** Visible "External" pill for principals outside the org's allowed domains. */
+export function ExternalChip() {
+  return (
+    <Box
+      component="span"
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 0.5,
+        px: 0.75,
+        py: '2px',
+        borderRadius: 999,
+        border: `1px solid ${T.warning}`,
+        bgcolor: 'rgba(245, 158, 11, 0.12)',
+        lineHeight: 1,
+      }}
+    >
+      <Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: T.warning, flexShrink: 0 }} />
+      <Typography component="span" sx={{ fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, color: T.warning, letterSpacing: '0.02em' }}>
+        External
+      </Typography>
+    </Box>
+  );
+}
+
 /** Colored dot plus label text (People / list tables). */
 export function DotLabel({
   dotColor,

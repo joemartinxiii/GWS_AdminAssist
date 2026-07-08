@@ -595,6 +595,21 @@ router.get('/shared-drives', requireAnyAdmin, async (req: AuthRequest, res: Resp
 });
 
 /**
+ * GET /api/drive/shared-drives/member-counts
+ * Member (permission) count per shared drive. On-demand: fans out a
+ * permissions.list per drive server-side (bounded concurrency). Used by the
+ * "No members" view, which the fast list endpoint can't answer on its own.
+ */
+router.get('/shared-drives/member-counts', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const counts = await sharedDriveService.getSharedDriveMemberCounts(req.user!.email);
+    res.json({ counts });
+  } catch (error: any) {
+    sendApiError(res, error, 'Failed to compute shared drive member counts', 'drive.shared.memberCounts');
+  }
+});
+
+/**
  * POST /api/drive/shared-drives/export/drive
  * Export shared drives list to Google Drive
  */

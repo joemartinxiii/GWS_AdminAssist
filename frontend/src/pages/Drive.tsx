@@ -53,7 +53,7 @@ import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
-import { DotLabel, StatusDot } from '../components/StatusDot';
+import { DotLabel, ExternalChip } from '../components/StatusDot';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
 import { useTheme } from '@mui/material/styles';
@@ -1090,13 +1090,21 @@ export function Drive() {
     return labels;
   }, [filters]);
 
-  const allFilePerms = selectedFile?.permissions ?? [];
+  // Owners pinned to the top; otherwise original order preserved (stable via
+  // index tiebreaker). Sort the full list before paginating.
+  const allFilePerms = useMemo(() => {
+    const perms = selectedFile?.permissions ?? [];
+    return perms
+      .map((p, i) => ({ p, i }))
+      .sort((a, b) => (a.p.role === 'owner' ? 0 : 1) - (b.p.role === 'owner' ? 0 : 1) || a.i - b.i)
+      .map((x) => x.p);
+  }, [selectedFile?.id, selectedFile?.permissions]);
   const fpMaxPage = Math.max(0, Math.ceil(allFilePerms.length / filePermissionsRowsPerPage) - 1);
   const fpPageSafe = Math.min(filePermissionsPage, fpMaxPage);
   const pagedFilePermissions = useMemo(() => {
     const start = fpPageSafe * filePermissionsRowsPerPage;
     return allFilePerms.slice(start, start + filePermissionsRowsPerPage);
-  }, [selectedFile?.id, selectedFile?.permissions, fpPageSafe, filePermissionsRowsPerPage]);
+  }, [allFilePerms, fpPageSafe, filePermissionsRowsPerPage]);
 
   const lastScanLabel = useMemo(() => {
     if (!scanStatus || scanStatus.status === 'never-scanned' || !scanStatus.lastScan) return 'Never scanned';
@@ -1441,14 +1449,13 @@ export function Drive() {
               </Box>
               <ListShell>
                 <ListHeaderRow>
-                  <Box sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }}>
-                    <Checkbox
-                      size="small"
-                      indeterminate={selectedFiles.size > 0 && selectedFiles.size < files.length}
-                      checked={files.length > 0 && selectedFiles.size === files.length}
-                      onChange={handleSelectAll}
-                    />
-                  </Box>
+                  <Checkbox
+                    size="small"
+                    indeterminate={selectedFiles.size > 0 && selectedFiles.size < files.length}
+                    checked={files.length > 0 && selectedFiles.size === files.length}
+                    onChange={handleSelectAll}
+                    sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }}
+                  />
                   <Box sx={{ width: { xs: 200, sm: 180, md: '18%' }, minWidth: { xs: 200, sm: 180 } }}>
                     <ColumnHeader label="File Name" columnId="fn" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
                   </Box>
@@ -1586,17 +1593,16 @@ export function Drive() {
             </Box>
             <ListShell>
               <ListHeaderRow>
-                <Box sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }}>
-                  <Checkbox
-                    size="small"
-                    indeterminate={(() => {
-                      const selectedOnPage = reportRecords.filter((r) => selectedFiles.has(r.file.id)).length;
-                      return selectedOnPage > 0 && selectedOnPage < reportRecords.length;
-                    })()}
-                    checked={reportRecords.length > 0 && reportRecords.every((r) => selectedFiles.has(r.file.id))}
-                    onChange={handleSelectAllReport}
-                  />
-                </Box>
+                <Checkbox
+                  size="small"
+                  indeterminate={(() => {
+                    const selectedOnPage = reportRecords.filter((r) => selectedFiles.has(r.file.id)).length;
+                    return selectedOnPage > 0 && selectedOnPage < reportRecords.length;
+                  })()}
+                  checked={reportRecords.length > 0 && reportRecords.every((r) => selectedFiles.has(r.file.id))}
+                  onChange={handleSelectAllReport}
+                  sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }}
+                />
                 <Box sx={{ width: { xs: 200, sm: 180, md: '18%' }, minWidth: { xs: 200, sm: 180 } }}>
                   <ColumnHeader label="File Name" columnId="efn" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
                 </Box>
@@ -1861,9 +1867,7 @@ export function Drive() {
                                 ) : null}
                               </Box>
                               <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>{getFileRoleLabel(permission.role)}</Typography>
-                              {isPermissionExternal(permission, allowedDomains) && (
-                                <StatusDot color={T.warning} label="External" />
-                              )}
+                              {isPermissionExternal(permission, allowedDomains) && <ExternalChip />}
                             </>
                           )}
                         </Box>

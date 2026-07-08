@@ -1063,6 +1063,65 @@ export class SharedDriveService extends WorkspaceService {
   }
 
   /**
+   * Member (permission) count per shared drive, keyed by drive id.
+   *
+   * The `drives.list` resource does not expose a member count, so this fans out
+   * one `permissions.list` per drive with bounded concurrency. It is intended
+   * for on-demand use (e.g. a "No members" view), not the fast list path.
+   * A count of -1 signals the lookup failed for that drive (kept distinct from 0).
+   */
+  async getSharedDriveMemberCounts(
+    userEmail: string,
+    concurrency = 8
+  ): Promise<Record<string, number>> {
+    const drives = await this.listSharedDrives(userEmail);
+    // Capture the initialized client so concurrent workers don't race on a
+    // re-initialization of this.drive.
+    const drive = this.drive;
+    const counts: Record<string, number> = {};
+
+    const countOne = async (driveId: string): Promise<number> => {
+      let total = 0;
+      let pageToken: string | undefined;
+      do {
+        const resp = await this.withRetry(() =>
+          drive.permissions.list({
+            fileId: driveId,
+            supportsAllDrives: true,
+            useDomainAdminAccess: true,
+            fields: 'nextPageToken, permissions(id, deleted)',
+            pageSize: 100,
+            pageToken,
+          })
+        );
+        for (const p of resp.data.permissions || []) {
+          if (!p.deleted) total++;
+        }
+        pageToken = resp.data.nextPageToken || undefined;
+      } while (pageToken);
+      return total;
+    };
+
+    let idx = 0;
+    const worker = async () => {
+      while (idx < drives.length) {
+        const i = idx++;
+        const d = drives[i];
+        try {
+          counts[d.id] = await countOne(d.id);
+        } catch {
+          counts[d.id] = -1;
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, drives.length || 1) }, () => worker())
+    );
+    return counts;
+  }
+
+  /**
    * Add a user or group to a shared drive
    */
   async addSharedDrivePermission(
