@@ -32,6 +32,7 @@ import {
   ListFilter,
   ArrowUp,
   ArrowDown,
+  Trash2,
 } from 'lucide-react';
 import type { AxiosError } from 'axios';
 import { apiClient } from '../services/api.client';
@@ -42,13 +43,15 @@ import { ActionTooltip } from '../components/ActionTooltip';
 import { useTheme } from '@mui/material/styles';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { EditUserDialog } from '../components/EditUserDialog';
-import { StatusDot } from '../components/StatusDot';
+import { StatusDot, DotLabel } from '../components/StatusDot';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { shortcut } from '../utils/keyboard';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
+import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
+import { getApiErrorMessage } from '../utils/apiError';
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -84,8 +87,23 @@ interface UserFilters {
   lastLoginTo: string;
 }
 
-type SortKey = 'name' | 'email' | 'status' | '2fa' | 'role' | 'adminType' | 'created' | 'lastLogin';
+type SortKey = 'name' | 'email' | 'status' | '2fa' | 'role' | 'adminType' | 'ou' | 'created' | 'lastLogin';
 type SortDir = 'asc' | 'desc';
+
+/** Leaf OU name for table (full path on tooltip). */
+function orgUnitLeaf(path?: string): string {
+  if (!path || path === '/') return '/';
+  const parts = path.split('/').filter(Boolean);
+  return parts[parts.length - 1] || path;
+}
+
+const PROTECTED_USER_EMAILS = new Set(
+  ['joe@befree.wtf', 'backup@befree.wtf'].map((e) => e.toLowerCase())
+);
+
+function isProtectedUser(email: string): boolean {
+  return PROTECTED_USER_EMAILS.has(email.trim().toLowerCase());
+}
 
 function humanizeGooglePrivilege(id: string): string {
   return id
@@ -400,6 +418,7 @@ export function Users() {
       case '2fa': return u.isEnrolledIn2Sv ? 0 : u.isEnforcedIn2Sv ? 1 : 2;
       case 'role': return u.isAdmin ? 0 : 1;
       case 'adminType': return describeAdminType(u).toLowerCase();
+      case 'ou': return (u.orgUnitPath || '/').toLowerCase();
       case 'created': return u.creationTime ? new Date(u.creationTime).getTime() : 0;
       case 'lastLogin': return u.lastLoginTime ? new Date(u.lastLoginTime).getTime() : 0;
     }
@@ -472,10 +491,10 @@ export function Users() {
 
   const exportToCSV = (userList: User[], filename: string) => {
     if (!userList?.length) return;
-    const headers = ['Name', 'Email', 'Admin', 'Suspended', '2FA Enrolled', '2FA Enforced', 'Created', 'Last Login'];
+    const headers = ['Name', 'Email', 'Admin', 'Suspended', '2FA Enrolled', '2FA Enforced', 'Org Unit', 'Created', 'Last Login'];
     const rows = userList.map((u) => [
       u.name.fullName, u.primaryEmail, u.isAdmin ? 'Yes' : 'No', u.suspended ? 'Yes' : 'No',
-      u.isEnrolledIn2Sv ? 'Yes' : 'No', u.isEnforcedIn2Sv ? 'Yes' : 'No',
+      u.isEnrolledIn2Sv ? 'Yes' : 'No', u.isEnforcedIn2Sv ? 'Yes' : 'No', u.orgUnitPath || '/',
       u.creationTime ? new Date(u.creationTime).toISOString() : '', u.lastLoginTime ? new Date(u.lastLoginTime).toISOString() : 'Never',
     ]);
     const csv = [headers.join(','), ...rows.map((r) => r.map((v) => (v.includes(',') ? `"${v}"` : v)).join(','))].join('\n');
@@ -580,6 +599,45 @@ export function Users() {
     }
   };
   const handleCloseEdit = () => { setEditDialogOpen(false); setSelectedUser(null); };
+
+  const handleDeleteUser = (user: User) => {
+    if (isProtectedUser(user.primaryEmail)) {
+      showSnackbar(`${user.primaryEmail} is protected and cannot be deleted. Suspend instead if needed.`, 'warning');
+      return;
+    }
+    setConfirmConfig({
+      title: `Delete ${user.primaryEmail}?`,
+      description: (
+        <Box>
+          <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', mb: 1 }}>
+            This permanently deletes the Google Workspace account and cannot be undone. Prefer <strong>Suspend</strong> when you only need to block access.
+          </Typography>
+          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+            {user.name.fullName} · {user.orgUnitPath || '/'}
+          </Typography>
+        </Box>
+      ),
+      confirmLabel: 'Delete permanently',
+      cancelLabel: 'Cancel',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await apiClient.delete(`/users/${encodeURIComponent(user.primaryEmail)}`);
+          setUsers((prev) => prev.filter((u) => u.primaryEmail !== user.primaryEmail));
+          setSelectedUsers((prev) => {
+            const n = new Set(prev);
+            n.delete(user.primaryEmail);
+            return n;
+          });
+          showSnackbar(`${user.primaryEmail} deleted.`, 'success');
+          await fetchUsers();
+        } catch (e) {
+          showSnackbar(getApiErrorMessage(e, 'Failed to delete user.'), 'error');
+          throw e;
+        }
+      },
+    });
+  };
 
   // -------------------------------------------------------------------------
   // 2FA actions
@@ -930,18 +988,8 @@ export function Users() {
             )}
 
             {/* ======= TABLE ======= */}
-            <Box sx={(theme) => ({
-              border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
-              borderRadius: T.radiusLg,
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              bgcolor: pick(theme, T.surface, '#18181b'),
-            })}>
-              {/* Header row */}
-              <Box sx={(theme) => ({
-                display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.25,
-                borderBottom: `1px solid ${pick(theme, T.borderSubtle, '#27272a')}`,
-              })}>
+            <ListShell>
+              <ListHeaderRow>
                 <Checkbox
                   size="small"
                   checked={allSelected}
@@ -949,29 +997,29 @@ export function Users() {
                   onChange={toggleAll}
                   sx={{ p: 0.25, mr: 0.5 }}
                 />
-                <Box sx={{ width: 34 }} />
-                <ColHeader label="Name" sortId="name" width="22%" />
-                <ColHeader label="Email" sortId="email" minWidth={180} />
-                <ColHeader label="Status" sortId="status" width={80} />
-                <ColHeader label="2FA" sortId="2fa" width={80} />
+                <Box sx={{ width: 34, flexShrink: 0 }} />
+                <ColHeader label="Name" sortId="name" width="16%" minWidth={120} />
+                <ColHeader label="Email" sortId="email" width="18%" minWidth={150} />
+                <ColHeader label="Status" sortId="status" width={100} />
+                <ColHeader label="2FA" sortId="2fa" width={72} />
                 {isAdminsTab ? (
-                  <ColHeader label="Admin type" sortId="adminType" width={120} />
+                  <ColHeader label="Admin type" sortId="adminType" width={110} />
                 ) : (
-                  <ColHeader label="Role" sortId="role" width={120} />
+                  <ColHeader label="Role" sortId="role" width={72} />
                 )}
-                {isMdUp && <ColHeader label="Last sign-in" sortId="lastLogin" width={100} align="right" />}
+                <ColHeader label="OU" sortId="ou" width={120} minWidth={100} />
+                {isMdUp && <ColHeader label="Last sign-in" sortId="lastLogin" width={96} align="right" />}
                 <ColumnHeader
                   label="Actions"
                   columnId="__actions"
                   sortConfig={{ key: effectiveSortKey, direction: sortDir }}
                   onSort={() => {}}
-                  width={96}
+                  width={88}
                   align="right"
                   sortable={false}
                 />
-              </Box>
+              </ListHeaderRow>
 
-              {/* Rows */}
               {sorted.length === 0 ? (
                 <Box sx={{ py: 6, textAlign: 'center' }}>
                   <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', fontWeight: 500, color: (t) => textSecondary(t), mb: 0.5 }}>
@@ -997,51 +1045,44 @@ export function Users() {
               ) : (
                 paged.map((user, idx) => {
                   const isSelected = selectedUsers.has(user.primaryEmail);
+                  const protectedAcct = isProtectedUser(user.primaryEmail);
                   return (
-                    <Box
+                    <ListDataRow
                       key={user.id}
-                      sx={(theme) => ({
-                        display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1,
-                        borderBottom: idx < paged.length - 1 ? `1px solid ${pick(theme, T.borderSubtle, '#27272a')}` : 'none',
-                        bgcolor: isSelected ? pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.16)') : 'transparent',
-                        transition: 'background-color 0.12s ease, opacity 0.35s ease, transform 0.35s ease',
-                        opacity: appeared ? 1 : 0,
-                        transform: appeared ? 'none' : 'translateY(6px)',
-                        transitionDelay: `${Math.min(idx * 25, 400)}ms`,
-                        cursor: 'pointer',
-                        '&:hover': {
-                          bgcolor: isSelected ? pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.16)') : pick(theme, T.surfaceHover, '#27272a'),
-                        },
-                      })}
+                      last={idx === paged.length - 1}
+                      selected={isSelected}
                       onClick={() => toggleUser(user.primaryEmail)}
                     >
                       <Checkbox size="small" checked={isSelected} sx={{ p: 0.25, mr: 0.5 }} onClick={(e) => e.stopPropagation()} onChange={() => toggleUser(user.primaryEmail)} />
                       <Initials name={user.name.fullName} suspended={user.suspended} />
-                      <Box sx={{ width: '22%', minWidth: '22%', flexShrink: 0, overflow: 'hidden' }}>
+                      <Box sx={{ width: '16%', minWidth: 120, flexShrink: 0, overflow: 'hidden' }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (theme) => pick(theme, T.text, '#fafafa'), textDecoration: user.suspended ? 'line-through' : 'none', opacity: user.suspended ? 0.5 : 1 }}>
                           {user.name.fullName}
                         </Typography>
                       </Box>
-                      <Box sx={{ flex: 1, minWidth: 180, overflow: 'hidden' }}>
+                      <Box sx={{ width: '18%', minWidth: 150, flexShrink: 0, overflow: 'hidden' }}>
                         <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {user.primaryEmail}
                         </Typography>
                       </Box>
-                      <Box sx={{ width: 80, minWidth: 80, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                        <StatusDot color={user.suspended ? T.danger : T.success} label={user.suspended ? 'Suspended' : 'Active'} />
-                        <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t) }}>{user.suspended ? 'Off' : 'Active'}</Typography>
+                      <Box sx={{ width: 100, minWidth: 100, flexShrink: 0 }}>
+                        <DotLabel
+                          dotColor={user.suspended ? T.danger : T.success}
+                          dotTooltip={user.suspended ? 'Suspended' : 'Active'}
+                        >
+                          {user.suspended ? 'Suspended' : 'Active'}
+                        </DotLabel>
                       </Box>
-                      <Box sx={{ width: 80, minWidth: 80, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                        <StatusDot
-                          color={user.isEnrolledIn2Sv ? T.success : user.isEnforcedIn2Sv ? T.warning : textTertiary(theme)}
-                          label={user.isEnrolledIn2Sv ? 'Enrolled' : user.isEnforcedIn2Sv ? 'Enforced' : 'None'}
-                        />
-                        <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t) }}>
-                          {user.isEnrolledIn2Sv ? 'On' : user.isEnforcedIn2Sv ? 'Enf.' : '\u2014'}
-                        </Typography>
+                      <Box sx={{ width: 72, minWidth: 72, flexShrink: 0 }}>
+                        <DotLabel
+                          dotColor={user.isEnrolledIn2Sv ? T.success : user.isEnforcedIn2Sv ? T.warning : textTertiary(theme)}
+                          dotTooltip={user.isEnrolledIn2Sv ? 'Enrolled' : user.isEnforcedIn2Sv ? 'Enforced' : 'None'}
+                        >
+                          {user.isEnrolledIn2Sv ? 'On' : user.isEnforcedIn2Sv ? 'Enf.' : '—'}
+                        </DotLabel>
                       </Box>
                       {isAdminsTab ? (
-                        <Box sx={{ width: 120, minWidth: 120, flexShrink: 0, alignSelf: 'stretch', display: 'flex', alignItems: 'center' }}>
+                        <Box sx={{ width: 110, minWidth: 110, flexShrink: 0, overflow: 'hidden' }}>
                           <Tooltip title={describeAdminType(user)} placement="top">
                             <Typography
                               sx={{
@@ -1049,11 +1090,9 @@ export function Users() {
                                 fontSize: '0.75rem',
                                 fontWeight: 500,
                                 color: (t) => (user.isAdmin ? T.accent : textSecondary(t)),
-                                lineHeight: 1.35,
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
+                                whiteSpace: 'nowrap',
                                 overflow: 'hidden',
+                                textOverflow: 'ellipsis',
                               }}
                             >
                               {describeAdminType(user)}
@@ -1061,22 +1100,28 @@ export function Users() {
                           </Tooltip>
                         </Box>
                       ) : (
-                        <Box sx={{ width: 120, minWidth: 120, flexShrink: 0 }}>
+                        <Box sx={{ width: 72, minWidth: 72, flexShrink: 0 }}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', fontWeight: user.isAdmin ? 600 : 400, color: (t) => (user.isAdmin ? T.accent : textSecondary(t)) }}>
                             {isWorkspaceAdmin(user) ? 'Admin' : 'User'}
                           </Typography>
                         </Box>
                       )}
+                      <Box sx={{ width: 120, minWidth: 100, flexShrink: 0, overflow: 'hidden' }}>
+                        <Tooltip title={user.orgUnitPath || '/'} placement="top">
+                          <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {orgUnitLeaf(user.orgUnitPath)}
+                          </Typography>
+                        </Tooltip>
+                      </Box>
                       {isMdUp && (
-                        <Box sx={{ width: 100, minWidth: 100, flexShrink: 0, textAlign: 'right' }}>
+                        <Box sx={{ width: 96, minWidth: 96, flexShrink: 0, textAlign: 'right' }}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
                             {formatRelative(user.lastLoginTime)}
                           </Typography>
                         </Box>
                       )}
                       <Box
-                        className="edit-action"
-                        sx={{ width: 96, minWidth: 96, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}
+                        sx={{ width: 88, minWidth: 88, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.25 }}
                         onClick={(e) => e.stopPropagation()}
                       >
                         {canTakeAction && hasPermission('users.update') && (
@@ -1086,12 +1131,26 @@ export function Users() {
                             </IconButton>
                           </ActionTooltip>
                         )}
+                        {canTakeAction && hasPermission('users.delete') && (
+                          <ActionTooltip title={protectedAcct ? 'Protected account — cannot delete' : 'Delete user'}>
+                            <span>
+                              <IconButton
+                                size="small"
+                                disabled={protectedAcct}
+                                onClick={() => handleDeleteUser(user)}
+                                sx={{ p: 0.5, color: protectedAcct ? textTertiary(theme) : T.danger, '&:hover': { color: T.danger } }}
+                              >
+                                <Trash2 size={16} strokeWidth={1.75} />
+                              </IconButton>
+                            </span>
+                          </ActionTooltip>
+                        )}
                       </Box>
-                    </Box>
+                    </ListDataRow>
                   );
                 })
               )}
-            </Box>
+            </ListShell>
 
             {sorted.length > 0 && (
               <TablePagination

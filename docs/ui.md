@@ -1,8 +1,22 @@
 # UI design system
 
-This is the **canonical guide** for visuals and interaction patterns: Plus Jakarta Sans, Workspace-style blue tokens (`T.accent`), Lucide icons, and flex-based data lists.
+Canonical guide for visuals and interaction: Plus Jakarta Sans, Workspace-style blue (`T.accent`), Lucide icons, and flex data lists.
 
-**Reference implementation:** `frontend/src/pages/Users.tsx`. New screens should match it unless this doc says otherwise.
+**Reference pages:** `Users.tsx` (people table + actions), `Drive.tsx` (permissions dialog), `SharedDrives.tsx` (list + members), `SecurityAudit.tsx` (status/severity columns).
+
+## List & actions contract (do not break)
+
+1. **`ListShell` → `ListHeaderRow` → `ListDataRow`** for every data table.
+2. **Matching widths** on header cells and row cells (fixed px for status/actions; % only for name/email). Never put a short chip in `flex: 1`.
+3. **Trailing Actions** (right-aligned icons, one column labeled **Actions** or unlabeled). Do **not** invent separate “Open” / “Details” / “Remove” icon columns.
+4. **Icons mean one thing:**
+   - `Pencil` — edit settings / change role (in the actions strip only)
+   - `Users` — manage members or permissions
+   - `ExternalLink` — open in Google
+   - `Trash2` — remove/delete (danger color)
+5. **Risk chips** (`ExternalChip`, External/Internal) live in their **own fixed-width column** (Access / Sharing), not inside Role.
+6. **Account status** uses Google language: **Active** / **Suspended** (not “Off”).
+7. Prefer **`useConfirm`** and **`useSnackbar`** over `window.confirm` / `alert`.
 
 **Related code:**
 

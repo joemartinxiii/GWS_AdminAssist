@@ -20,7 +20,6 @@ import {
   Checkbox,
   Popover,
   Grid,
-  Link,
   Divider,
   InputAdornment,
   useMediaQuery,
@@ -28,7 +27,6 @@ import {
 import {
   Trash2,
   Plus,
-  Pencil,
   Search,
   RefreshCw,
   ListFilter,
@@ -36,6 +34,7 @@ import {
   ExternalLink,
   X,
   Check,
+  Users,
 } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { useTable, TableColumn } from '../hooks/useTable.tsx';
@@ -227,13 +226,19 @@ export function SharedDrives() {
     });
   }, [tabFilteredDrives, filters]);
 
-  // Table columns. Creator/OU/storage aren't exposed by the Drive API for shared
-  // drives, so we surface external-sharing status (from restrictions) instead.
+  // Creator/OU/storage aren't exposed by the Drive API for shared drives.
+  // Member counts come from a separate endpoint (lazy-loaded).
   const columns: TableColumn<SharedDrive>[] = [
     { id: 'name', label: 'Name', sortable: true, getValue: (row) => row.name },
-    { id: 'hidden', label: 'Status', sortable: true, getValue: (row) => row.hidden ? 'Hidden' : 'Active' },
-    { id: 'createdTime', label: 'Date created', sortable: true, getValue: (row) => row.createdTime ? new Date(row.createdTime).getTime() : 0 },
-    { id: 'sharing', label: 'External sharing', sortable: true, getValue: (row) => allowsExternalMembers(row) ? 'External allowed' : 'Domain only' },
+    { id: 'hidden', label: 'Visibility', sortable: true, getValue: (row) => row.hidden ? 'Hidden' : 'Active' },
+    { id: 'createdTime', label: 'Created', sortable: true, getValue: (row) => row.createdTime ? new Date(row.createdTime).getTime() : 0 },
+    { id: 'sharing', label: 'Sharing', sortable: true, getValue: (row) => allowsExternalMembers(row) ? 'External' : 'Internal' },
+    {
+      id: 'members',
+      label: 'Members',
+      sortable: true,
+      getValue: (row) => (typeof memberCounts[row.id] === 'number' ? memberCounts[row.id] : -1),
+    },
   ];
 
   const getSharedDriveUrl = (driveId: string) => `https://drive.google.com/drive/folders/${driveId}`;
@@ -262,9 +267,9 @@ export function SharedDrives() {
       .catch(() => setAllowedDomains([]));
   }, []);
 
-  // Lazily resolve member counts the first time the "No members" tab is opened.
+  // Load member counts once for the table (and empty-drives tab).
   useEffect(() => {
-    if (tabValue !== 2 || countsFetched || countsLoading) return;
+    if (countsFetched || countsLoading) return;
     const fetchCounts = async () => {
       setCountsLoading(true);
       try {
@@ -273,13 +278,13 @@ export function SharedDrives() {
         setCountsFetched(true);
       } catch (error) {
         console.error('Error fetching shared drive member counts:', error);
-        setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to load member counts.'), severity: 'error' });
+        // Non-fatal for main list; empty tab will show without counts.
       } finally {
         setCountsLoading(false);
       }
     };
     void fetchCounts();
-  }, [tabValue, countsFetched, countsLoading]);
+  }, [countsFetched, countsLoading]);
 
   // Reset paging + selection when switching tabs.
   useEffect(() => {
@@ -853,19 +858,12 @@ export function SharedDrives() {
                 onChange={handleSelectAllDrives}
                 sx={{ p: 0.25, mr: 0.5 }}
               />
-              {columns.map((col) => (
-                <ColumnHeader
-                  key={col.id}
-                  label={col.label}
-                  columnId={col.id}
-                  sortConfig={sortConfig}
-                  onSort={handleSort}
-                  width={col.id === 'name' ? '24%' : col.id === 'hidden' ? 120 : col.id === 'createdTime' ? 120 : undefined}
-                  minWidth={col.id === 'name' ? 160 : col.id === 'sharing' ? 140 : undefined}
-                />
-              ))}
-              <ColumnHeader label="Open" columnId="__o" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={56} align="center" />
-              <ColumnHeader label="Details" columnId="__d" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={72} align="center" />
+              <ColumnHeader label="Name" columnId="name" sortConfig={sortConfig} onSort={handleSort} width="28%" minWidth={160} />
+              <ColumnHeader label="Visibility" columnId="hidden" sortConfig={sortConfig} onSort={handleSort} width={96} />
+              <ColumnHeader label="Created" columnId="createdTime" sortConfig={sortConfig} onSort={handleSort} width={100} />
+              <ColumnHeader label="Sharing" columnId="sharing" sortConfig={sortConfig} onSort={handleSort} width={100} />
+              <ColumnHeader label="Members" columnId="members" sortConfig={sortConfig} onSort={handleSort} width={80} align="right" />
+              <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={88} align="right" />
             </ListHeaderRow>
             {tableData.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -878,43 +876,65 @@ export function SharedDrives() {
                 </Typography>
               </Box>
             ) : (
-              tableData.map((drive, idx) => (
-                <ListDataRow key={drive.id} last={idx === tableData.length - 1} selected={isDriveSelected(drive)}>
-                  <Checkbox size="small" checked={isDriveSelected(drive)} onChange={() => handleSelectDrive(drive)} sx={{ p: 0.25, mr: 0.5 }} />
-                  <Box sx={{ width: '24%', minWidth: 160, overflow: 'hidden' }}>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (theme) => pick(theme, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {drive.name}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ width: 120, flexShrink: 0 }}>
-                    <DotLabel dotColor={drive.hidden ? textTertiary(muiTheme) : T.success}>{drive.hidden ? 'Hidden' : 'Active'}</DotLabel>
-                  </Box>
-                  <Box sx={{ width: 120, flexShrink: 0 }}>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
-                      {drive.createdTime ? new Date(drive.createdTime).toLocaleDateString() : '—'}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ flex: 1, minWidth: 140 }}>
-                    <DotLabel dotColor={allowsExternalMembers(drive) ? T.warning : T.success}>
-                      {allowsExternalMembers(drive) ? 'External allowed' : 'Domain only'}
-                    </DotLabel>
-                  </Box>
-                  <Box sx={{ width: 56, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                    <ActionTooltip title="Open in Google Drive">
-                      <Link href={getSharedDriveUrl(drive.id)} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
-                        <ExternalLink size={16} strokeWidth={1.75} />
-                      </Link>
-                    </ActionTooltip>
-                  </Box>
-                  <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
-                    <ActionTooltip title="Details & Permissions">
-                      <IconButton size="small" onClick={() => handleViewPermissions(drive)} sx={{ p: 0.5 }} aria-label="Details">
-                        <Pencil size={16} strokeWidth={1.75} />
-                      </IconButton>
-                    </ActionTooltip>
-                  </Box>
-                </ListDataRow>
-              ))
+              tableData.map((drive, idx) => {
+                const count = memberCounts[drive.id];
+                const external = allowsExternalMembers(drive);
+                return (
+                  <ListDataRow
+                    key={drive.id}
+                    last={idx === tableData.length - 1}
+                    selected={isDriveSelected(drive)}
+                    onClick={() => handleViewPermissions(drive)}
+                  >
+                    <Checkbox size="small" checked={isDriveSelected(drive)} onChange={(e) => { e.stopPropagation(); handleSelectDrive(drive); }} sx={{ p: 0.25, mr: 0.5 }} onClick={(e) => e.stopPropagation()} />
+                    <Box sx={{ width: '28%', minWidth: 160, overflow: 'hidden' }}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (theme) => pick(theme, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {drive.name}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ width: 96, flexShrink: 0 }}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => (drive.hidden ? textTertiary(t) : textSecondary(t)) }}>
+                        {drive.hidden ? 'Hidden' : 'Active'}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ width: 100, flexShrink: 0 }}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                        {drive.createdTime ? new Date(drive.createdTime).toLocaleDateString() : '—'}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ width: 100, flexShrink: 0 }}>
+                      <DotLabel dotColor={external ? T.warning : T.success}>
+                        {external ? 'External' : 'Internal'}
+                      </DotLabel>
+                    </Box>
+                    <Box sx={{ width: 80, flexShrink: 0, textAlign: 'right' }}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                        {typeof count === 'number' ? count : countsLoading ? '…' : '—'}
+                      </Typography>
+                    </Box>
+                    <Box
+                      sx={{ width: 88, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.25 }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ActionTooltip title="Open in Google Drive">
+                        <IconButton
+                          size="small"
+                          onClick={() => window.open(getSharedDriveUrl(drive.id), '_blank', 'noopener,noreferrer')}
+                          sx={{ p: 0.5, color: T.accent }}
+                          aria-label="Open in Drive"
+                        >
+                          <ExternalLink size={16} strokeWidth={1.75} />
+                        </IconButton>
+                      </ActionTooltip>
+                      <ActionTooltip title="Members & permissions">
+                        <IconButton size="small" onClick={() => handleViewPermissions(drive)} sx={{ p: 0.5, color: T.accent }} aria-label="Members">
+                          <Users size={16} strokeWidth={1.75} />
+                        </IconButton>
+                      </ActionTooltip>
+                    </Box>
+                  </ListDataRow>
+                );
+              })
             )}
           </ListShell>
 
@@ -1018,10 +1038,11 @@ export function SharedDrives() {
                     <Box sx={{ width: 34, mr: 0.5, flexShrink: 0 }} />
                   )}
                   <ColumnHeader label="Type" columnId="pt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
-                  <ColumnHeader label="Name" columnId="pn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="24%" />
-                  <ColumnHeader label="Email" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} />
-                  <ColumnHeader label="Role" columnId="pr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={120} />
-                  <ColumnHeader label="Remove" columnId="prm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="center" />
+                  <ColumnHeader label="Name" columnId="pn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="20%" minWidth={100} />
+                  <ColumnHeader label="Email" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="26%" minWidth={140} />
+                  <ColumnHeader label="Access" columnId="px" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={100} />
+                  <ColumnHeader label="Role" columnId="pr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={100} />
+                  <ColumnHeader label="Actions" columnId="pa" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="right" />
                 </ListHeaderRow>
                 {permissions.length === 0 && !addPermissionDialogOpen && (
                   <Box sx={{ py: 4, textAlign: 'center' }}>
@@ -1043,24 +1064,30 @@ export function SharedDrives() {
                         {getTypeLabel(permission.type)}
                       </Typography>
                     </Box>
-                    <Box sx={{ width: '24%', minWidth: 0 }}>
-                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), wordBreak: 'break-word' }}>
+                    <Box sx={{ width: '20%', minWidth: 100, overflow: 'hidden' }}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {permission.type === 'anyone' ? 'Anyone with link' : permission.displayName || '—'}
                       </Typography>
                     </Box>
-                    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), wordBreak: 'break-word' }}>
+                    <Box sx={{ width: '26%', minWidth: 140, overflow: 'hidden' }}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {permission.type === 'anyone'
                           ? 'Anyone with link'
                           : permission.emailAddress || permission.domain || permission.id || '—'}
                       </Typography>
-                      {isPermissionExternal(permission) && <ExternalChip />}
                     </Box>
-                    <Box sx={{ width: 120, flexShrink: 0 }}>
+                    <Box sx={{ width: 100, flexShrink: 0 }}>
+                      {isPermissionExternal(permission) ? (
+                        <ExternalChip />
+                      ) : (
+                        <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>Internal</Typography>
+                      )}
+                    </Box>
+                    <Box sx={{ width: 100, flexShrink: 0 }}>
                       <DotLabel dotColor={getRoleDotColor(permission.role)}>{permission.role}</DotLabel>
                     </Box>
-                    <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                      <ActionTooltip title="Remove permission">
+                    <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
+                      <ActionTooltip title="Remove">
                         <IconButton size="small" color="error" onClick={() => handleRemovePermission(permission.id)} sx={{ p: 0.5 }}>
                           <Trash2 size={16} strokeWidth={1.75} />
                         </IconButton>

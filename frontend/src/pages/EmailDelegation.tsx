@@ -623,17 +623,9 @@ export function EmailDelegation() {
                 onChange={handleSelectAll}
                 sx={{ p: 0.25, mr: 0.5 }}
               />
-              {allDelegationsColumns.map((col) => (
-                <ColumnHeader
-                  key={col.id}
-                  label={col.label}
-                  columnId={col.id}
-                  sortConfig={sortConfig}
-                  onSort={handleSort}
-                  width={col.id === 'userEmail' ? '28%' : col.id === 'delegateEmail' ? '28%' : undefined}
-                  minWidth={col.id === 'userEmail' || col.id === 'delegateEmail' ? 170 : undefined}
-                />
-              ))}
+              <ColumnHeader label="Mailbox owner" columnId="userEmail" sortConfig={sortConfig} onSort={handleSort} width="32%" minWidth={170} />
+              <ColumnHeader label="Delegate" columnId="delegateEmail" sortConfig={sortConfig} onSort={handleSort} width="32%" minWidth={170} />
+              <ColumnHeader label="Status" columnId="verificationStatus" sortConfig={sortConfig} onSort={handleSort} width={120} />
               <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={88} align="right" />
             </ListHeaderRow>
             {data.length === 0 ? (
@@ -644,17 +636,17 @@ export function EmailDelegation() {
               data.map((delegation, index) => (
                 <ListDataRow key={`${delegation.userEmail}-${delegation.delegateEmail}-${index}`} last={index === data.length - 1} selected={isSelected(delegation)}>
                   <Checkbox size="small" checked={isSelected(delegation)} onChange={() => handleSelectOne(delegation)} sx={{ p: 0.25, mr: 0.5 }} />
-                  <Box sx={{ width: '28%', minWidth: 170, overflow: 'hidden' }}>
+                  <Box sx={{ width: '32%', minWidth: 170, overflow: 'hidden' }}>
                     <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {delegation.userEmail}
                     </Typography>
                   </Box>
-                  <Box sx={{ width: '28%', minWidth: 170, overflow: 'hidden' }}>
+                  <Box sx={{ width: '32%', minWidth: 170, overflow: 'hidden' }}>
                     <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {delegation.delegateEmail}
                     </Typography>
                   </Box>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Box sx={{ width: 120, flexShrink: 0 }}>
                     <DotLabel dotColor={delegation.verificationStatus === 'accepted' ? T.success : T.warning}>
                       {delegation.verificationStatus}
                     </DotLabel>
@@ -698,11 +690,16 @@ export function EmailDelegation() {
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>Add email delegation</Typography>
+            <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>
+              Add email delegation
+            </Typography>
+            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mt: 0.5 }}>
+              Grants the delegate access to the mailbox owner’s inbox (same as Admin Console).
+            </Typography>
           </Box>
         </DialogTitle>
         <DialogContent sx={{ pt: '20px !important' }}>
-          <Box sx={{ '& .MuiTextField-root': { mb: 1.5 } }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Autocomplete
               freeSolo
               options={directorySuggestions}
@@ -715,13 +712,22 @@ export function EmailDelegation() {
                 <TextField
                   {...params}
                   size="small"
-                  label="User email"
-                  placeholder="Type name/email (e.g. joe)"
+                  label="Mailbox owner"
+                  placeholder="Whose mailbox? (e.g. exec@company.com)"
                   fullWidth
-                  helperText={loadingDirectoryUsers ? 'Loading user suggestions…' : 'Email to delegate from'}
+                  helperText={
+                    loadingDirectoryUsers
+                      ? 'Loading directory…'
+                      : 'The account that owns the mailbox (source).'
+                  }
                 />
               )}
             />
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 0.25 }}>
+              <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', fontWeight: 600, color: (t) => textTertiary(t), letterSpacing: '0.04em' }}>
+                ↓ DELEGATE ACCESSES THIS MAILBOX
+              </Typography>
+            </Box>
             <Autocomplete
               freeSolo
               options={directorySuggestions}
@@ -734,13 +740,22 @@ export function EmailDelegation() {
                 <TextField
                   {...params}
                   size="small"
-                  label="Delegate email"
-                  placeholder="Type name/email (e.g. ops)"
+                  label="Delegate"
+                  placeholder="Who gets access? (e.g. assistant@company.com)"
                   fullWidth
-                  helperText="Email that will receive delegation access"
+                  helperText="The person who can read and send as the owner."
                 />
               )}
             />
+            {normalizedNewUserEmail && normalizedNewDelegateEmail && (
+              <Alert severity="info" sx={{ fontFamily: T.font, borderRadius: T.radius, py: 0.5 }}>
+                <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem' }}>
+                  <Box component="span" sx={{ fontWeight: 600 }}>{normalizedNewDelegateEmail}</Box>
+                  {' '}will access the mailbox of{' '}
+                  <Box component="span" sx={{ fontWeight: 600 }}>{normalizedNewUserEmail}</Box>
+                </Typography>
+              </Alert>
+            )}
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2, borderTop: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}`, gap: 1 }}>

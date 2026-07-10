@@ -41,6 +41,7 @@ import {
   Plus,
   Check,
   Play,
+  Users,
 } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -801,8 +802,19 @@ export function Drive() {
         `/drive/files/${selectedFile.id}/permissions/${selectedPermission.id}`,
         { role: newRole }
       );
-      refreshCurrent();
-      setPermissionDialogOpen(false);
+      // Stay in the permissions dialog; update local role then refresh from API.
+      setSelectedFile((prev) => {
+        if (!prev || prev.id !== selectedFile.id) return prev;
+        return {
+          ...prev,
+          permissions: (prev.permissions ?? []).map((p) =>
+            p.id === selectedPermission.id ? { ...p, role: newRole } : p
+          ),
+        };
+      });
+      setSelectedPermission(null);
+      await refreshCurrent();
+      setSnackbar({ open: true, message: 'Role updated.', severity: 'success' });
     } catch (error) {
       console.error('Error updating permission:', error);
       setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to update permission. Please try again.'), severity: 'error' });
@@ -1564,9 +1576,9 @@ export function Drive() {
                         </ActionTooltip>
                       </Box>
                       <Box sx={{ width: 52, flexShrink: 0, display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
-                        <ActionTooltip title="Manage Permissions">
-                          <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); handleOpenPermissionDialog(file); }} aria-label="Manage Permissions" sx={{ p: 0.5 }}>
-                            <Pencil size={16} strokeWidth={1.75} />
+                        <ActionTooltip title="Manage permissions">
+                          <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); handleOpenPermissionDialog(file); }} aria-label="Manage permissions" sx={{ p: 0.5 }}>
+                            <Users size={16} strokeWidth={1.75} />
                           </IconButton>
                         </ActionTooltip>
                       </Box>
@@ -1718,9 +1730,9 @@ export function Drive() {
                         )}
                       </Box>
                       <Box sx={{ width: 52, flexShrink: 0, display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
-                        <ActionTooltip title="Manage Permissions">
-                          <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); handleOpenPermissionDialogForRecord(record); }} aria-label="Manage Permissions" sx={{ p: 0.5 }}>
-                            <Pencil size={16} strokeWidth={1.75} />
+                        <ActionTooltip title="Manage permissions">
+                          <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); handleOpenPermissionDialogForRecord(record); }} aria-label="Manage permissions" sx={{ p: 0.5 }}>
+                            <Users size={16} strokeWidth={1.75} />
                           </IconButton>
                         </ActionTooltip>
                       </Box>
@@ -1820,10 +1832,11 @@ export function Drive() {
                     <Box sx={{ width: 42, mr: 0.5, flexShrink: 0 }} />
                   )}
                   <ColumnHeader label="Type" columnId="dt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} />
-                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="18%" minWidth={120} />
-                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="30%" minWidth={160} />
-                  <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={140} />
-                  <ColumnHeader label="Remove" columnId="drm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="center" />
+                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="16%" minWidth={100} />
+                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="28%" minWidth={150} />
+                  <ColumnHeader label="Access" columnId="dx" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={100} />
+                  <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={100} />
+                  <ColumnHeader label="Actions" columnId="da" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} align="right" />
                 </ListHeaderRow>
                 {(selectedFile.permissions ?? []).length === 0 && !addPermissionDialogOpen && (
                   <Box sx={{ py: 4, textAlign: 'center' }}>
@@ -1848,7 +1861,7 @@ export function Drive() {
                       <Box sx={{ width: 72, flexShrink: 0 }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{permission.type}</Typography>
                       </Box>
-                      <Box sx={{ width: '18%', minWidth: 120, overflow: 'hidden' }}>
+                      <Box sx={{ width: '16%', minWidth: 100, overflow: 'hidden' }}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.displayName || '')} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
@@ -1857,7 +1870,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ width: '30%', minWidth: 160, overflow: 'hidden' }}>
+                      <Box sx={{ width: '28%', minWidth: 150, overflow: 'hidden' }}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.emailAddress || permission.domain || '')} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
@@ -1866,51 +1879,73 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ flex: 1, minWidth: 140 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minHeight: 32 }}>
-                          {isEditing ? (
-                            <Select
-                              size="small"
-                              value={newRole}
-                              onChange={(e) => setNewRole(e.target.value)}
-                              sx={{
-                                minWidth: 120,
-                                height: 32,
-                                fontSize: '0.875rem',
-                                fontFamily: T.font,
-                                '& .MuiSelect-select': { py: 0.5, minHeight: 'auto' },
-                              }}
-                            >
-                              {FILE_PERMISSION_ROLES.map((r) => (
-                                <MenuItem key={r.value} value={r.value}>
-                                  {r.label}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          ) : (
-                            <>
-                              <Box sx={{ width: 34, height: 34, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {!isOwner ? (
-                                  <ActionTooltip title="Change role">
-                                    <IconButton size="small" onClick={() => handleOpenPermissionDialog(selectedFile, permission)} sx={{ p: 0.25, color: T.accent }}>
-                                      <Pencil size={16} strokeWidth={1.75} />
-                                    </IconButton>
-                                  </ActionTooltip>
-                                ) : null}
-                              </Box>
-                              <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>{getFileRoleLabel(permission.role)}</Typography>
-                              {isPermissionExternal(permission, allowedDomains) && <ExternalChip />}
-                            </>
-                          )}
-                        </Box>
+                      <Box sx={{ width: 100, flexShrink: 0 }}>
+                        {isPermissionExternal(permission, allowedDomains) ? (
+                          <ExternalChip />
+                        ) : (
+                          <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
+                            Internal
+                          </Typography>
+                        )}
                       </Box>
-                      <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-                        {!isOwner && (
-                          <ActionTooltip title="Remove permission">
-                            <IconButton size="small" color="error" onClick={() => handleDeletePermission(selectedFile.id, permission.id)} sx={{ p: 0.5 }}>
-                              <Trash2 size={16} strokeWidth={1.75} />
-                            </IconButton>
-                          </ActionTooltip>
+                      <Box sx={{ width: 100, flexShrink: 0 }}>
+                        {isEditing ? (
+                          <Select
+                            size="small"
+                            value={newRole}
+                            onChange={(e) => setNewRole(e.target.value)}
+                            autoFocus
+                            sx={{
+                              minWidth: 96,
+                              height: 32,
+                              fontSize: '0.8125rem',
+                              fontFamily: T.font,
+                              '& .MuiSelect-select': { py: 0.5, minHeight: 'auto' },
+                            }}
+                          >
+                            {FILE_PERMISSION_ROLES.map((r) => (
+                              <MenuItem key={r.value} value={r.value}>
+                                {r.label}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        ) : (
+                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                            {getFileRoleLabel(permission.role)}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Box sx={{ width: 88, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.25 }}>
+                        {isEditing ? (
+                          <>
+                            <ActionTooltip title="Save role">
+                              <IconButton size="small" onClick={handleUpdatePermission} sx={{ p: 0.5, color: T.accent }}>
+                                <Check size={16} strokeWidth={1.75} />
+                              </IconButton>
+                            </ActionTooltip>
+                            <ActionTooltip title="Cancel">
+                              <IconButton size="small" onClick={() => setSelectedPermission(null)} sx={{ p: 0.5, color: (t) => textTertiary(t) }}>
+                                <X size={16} strokeWidth={1.75} />
+                              </IconButton>
+                            </ActionTooltip>
+                          </>
+                        ) : (
+                          <>
+                            {!isOwner && (
+                              <ActionTooltip title="Change role">
+                                <IconButton size="small" onClick={() => handleOpenPermissionDialog(selectedFile, permission)} sx={{ p: 0.5, color: T.accent }}>
+                                  <Pencil size={16} strokeWidth={1.75} />
+                                </IconButton>
+                              </ActionTooltip>
+                            )}
+                            {!isOwner && (
+                              <ActionTooltip title="Remove">
+                                <IconButton size="small" color="error" onClick={() => handleDeletePermission(selectedFile.id, permission.id)} sx={{ p: 0.5 }}>
+                                  <Trash2 size={16} strokeWidth={1.75} />
+                                </IconButton>
+                              </ActionTooltip>
+                            )}
+                          </>
                         )}
                       </Box>
                     </ListDataRow>

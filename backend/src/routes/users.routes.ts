@@ -524,4 +524,48 @@ router.patch('/:email', requirePermission('users.update'), auditLog('user.update
   }
 });
 
+/** Never permanently delete these accounts (permanent tenant backups / primary admin). */
+function isProtectedUserEmail(email: string): boolean {
+  const lower = email.trim().toLowerCase();
+  const fromEnv = (process.env.GWS_PROTECTED_USERS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  const defaults = ['joe@befree.wtf', 'backup@befree.wtf'];
+  return new Set([...defaults, ...fromEnv]).has(lower);
+}
+
+/**
+ * DELETE /api/users/:email
+ * Permanently delete a user (super admin). Protected accounts are never deleted.
+ */
+router.delete(
+  '/:email',
+  requireSuperAdmin,
+  requirePermission('users.delete'),
+  auditLog('user.delete', 'user'),
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const email = normalizeEmailParam(req.params.email);
+      const emailValidation = validateEmail(email);
+      if (!emailValidation.valid) {
+        return res.status(400).json({ error: emailValidation.error || 'Invalid email format' });
+      }
+      if (isProtectedUserEmail(email)) {
+        return res.status(403).json({
+          error: `Refusing to delete protected account ${email}. Suspend instead if needed.`,
+        });
+      }
+      if (email.toLowerCase() === req.user!.email.toLowerCase()) {
+        return res.status(400).json({ error: 'You cannot delete your own account.' });
+      }
+      await userService.deleteUser(req.user!.email, email);
+      res.json({ message: 'User deleted successfully', email });
+    } catch (error: unknown) {
+      console.error('Error deleting user:', error);
+      next(error);
+    }
+  }
+);
+
 export default router;
