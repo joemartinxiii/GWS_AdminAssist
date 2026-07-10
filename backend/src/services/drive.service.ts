@@ -874,6 +874,46 @@ export class DriveService extends WorkspaceService {
   }
 
   /**
+   * Move a file to Trash (recoverable). Uses the signed-in admin's DWD client.
+   * Does not permanently delete; owner can restore from Drive Trash.
+   */
+  async trashFile(userEmail: string, fileId: string): Promise<void> {
+    const drive = await this.driveFor(userEmail);
+    await this.withRetry(() =>
+      drive.files.update({
+        fileId,
+        supportsAllDrives: true,
+        requestBody: { trashed: true },
+        fields: 'id, trashed',
+      })
+    );
+  }
+
+  /**
+   * Trash many files (best-effort per id). Returns succeeded / failed lists.
+   */
+  async trashFiles(
+    userEmail: string,
+    fileIds: string[]
+  ): Promise<{ succeeded: string[]; failed: Array<{ fileId: string; error: string }> }> {
+    const succeeded: string[] = [];
+    const failed: Array<{ fileId: string; error: string }> = [];
+    for (const fileId of fileIds) {
+      if (!fileId || typeof fileId !== 'string') continue;
+      try {
+        await this.trashFile(userEmail, fileId);
+        succeeded.push(fileId);
+      } catch (error: any) {
+        failed.push({
+          fileId,
+          error: error?.response?.data?.error?.message || error?.message || String(error),
+        });
+      }
+    }
+    return { succeeded, failed };
+  }
+
+  /**
    * Upload a file to Google Drive
    */
   async uploadFile(

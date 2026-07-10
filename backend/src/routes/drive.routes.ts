@@ -402,6 +402,57 @@ router.delete('/files/:fileId/permissions/:permissionId', requirePermission('dri
 });
 
 /**
+ * DELETE /api/drive/files/:fileId
+ * Move a file to Trash (super admin). Recoverable from Drive Trash.
+ * Register after more specific /files/:fileId/permissions routes.
+ */
+router.delete(
+  '/files/:fileId',
+  requireSuperAdmin,
+  auditLog('drive.file.trash', 'drive'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const fileId = String(req.params.fileId || '').trim();
+      if (!fileId) {
+        return res.status(400).json({ error: 'fileId is required' });
+      }
+      await driveService.trashFile(req.user!.email, fileId);
+      res.json({ message: 'File moved to Trash', fileId });
+    } catch (error: any) {
+      sendApiError(res, error, 'Failed to trash file', 'drive.file.trash');
+    }
+  }
+);
+
+/**
+ * POST /api/drive/files/trash
+ * Move multiple files to Trash (super admin). Best-effort per file.
+ */
+router.post(
+  '/files/trash',
+  requireSuperAdmin,
+  auditLog('drive.file.trash.bulk', 'drive'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { fileIds } = req.body as { fileIds?: unknown };
+      if (!Array.isArray(fileIds) || fileIds.length === 0) {
+        return res.status(400).json({ error: 'fileIds must be a non-empty array of strings' });
+      }
+      if (!fileIds.every((id) => typeof id === 'string' && id.trim() !== '')) {
+        return res.status(400).json({ error: 'Each fileId must be a non-empty string' });
+      }
+      if (fileIds.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 files per trash request' });
+      }
+      const result = await driveService.trashFiles(req.user!.email, fileIds as string[]);
+      res.json(result);
+    } catch (error: any) {
+      sendApiError(res, error, 'Failed to trash files', 'drive.file.trash.bulk');
+    }
+  }
+);
+
+/**
  * POST /api/drive/files/export/drive
  * Export Drive files to Google Drive
  */

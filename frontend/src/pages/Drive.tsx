@@ -128,20 +128,15 @@ interface ScanStatus {
   error?: string;
 }
 
+/** Search-tab filters only — must match what /drive/search accepts. */
 interface DriveFilters {
   owner: string;
   mimeType: string;
-  minSize: string;
-  maxSize: string;
   createdFrom: string;
   createdTo: string;
   modifiedFrom: string;
   modifiedTo: string;
-  pathContains: string;
   nameContains: string;
-  shared: string;
-  externallyShared: string;
-  domain: string;
 }
 
 // Google Drive and common file MIME types for filter dropdown
@@ -258,18 +253,13 @@ export function Drive() {
   const [filters, setFilters] = useState<DriveFilters>({
     owner: '',
     mimeType: '',
-    minSize: '',
-    maxSize: '',
     createdFrom: '',
     createdTo: '',
     modifiedFrom: '',
     modifiedTo: '',
-    pathContains: '',
     nameContains: '',
-    shared: '',
-    externallyShared: '',
-    domain: '',
   });
+  const [trashing, setTrashing] = useState(false);
   const [externalSearchTerm, setExternalSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filtersVisible, setFiltersVisible] = useState(false);
@@ -606,20 +596,54 @@ export function Drive() {
     setFilters({
       owner: '',
       mimeType: '',
-      minSize: '',
-      maxSize: '',
       createdFrom: '',
       createdTo: '',
       modifiedFrom: '',
       modifiedTo: '',
-      pathContains: '',
       nameContains: '',
-      shared: '',
-      externallyShared: '',
-      domain: '',
     });
     setSearchDriveId('');
     setIncludeTrashed(false);
+  };
+
+  /** Move selected search-result files to Drive Trash (super admin API). */
+  const handleTrashSelected = async () => {
+    if (selectedFiles.size === 0 || !isFilesTab) return;
+    const n = selectedFiles.size;
+    if (
+      !window.confirm(
+        `Move ${n} file(s) to Trash? They can be restored from Google Drive Trash. This does not permanently delete immediately.`
+      )
+    ) {
+      return;
+    }
+    try {
+      setTrashing(true);
+      const { data } = await apiClient.post('/drive/files/trash', {
+        fileIds: Array.from(selectedFiles),
+      });
+      const succeeded: string[] = data?.succeeded || [];
+      const failed: Array<{ fileId: string; error: string }> = data?.failed || [];
+      setFiles((prev) => prev.filter((f) => !succeeded.includes(f.id)));
+      setSelectedFiles(new Set());
+      if (failed.length === 0) {
+        setSnackbar({ open: true, message: `${succeeded.length} file(s) moved to Trash.`, severity: 'success' });
+      } else {
+        setSnackbar({
+          open: true,
+          message: `Trashed ${succeeded.length}; ${failed.length} failed. ${failed[0]?.error || ''}`.trim(),
+          severity: 'warning',
+        });
+      }
+    } catch (error: any) {
+      setSnackbar({
+        open: true,
+        message: getApiErrorMessage(error, 'Failed to trash file(s).'),
+        severity: 'error',
+      });
+    } finally {
+      setTrashing(false);
+    }
   };
 
   const hasActiveFilters = () => {
@@ -1079,14 +1103,8 @@ export function Drive() {
       const mimeLabel = DRIVE_MIME_OPTIONS.find((o) => o.value === filters.mimeType)?.label || filters.mimeType;
       labels.push({ key: 'mimeType', label: `Type: ${mimeLabel}` });
     }
-    if (filters.pathContains) labels.push({ key: 'pathContains', label: `Path: ${filters.pathContains}` });
-    if (filters.minSize) labels.push({ key: 'minSize', label: `Min size: ${filters.minSize}` });
-    if (filters.maxSize) labels.push({ key: 'maxSize', label: `Max size: ${filters.maxSize}` });
     if (filters.createdFrom || filters.createdTo) labels.push({ key: 'createdFrom', label: `Created: ${formatFilterDateRange(filters.createdFrom, filters.createdTo)}` });
     if (filters.modifiedFrom || filters.modifiedTo) labels.push({ key: 'modifiedFrom', label: `Modified: ${formatFilterDateRange(filters.modifiedFrom, filters.modifiedTo)}` });
-    if (filters.shared) labels.push({ key: 'shared', label: filters.shared === 'true' ? 'Shared' : 'Not Shared' });
-    if (filters.externallyShared) labels.push({ key: 'externallyShared', label: filters.externallyShared === 'true' ? 'Externally Shared' : 'Not Ext. Shared' });
-    if (filters.domain) labels.push({ key: 'domain', label: `Domain: ${filters.domain}` });
     return labels;
   }, [filters]);
 
@@ -1266,6 +1284,20 @@ export function Drive() {
             sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 30, px: 1.5 }}
           >
             {bulkRemediateLabel} ({selectedFiles.size})
+          </Button>
+        )}
+
+        {selectedFiles.size > 0 && isFilesTab && (
+          <Button
+            size="small"
+            variant="contained"
+            color="error"
+            onClick={handleTrashSelected}
+            disabled={trashing}
+            startIcon={trashing ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={15} strokeWidth={1.75} />}
+            sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 30, px: 1.5 }}
+          >
+            Move to Trash ({selectedFiles.size})
           </Button>
         )}
 
