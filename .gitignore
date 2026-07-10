@@ -50,3 +50,8 @@ service-account*.json
 
 # Local scratch
 .tmp-origin-check/
+
+# Session handoff (private — never commit or push)
+/todos.md
+/tech-debt.md
+/docs/session/

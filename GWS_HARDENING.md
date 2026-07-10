@@ -175,12 +175,24 @@ Ensure `WORKSPACE_DOMAIN` is set in your environment (or it will be extracted fr
 ## Usage (app UI)
 
 1. Open **Security audit** in the sidebar (**`/audit`**).
-2. Click **Run audit** to (re)evaluate all checks; the bar shows the **last run** time. The audit runs once automatically on first open.
-3. Use the segment control: **Overview**, **Passing**, **Failing**, **Ignored**. The **Failing** tab lists actionable items (warning/fail/manual); `info` items stay on the Overview only. Waived checks are excluded from the compliance score until tracked again.
-4. **Waive** a check to exclude it from the score. You'll be prompted for an optional **reason** (e.g. "delegation required for shared inbox"), stored locally and shown on the Ignored tab and in the PDF export. Use the pencil to edit the reason or the undo arrow to track it again.
-5. Browse checks grouped by category on the Overview and list tabs.
-6. **Configure** opens the Admin Console for a check when a URL is available.
-7. **Export** supports **CSV**, **Google Drive**, and **PDF** (see the Export menu on wide layouts).
+2. The page loads the **last saved org snapshot** (GCS free tier / local disk) — it does **not** auto-run.
+3. **Run audit** (super admin) re-evaluates all checks synchronously and overwrites `security-audit/latest.json`.
+4. Segment control: **Overview**, **Passing**, **Failing**, **Waived**. **Failing** is sorted by **severity** (critical → low). `info` items stay on Overview only.
+5. Each check has **severity**, **rationale** (why it matters), and **recommendation** (what to do / when to bend) for MSP client walkthroughs.
+6. **Waive** (super admin) records client-accepted risk with an optional reason in `security-audit/waivers.json`. Waivers **outlive re-runs** and are shared across admins/devices.
+7. **Export** CSV/PDF/Drive uses the **cached last run** + waivers (never re-hits Policy API).
+8. If the Cloud Identity Policy API is unavailable, a **banner** explains why; policy-backed checks fall back to **manual** with stable copy (no synthetic 403 checklist rows).
+
+## API (hardening)
+
+| Method | Path | Who | Behavior |
+|--------|------|-----|----------|
+| GET | `/api/audit/hardening` or `/latest` | Any admin | Cached last run + waivers |
+| POST | `/api/audit/hardening/run` | Super admin | Sync evaluate + persist |
+| PUT/DELETE | `/api/audit/hardening/waivers/:checkId` | Super admin | Set / clear durable waiver |
+| POST | `/api/audit/hardening/waivers/import` | Super admin | Merge browser-local waivers once |
+| GET | `/api/audit/hardening/export` | Any admin | CSV from cache |
+| POST | `/api/audit/hardening/export/drive` | Super admin | Drive CSV from cache |
 
 ## Limitations
 
@@ -188,9 +200,10 @@ Ensure `WORKSPACE_DOMAIN` is set in your environment (or it will be extracted fr
 - DNS checks require network access to DNS servers
 - Chrome Policy API requires proper permissions and API enablement
 - Some Enterprise-only features (DLP, Context-Aware Access) may not be accessible
+- 2FA coverage is a Directory sample proxy, not a full org 2SV schedule read
 
 ## Cost
 
 - DNS checks: Free (uses Node.js DNS module)
 - Chrome Policy API: Free (within Google API quotas)
-- No additional infrastructure required
+- Last-run + waivers: free-tier GCS object storage (same `SCAN_BUCKET` as Drive external scan) or local disk in dev

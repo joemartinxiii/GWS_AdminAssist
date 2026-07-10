@@ -126,7 +126,12 @@ export class PolicyService {
 
         if (!resp.ok) {
           const body = await resp.text().catch(() => '');
-          throw new Error(`Policy API ${resp.status}: ${body.slice(0, 300)}`);
+          // Log the raw body for operators; never put it in user-facing check text.
+          console.error(
+            `Cloud Identity Policy API HTTP ${resp.status}:`,
+            body.slice(0, 500)
+          );
+          throw new Error(`Policy API HTTP ${resp.status}`);
         }
 
         const data = (await resp.json()) as {

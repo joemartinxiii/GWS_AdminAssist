@@ -2,11 +2,15 @@ import { liveGet } from '../helpers/liveClient';
 import { requireLiveFixture } from '../helpers/liveFixtures';
 
 describe('live audit API @read', () => {
-  it('GET /api/audit/hardening returns checks', async () => {
+  it('GET /api/audit/hardening returns latest snapshot payload', async () => {
     const res = await liveGet('/api/audit/hardening');
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('checks');
     expect(Array.isArray(res.body.checks)).toBe(true);
+    expect(res.body).toHaveProperty('status');
+    expect(res.body).toHaveProperty('waivers');
+    // never-run is valid when no audit has been executed on this deployment yet
+    expect(['never-run', 'ready']).toContain(res.body.status);
   });
 
   it('GET /api/audit/users-without-2fa returns audit data', async () => {

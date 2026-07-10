@@ -15,7 +15,7 @@ This tool handles sensitive Google Workspace administrative operations. **All us
 - **Drive**: Org-wide **Drive Search** (find any file by name/owner/type/date), external-sharing & public-link audit (on-demand async scan across all users + shared drives), and permission management (`/drive`)
 - **Shared Drives**: Shared drive listing and permissions (`/shared-drives`)
 - **Email Signatures**: Organization-wide signature templates with HTML sanitization (`/email-signatures`)
-- **Security Audit**: GWS hardening checklist, mostly **automated** via the Cloud Identity Policy API (on-demand runs, org-dependent "info" items, waivers with notes) plus compliance score and export (CSV, PDF, Drive) (`/audit`)
+- **Security Audit**: GWS hardening baseline for MSP client reviews — on-demand **Run** (super admin), last result + durable waivers in free-tier GCS, severity + client-facing rationale/recommendations, export from cache (CSV, PDF, Drive) (`/audit`)
 
 ## Scope and Limitations (Effectiveness Evaluation)
 

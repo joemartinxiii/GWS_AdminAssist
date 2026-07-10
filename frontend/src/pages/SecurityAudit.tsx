@@ -29,11 +29,13 @@ import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
 import { DotLabel } from '../components/StatusDot';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { usePermissions } from '../hooks/usePermissions';
 
 const STATIC_SORT = { key: '_', direction: 'asc' as const };
 const noopSort = () => {};
+const LU = 1.75;
 
-/** Same section order as backend / GWS_HARDENING.md / source hardening checklist */
+/** Same section order as backend / GWS_HARDENING.md */
 const HARDENING_CATEGORY_ORDER = [
   'Authentication',
   'Email',
@@ -45,6 +47,13 @@ const HARDENING_CATEGORY_ORDER = [
   'Data Download',
   'Apps Control',
 ];
+
+const SEVERITY_ORDER: Record<Severity, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
 
 function orderedHardeningCategories(categories: string[]): string[] {
   const uniq = [...new Set(categories)];
@@ -58,92 +67,44 @@ function orderedHardeningCategories(categories: string[]): string[] {
   });
 }
 
-const IGNORED_CHECKS_STORAGE_KEY = 'gws-hardening-ignored-ids';
+// --- Legacy browser storage (migration only) --------------------------------
 
-function loadIgnoredIdsFromStorage(): Set<string> {
+const LEGACY_IGNORED_KEY = 'gws-hardening-ignored-ids';
+const LEGACY_REASONS_KEY = 'gws-hardening-waive-reasons';
+const LEGACY_MIGRATED_KEY = 'gws-hardening-waivers-migrated';
+
+function loadLegacyLocalWaivers(): Record<string, string> {
   try {
-    const raw = localStorage.getItem(IGNORED_CHECKS_STORAGE_KEY);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw) as unknown;
-    return new Set(Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function persistIgnoredIds(ids: Set<string>) {
-  localStorage.setItem(IGNORED_CHECKS_STORAGE_KEY, JSON.stringify([...ids]));
-}
-
-const WAIVE_REASONS_STORAGE_KEY = 'gws-hardening-waive-reasons';
-
-function loadWaiveReasonsFromStorage(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(WAIVE_REASONS_STORAGE_KEY);
-    if (!raw) return {};
-    const obj = JSON.parse(raw) as unknown;
-    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-      return Object.fromEntries(
-        Object.entries(obj as Record<string, unknown>).filter(
-          ([, v]) => typeof v === 'string'
-        ) as [string, string][]
-      );
+    const idsRaw = localStorage.getItem(LEGACY_IGNORED_KEY);
+    const reasonsRaw = localStorage.getItem(LEGACY_REASONS_KEY);
+    const ids: string[] = idsRaw ? JSON.parse(idsRaw) : [];
+    const reasons: Record<string, string> =
+      reasonsRaw && typeof JSON.parse(reasonsRaw) === 'object' ? JSON.parse(reasonsRaw) : {};
+    const out: Record<string, string> = {};
+    if (Array.isArray(ids)) {
+      for (const id of ids) {
+        if (typeof id === 'string') out[id] = typeof reasons[id] === 'string' ? reasons[id] : '';
+      }
     }
-    return {};
+    return out;
   } catch {
     return {};
   }
 }
 
-function persistWaiveReasons(reasons: Record<string, string>) {
-  localStorage.setItem(WAIVE_REASONS_STORAGE_KEY, JSON.stringify(reasons));
-}
-
-/**
- * The audit result is cached per browser tab (sessionStorage) so navigating
- * away and back — or refreshing — restores the last run instead of silently
- * re-running it (a re-run can transiently flip Policy-API checks to "manual"
- * and reset the score). Only the explicit "Run audit" button re-runs.
- */
-const AUDIT_RESULT_STORAGE_KEY = 'gws-hardening-result';
-
-interface CachedAuditResult {
-  data: HardeningData;
-  ranAt: string;
-}
-
-function loadCachedAuditResult(): CachedAuditResult | null {
+function clearLegacyLocalWaivers() {
   try {
-    const raw = sessionStorage.getItem(AUDIT_RESULT_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      'data' in parsed &&
-      'ranAt' in parsed &&
-      Array.isArray((parsed as CachedAuditResult).data?.checks)
-    ) {
-      return parsed as CachedAuditResult;
-    }
-    return null;
+    localStorage.removeItem(LEGACY_IGNORED_KEY);
+    localStorage.removeItem(LEGACY_REASONS_KEY);
+    localStorage.removeItem('gws-hardening-result');
   } catch {
-    return null;
+    /* ignore */
   }
 }
 
-function persistCachedAuditResult(data: HardeningData, ranAt: Date) {
-  try {
-    sessionStorage.setItem(
-      AUDIT_RESULT_STORAGE_KEY,
-      JSON.stringify({ data, ranAt: ranAt.toISOString() } satisfies CachedAuditResult)
-    );
-  } catch {
-    // sessionStorage may be unavailable (private mode / quota) — non-fatal.
-  }
-}
+// --- Types ------------------------------------------------------------------
 
-// SegmentedControl extracted to shared component
+type Severity = 'critical' | 'high' | 'medium' | 'low';
 
 interface HardeningCheck {
   id: string;
@@ -152,14 +113,32 @@ interface HardeningCheck {
   description: string;
   status: 'pass' | 'warning' | 'fail' | 'manual' | 'info';
   source?: 'auto' | 'manual';
-  currentValue?: any;
-  recommendedValue?: any;
+  severity?: Severity;
+  currentValue?: unknown;
+  recommendedValue?: unknown;
+  rationale?: string;
   recommendation: string;
   adminConsoleUrl?: string;
   issues?: string[];
 }
 
-interface HardeningData {
+interface WaiverEntry {
+  reason: string;
+  waivedBy?: string;
+  waivedAt?: string;
+}
+
+interface PolicyApiMeta {
+  available: boolean;
+  code?: string;
+  message?: string;
+}
+
+interface HardeningPayload {
+  status: 'never-run' | 'ready';
+  ranAt: string | null;
+  triggeredBy: string | null;
+  durationMs: number | null;
   checks: HardeningCheck[];
   statistics: {
     total: number;
@@ -169,10 +148,23 @@ interface HardeningData {
     manual: number;
     info: number;
   };
+  policyApi: PolicyApiMeta;
+  waivers: Record<string, WaiverEntry>;
 }
 
+interface HardeningData {
+  checks: HardeningCheck[];
+  statistics: HardeningPayload['statistics'];
+  policyApi?: PolicyApiMeta;
+  ranAt?: string | null;
+  triggeredBy?: string | null;
+  durationMs?: number | null;
+}
+
+// --- PDF export -------------------------------------------------------------
+
 const PDF_MARGIN = 14;
-const PDF_COLS = 5;
+const PDF_COLS = 6;
 
 function truncatePdfText(s: string, max: number): string {
   const t = s.replace(/\s+/g, ' ').trim();
@@ -185,11 +177,11 @@ function formatPdfValue(v: unknown): string {
   return s === '' ? '—' : s;
 }
 
-/** PDF layout aligned with the Security audit page: summary strip, categories, status colors. */
 function exportSecurityAuditToPdf(
   hardeningData: HardeningData,
   ignoredIds: Set<string>,
-  waiveReasons: Record<string, string> = {}
+  waiveReasons: Record<string, string> = {},
+  meta?: { ranAt?: string | null; triggeredBy?: string | null }
 ) {
   const activeChecks = hardeningData.checks.filter((c) => !ignoredIds.has(c.id));
   const stats = {
@@ -201,7 +193,6 @@ function exportSecurityAuditToPdf(
     info: activeChecks.filter((c) => c.status === 'info').length,
   };
   const waivedCount = hardeningData.checks.filter((c) => ignoredIds.has(c.id)).length;
-  // Score over graded checks only (pass/warning/fail); manual + info are neutral.
   const graded = stats.pass + stats.warning + stats.fail;
   const denom = graded > 0 ? graded : 1;
   const pctPass = Math.round((stats.pass / denom) * 100);
@@ -215,11 +206,14 @@ function exportSecurityAuditToPdf(
   doc.setFontSize(16);
   doc.setTextColor(26, 26, 26);
   doc.text('Security audit', PDF_MARGIN, y);
-  y += 8;
+  y += 7;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
-  doc.text(`Generated ${new Date().toLocaleString()}`, PDF_MARGIN, y);
+  const when = meta?.ranAt ? new Date(meta.ranAt).toLocaleString() : new Date().toLocaleString();
+  doc.text(`Audit run: ${when}${meta?.triggeredBy ? ` · ${meta.triggeredBy}` : ''}`, PDF_MARGIN, y);
+  y += 5;
+  doc.text(`Exported ${new Date().toLocaleString()}`, PDF_MARGIN, y);
   y += 6;
   if (waivedCount > 0) {
     doc.text(`${waivedCount} check(s) waived — excluded from the score below`, PDF_MARGIN, y);
@@ -251,8 +245,7 @@ function exportSecurityAuditToPdf(
   ];
   doc.setFontSize(8);
   doc.setTextColor(60, 60, 60);
-  const statsLine = statParts.join('   ·   ');
-  doc.text(statsLine, PDF_MARGIN + 4, summaryTop + 22);
+  doc.text(statParts.join('   ·   '), PDF_MARGIN + 4, summaryTop + 22);
 
   const categories = orderedHardeningCategories(hardeningData.checks.map((c) => c.category));
   const checksByCat = new Map<string, HardeningCheck[]>();
@@ -281,34 +274,40 @@ function exportSecurityAuditToPdf(
     ]);
     for (const c of rows) {
       const waived = ignoredIds.has(c.id);
-      const desc = truncatePdfText(c.description, 220);
+      const rationale = c.rationale ? `\nWhy: ${truncatePdfText(c.rationale, 200)}` : '';
       const issues =
         c.issues && c.issues.length > 0
-          ? `\nIssues: ${truncatePdfText(c.issues.join('; '), 180)}`
+          ? `\nFindings: ${truncatePdfText(c.issues.join('; '), 160)}`
           : '';
-      const reason = waived && waiveReasons[c.id]
-        ? `\nWaive reason: ${truncatePdfText(waiveReasons[c.id], 180)}`
-        : '';
-      const checkCell = `${c.name}${waived ? '  [Waived]' : ''}\n${desc}${issues}${reason}`;
+      const reason =
+        waived && waiveReasons[c.id]
+          ? `\nWaive reason: ${truncatePdfText(waiveReasons[c.id], 160)}`
+          : '';
+      const checkCell = `${c.name}${waived ? '  [Waived]' : ''}\n${truncatePdfText(c.description, 180)}${rationale}${issues}${reason}`;
+      const guidance = [c.recommendation, c.rationale && c.rationale !== c.recommendation ? '' : '']
+        .filter(Boolean)
+        .join(' ');
       body.push([
         checkCell,
+        (c.severity || 'medium').toUpperCase(),
         c.status.toUpperCase(),
         formatPdfValue(c.currentValue),
         formatPdfValue(c.recommendedValue),
-        truncatePdfText(c.recommendation, 400),
+        truncatePdfText(c.recommendation || guidance, 360),
       ]);
     }
   }
 
   const tableStartY = summaryTop + summaryH + 8;
   autoTable(doc, {
-    head: [['Check', 'Status', 'Current', 'Recommended', 'Recommendation']],
-    body: body as any,
+    head: [['Check', 'Severity', 'Status', 'Current', 'Recommended', 'Guidance']],
+    // jspdf-autotable accepts mixed cell objects for category headers
+    body: body as unknown as string[][],
     startY: tableStartY,
     margin: { left: PDF_MARGIN, right: PDF_MARGIN },
     styles: {
-      fontSize: 7,
-      cellPadding: 1.5,
+      fontSize: 6.5,
+      cellPadding: 1.3,
       textColor: [26, 26, 26],
       lineColor: [232, 232, 228],
       lineWidth: 0.1,
@@ -318,14 +317,15 @@ function exportSecurityAuditToPdf(
       fillColor: [240, 240, 236],
       textColor: [80, 80, 80],
       fontStyle: 'bold',
-      fontSize: 8,
+      fontSize: 7.5,
     },
     columnStyles: {
-      0: { cellWidth: 52 },
-      1: { cellWidth: 22, halign: 'center' },
-      2: { cellWidth: 28 },
-      3: { cellWidth: 28 },
-      4: { cellWidth: 'auto' as const },
+      0: { cellWidth: 48 },
+      1: { cellWidth: 18, halign: 'center' },
+      2: { cellWidth: 18, halign: 'center' },
+      3: { cellWidth: 24 },
+      4: { cellWidth: 24 },
+      5: { cellWidth: 'auto' as const },
     },
     showHead: 'everyPage',
     tableLineColor: [232, 232, 228],
@@ -333,26 +333,43 @@ function exportSecurityAuditToPdf(
     didParseCell: (data) => {
       if (data.section !== 'body') return;
       const raw = data.row.raw as unknown[];
-      if (!Array.isArray(raw) || raw.length < 2) return;
+      if (!Array.isArray(raw) || raw.length < 3) return;
       const first = raw[0];
       if (first && typeof first === 'object' && first !== null && 'colSpan' in first) return;
-      if (data.column.index !== 1) return;
-      const s = String(data.cell.raw).toUpperCase();
-      if (s === 'PASS') {
-        data.cell.styles.fillColor = [236, 253, 245];
-        data.cell.styles.textColor = [5, 150, 105];
-      } else if (s === 'WARNING') {
-        data.cell.styles.fillColor = [255, 251, 235];
-        data.cell.styles.textColor = [180, 83, 9];
-      } else if (s === 'FAIL') {
-        data.cell.styles.fillColor = [254, 242, 242];
-        data.cell.styles.textColor = [220, 38, 38];
-      } else if (s === 'INFO') {
-        data.cell.styles.fillColor = [239, 246, 255];
-        data.cell.styles.textColor = [26, 115, 232];
-      } else if (s === 'MANUAL') {
-        data.cell.styles.fillColor = [245, 245, 243];
-        data.cell.styles.textColor = [100, 100, 100];
+      if (data.column.index === 1) {
+        const s = String(data.cell.raw).toUpperCase();
+        if (s === 'CRITICAL') {
+          data.cell.styles.fillColor = [254, 242, 242];
+          data.cell.styles.textColor = [185, 28, 28];
+        } else if (s === 'HIGH') {
+          data.cell.styles.fillColor = [255, 247, 237];
+          data.cell.styles.textColor = [194, 65, 12];
+        } else if (s === 'MEDIUM') {
+          data.cell.styles.fillColor = [255, 251, 235];
+          data.cell.styles.textColor = [180, 83, 9];
+        } else if (s === 'LOW') {
+          data.cell.styles.fillColor = [245, 245, 243];
+          data.cell.styles.textColor = [100, 100, 100];
+        }
+      }
+      if (data.column.index === 2) {
+        const s = String(data.cell.raw).toUpperCase();
+        if (s === 'PASS') {
+          data.cell.styles.fillColor = [236, 253, 245];
+          data.cell.styles.textColor = [5, 150, 105];
+        } else if (s === 'WARNING') {
+          data.cell.styles.fillColor = [255, 251, 235];
+          data.cell.styles.textColor = [180, 83, 9];
+        } else if (s === 'FAIL') {
+          data.cell.styles.fillColor = [254, 242, 242];
+          data.cell.styles.textColor = [220, 38, 38];
+        } else if (s === 'INFO') {
+          data.cell.styles.fillColor = [239, 246, 255];
+          data.cell.styles.textColor = [26, 115, 232];
+        } else if (s === 'MANUAL') {
+          data.cell.styles.fillColor = [245, 245, 243];
+          data.cell.styles.textColor = [100, 100, 100];
+        }
       }
     },
   });
@@ -366,36 +383,156 @@ function exportSecurityAuditToPdf(
     doc.text(
       `GWS Security Audit · page ${p} of ${pageCount}`,
       PDF_MARGIN,
-      doc.internal.pageSize.getHeight() - 8,
+      doc.internal.pageSize.getHeight() - 8
     );
   }
 
   doc.save(`gws-hardening-${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-const LU = 1.75;
+const AUDIT_TABS = ['Overview', 'Passing', 'Failing', 'Waived'] as const;
 
-const AUDIT_TABS = ['Overview', 'Passing', 'Failing', 'Ignored'] as const;
+function severityColor(sev: Severity | undefined): string {
+  switch (sev) {
+    case 'critical':
+      return T.danger;
+    case 'high':
+      return '#c2410c';
+    case 'medium':
+      return T.warning;
+    case 'low':
+    default:
+      return T.textTertiary;
+  }
+}
+
+function applyPayload(
+  data: HardeningPayload,
+  setHardeningData: (d: HardeningData | null) => void,
+  setWaivers: (w: Record<string, WaiverEntry>) => void,
+  setLastRunAt: (d: Date | null) => void,
+  setTriggeredBy: (s: string | null) => void
+) {
+  setWaivers(data.waivers || {});
+  if (data.status === 'never-run' || !data.checks?.length) {
+    setHardeningData(null);
+    setLastRunAt(null);
+    setTriggeredBy(null);
+    return;
+  }
+  setHardeningData({
+    checks: data.checks,
+    statistics: data.statistics,
+    policyApi: data.policyApi,
+    ranAt: data.ranAt,
+    triggeredBy: data.triggeredBy,
+    durationMs: data.durationMs,
+  });
+  setLastRunAt(data.ranAt ? new Date(data.ranAt) : null);
+  setTriggeredBy(data.triggeredBy);
+}
+
+// --- Component --------------------------------------------------------------
 
 export function SecurityAudit() {
   const theme = useTheme();
   const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
-  const [loading, setLoading] = useState(false);
+  const { isSuperAdmin, canTakeAction } = usePermissions();
+
+  const [bootLoading, setBootLoading] = useState(true);
+  const [running, setRunning] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [hardeningData, setHardeningData] = useState<HardeningData | null>(() => loadCachedAuditResult()?.data ?? null);
+  const [hardeningData, setHardeningData] = useState<HardeningData | null>(null);
+  const [waivers, setWaivers] = useState<Record<string, WaiverEntry>>({});
   const [exportAnchorEl, setExportAnchorEl] = useState<null | HTMLElement>(null);
   const [auditTab, setAuditTab] = useState(0);
-  const [ignoredIds, setIgnoredIds] = useState<Set<string>>(loadIgnoredIdsFromStorage);
-  const [waiveReasons, setWaiveReasons] = useState<Record<string, string>>(loadWaiveReasonsFromStorage);
   const [detailCheckId, setDetailCheckId] = useState<string | null>(null);
   const [reasonEditing, setReasonEditing] = useState(false);
   const [reasonDraft, setReasonDraft] = useState('');
-  const [lastRunAt, setLastRunAt] = useState<Date | null>(() => {
-    const cached = loadCachedAuditResult();
-    return cached ? new Date(cached.ranAt) : null;
-  });
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({ open: false, message: '', severity: 'success' });
-  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' = 'success') => setSnackbar({ open: true, message, severity });
+  const [lastRunAt, setLastRunAt] = useState<Date | null>(null);
+  const [triggeredBy, setTriggeredBy] = useState<string | null>(null);
+  const [waiveBusy, setWaiveBusy] = useState(false);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info';
+  }>({ open: false, message: '', severity: 'success' });
+
+  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' = 'success') =>
+    setSnackbar({ open: true, message, severity });
+
+  const ignoredIds = useMemo(() => new Set(Object.keys(waivers)), [waivers]);
+  const waiveReasons = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const [id, entry] of Object.entries(waivers)) {
+      if (entry.reason) out[id] = entry.reason;
+    }
+    return out;
+  }, [waivers]);
+
+  const loadLatest = useCallback(async () => {
+    const response = await apiClient.get<HardeningPayload>('/audit/hardening/latest');
+    applyPayload(response.data, setHardeningData, setWaivers, setLastRunAt, setTriggeredBy);
+    return response.data;
+  }, []);
+
+  // Boot: load cloud latest; optionally migrate browser-local waivers once.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setBootLoading(true);
+        const data = await loadLatest();
+        if (cancelled) return;
+
+        const cloudEmpty = !data.waivers || Object.keys(data.waivers).length === 0;
+        const alreadyMigrated = sessionStorage.getItem(LEGACY_MIGRATED_KEY) === '1';
+        const legacy = loadLegacyLocalWaivers();
+        if (cloudEmpty && !alreadyMigrated && Object.keys(legacy).length > 0 && isSuperAdmin) {
+          try {
+            const imp = await apiClient.post('/audit/hardening/waivers/import', { waivers: legacy });
+            sessionStorage.setItem(LEGACY_MIGRATED_KEY, '1');
+            clearLegacyLocalWaivers();
+            if (!cancelled && imp.data?.waivers) {
+              setWaivers(imp.data.waivers);
+              showSnackbar('Imported browser waivers to org storage.', 'info');
+            }
+          } catch {
+            // Delegate or API failure — leave local alone for a super to import later.
+          }
+        }
+        setLoadError(null);
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(getApiErrorMessage(error, 'Failed to load security audit'));
+        }
+      } finally {
+        if (!cancelled) setBootLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadLatest, isSuperAdmin]);
+
+  const runAudit = async () => {
+    if (!canTakeAction) {
+      showSnackbar('Only super admins can run the security audit.', 'info');
+      return;
+    }
+    try {
+      setRunning(true);
+      setLoadError(null);
+      const response = await apiClient.post<HardeningPayload>('/audit/hardening/run');
+      applyPayload(response.data, setHardeningData, setWaivers, setLastRunAt, setTriggeredBy);
+      showSnackbar('Audit complete — results saved for the organization.');
+    } catch (error) {
+      console.error('Error running hardening checks:', error);
+      setLoadError(getApiErrorMessage(error, 'Audit failed'));
+    } finally {
+      setRunning(false);
+    }
+  };
 
   const handleExportCSV = async () => {
     setExportAnchorEl(null);
@@ -408,7 +545,9 @@ export function SecurityAudit() {
         try {
           const err = JSON.parse(text);
           if (err?.error) msg = err.error;
-        } catch (_) {}
+        } catch {
+          /* ignore */
+        }
         showSnackbar(msg, 'error');
         return;
       }
@@ -421,11 +560,17 @@ export function SecurityAudit() {
       link.remove();
       window.URL.revokeObjectURL(url);
       showSnackbar('CSV downloading now.');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error exporting hardening checks:', error);
-      const msg = error?.response?.data instanceof Blob
-        ? 'Export failed. Check console or try again.'
-        : getApiErrorMessage(error, 'Failed to export CSV.');
+      const ax = error as { response?: { status?: number; data?: unknown } };
+      if (ax?.response?.status === 404) {
+        showSnackbar('No saved audit to export. Run the audit first.', 'info');
+        return;
+      }
+      const msg =
+        ax?.response?.data instanceof Blob
+          ? 'Export failed. Check console or try again.'
+          : getApiErrorMessage(error, 'Failed to export CSV.');
       showSnackbar(msg, 'error');
     }
   };
@@ -436,8 +581,13 @@ export function SecurityAudit() {
       const response = await apiClient.post('/audit/hardening/export/drive');
       if (response.data?.webViewLink) window.open(response.data.webViewLink, '_blank');
       showSnackbar('Saved to Google Drive.');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
+      const ax = err as { response?: { status?: number } };
+      if (ax?.response?.status === 404) {
+        showSnackbar('No saved audit to export. Run the audit first.', 'info');
+        return;
+      }
       showSnackbar(getApiErrorMessage(err, 'Drive export failed.'), 'error');
     }
   };
@@ -445,11 +595,14 @@ export function SecurityAudit() {
   const handleExportPDF = () => {
     setExportAnchorEl(null);
     if (!hardeningData) {
-      showSnackbar('No data to export. Load the audit first.', 'info');
+      showSnackbar('No data to export. Run the audit first.', 'info');
       return;
     }
     try {
-      exportSecurityAuditToPdf(hardeningData, ignoredIds, waiveReasons);
+      exportSecurityAuditToPdf(hardeningData, ignoredIds, waiveReasons, {
+        ranAt: hardeningData.ranAt ?? lastRunAt?.toISOString(),
+        triggeredBy: hardeningData.triggeredBy ?? triggeredBy,
+      });
       showSnackbar('PDF downloading now.');
     } catch (err: unknown) {
       console.error('Error exporting PDF:', err);
@@ -458,57 +611,21 @@ export function SecurityAudit() {
     }
   };
 
-  const fetchHardening = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.get('/audit/hardening');
-      const ranAt = new Date();
-      setHardeningData(response.data);
-      setLastRunAt(ranAt);
-      persistCachedAuditResult(response.data, ranAt);
-      setLoadError(null);
-    } catch (error) {
-      console.error('Error fetching hardening checks:', error);
-      setLoadError(getApiErrorMessage(error, 'Audit failed'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const lastRunLabel = useMemo(() => {
-    if (loading) return 'Running audit…';
-    if (!lastRunAt) return 'Not run yet';
-    return `Last run: ${lastRunAt.toLocaleString()}`;
-  }, [loading, lastRunAt]);
+    if (running) return 'Running audit…';
+    if (!lastRunAt) return 'Not run yet — results are saved to the organization after each run';
+    const who = triggeredBy ? ` · ${triggeredBy}` : '';
+    return `Last run: ${lastRunAt.toLocaleString()}${who}`;
+  }, [running, lastRunAt, triggeredBy]);
 
-  // No auto-run: the audit only runs when the user clicks "Run audit". On mount
-  // we restore the cached result (if any) so navigating back or refreshing never
-  // silently re-runs and resets the score.
-
-  useEffect(() => {
-    if (!hardeningData?.checks?.length) return;
-    const valid = new Set(hardeningData.checks.map((c) => c.id));
-    setIgnoredIds((prev) => {
-      const next = new Set([...prev].filter((id) => valid.has(id)));
-      if (next.size === prev.size) return prev;
-      persistIgnoredIds(next);
-      return next;
-    });
-    setWaiveReasons((prev) => {
-      const entries = Object.entries(prev).filter(([id]) => valid.has(id));
-      if (entries.length === Object.keys(prev).length) return prev;
-      const next = Object.fromEntries(entries);
-      persistWaiveReasons(next);
-      return next;
-    });
-  }, [hardeningData]);
-
-  // Open/close the per-check detail modal.
-  const openDetail = useCallback((checkId: string) => {
-    setDetailCheckId(checkId);
-    setReasonEditing(false);
-    setReasonDraft(waiveReasons[checkId] ?? '');
-  }, [waiveReasons]);
+  const openDetail = useCallback(
+    (checkId: string) => {
+      setDetailCheckId(checkId);
+      setReasonEditing(false);
+      setReasonDraft(waivers[checkId]?.reason ?? '');
+    },
+    [waivers]
+  );
 
   const closeDetail = useCallback(() => {
     setDetailCheckId(null);
@@ -516,40 +633,47 @@ export function SecurityAudit() {
     setReasonDraft('');
   }, []);
 
-  // Waive a check (or update its reason). Empty reason = waived with no note.
-  const applyWaive = useCallback((checkId: string, reason: string) => {
-    const trimmed = reason.trim();
-    setIgnoredIds((prev) => {
-      const next = new Set(prev);
-      next.add(checkId);
-      persistIgnoredIds(next);
-      return next;
-    });
-    setWaiveReasons((prev) => {
-      const next = { ...prev };
-      if (trimmed) next[checkId] = trimmed;
-      else delete next[checkId];
-      persistWaiveReasons(next);
-      return next;
-    });
-  }, []);
+  const applyWaive = useCallback(
+    async (checkId: string, reason: string) => {
+      if (!canTakeAction) {
+        showSnackbar('Only super admins can change waivers.', 'info');
+        return;
+      }
+      try {
+        setWaiveBusy(true);
+        const res = await apiClient.put(`/audit/hardening/waivers/${encodeURIComponent(checkId)}`, {
+          reason: reason.trim(),
+        });
+        setWaivers(res.data.waivers || {});
+        showSnackbar('Waiver saved for the organization.');
+      } catch (err) {
+        showSnackbar(getApiErrorMessage(err, 'Failed to save waiver.'), 'error');
+      } finally {
+        setWaiveBusy(false);
+      }
+    },
+    [canTakeAction]
+  );
 
-  // Un-waive: track the check again and drop any saved reason.
-  const untrackWaive = useCallback((checkId: string) => {
-    setIgnoredIds((prev) => {
-      const next = new Set(prev);
-      next.delete(checkId);
-      persistIgnoredIds(next);
-      return next;
-    });
-    setWaiveReasons((prev) => {
-      if (!(checkId in prev)) return prev;
-      const next = { ...prev };
-      delete next[checkId];
-      persistWaiveReasons(next);
-      return next;
-    });
-  }, []);
+  const untrackWaive = useCallback(
+    async (checkId: string) => {
+      if (!canTakeAction) {
+        showSnackbar('Only super admins can change waivers.', 'info');
+        return;
+      }
+      try {
+        setWaiveBusy(true);
+        const res = await apiClient.delete(`/audit/hardening/waivers/${encodeURIComponent(checkId)}`);
+        setWaivers(res.data.waivers || {});
+        showSnackbar('Check is tracked again.');
+      } catch (err) {
+        showSnackbar(getApiErrorMessage(err, 'Failed to remove waiver.'), 'error');
+      } finally {
+        setWaiveBusy(false);
+      }
+    },
+    [canTakeAction]
+  );
 
   const activeChecks = useMemo(() => {
     if (!hardeningData) return [];
@@ -572,20 +696,44 @@ export function SecurityAudit() {
     return hardeningData.checks.filter((c) => c.status === 'pass' && !ignoredIds.has(c.id));
   }, [hardeningData, ignoredIds]);
 
-  // "Failing" = actionable items only (warning/fail/manual). Info is neutral and
-  // stays on the Overview, never in the fix-it list.
   const failingChecks = useMemo(() => {
     if (!hardeningData) return [];
-    return hardeningData.checks.filter(
-      (c) => (c.status === 'warning' || c.status === 'fail' || c.status === 'manual') && !ignoredIds.has(c.id)
-    );
+    return hardeningData.checks
+      .filter(
+        (c) =>
+          (c.status === 'warning' || c.status === 'fail' || c.status === 'manual') &&
+          !ignoredIds.has(c.id)
+      )
+      .sort((a, b) => {
+        const sa = SEVERITY_ORDER[a.severity || 'medium'] ?? 2;
+        const sb = SEVERITY_ORDER[b.severity || 'medium'] ?? 2;
+        if (sa !== sb) return sa - sb;
+        const statusRank = (s: HardeningCheck['status']) =>
+          s === 'fail' ? 0 : s === 'warning' ? 1 : 2;
+        return statusRank(a.status) - statusRank(b.status);
+      });
   }, [hardeningData, ignoredIds]);
 
   const ignoredChecks = useMemo(() => {
     if (!hardeningData) return [];
-    return hardeningData.checks
+    const known = hardeningData.checks
       .filter((c) => ignoredIds.has(c.id))
       .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+    // Orphan waivers (catalog id no longer present) — keep visible
+    const knownIds = new Set(hardeningData.checks.map((c) => c.id));
+    const orphans: HardeningCheck[] = [...ignoredIds]
+      .filter((id) => !knownIds.has(id))
+      .map((id) => ({
+        id,
+        category: 'Waived (not in latest run)',
+        name: id,
+        description: 'This waiver outlived a catalog change or failed run. Review or remove.',
+        status: 'info' as const,
+        severity: 'low' as const,
+        recommendation: 'Remove the waiver if the check no longer applies, or re-run the audit.',
+        rationale: 'Durable waivers are retained even when a check id is missing from the latest snapshot.',
+      }));
+    return [...known, ...orphans];
   }, [hardeningData, ignoredIds]);
 
   const ignoredCount = ignoredIds.size;
@@ -619,8 +767,17 @@ export function SecurityAudit() {
     );
   };
 
-  // Compact "Recommended" cell for the high-level list: short target only.
-  // Full guidance now lives in the detail modal.
+  const severityCell = (check: HardeningCheck) => {
+    const sev = check.severity || 'medium';
+    return (
+      <Box sx={{ width: 88, flexShrink: 0 }}>
+        <DotLabel dotColor={severityColor(sev)} dotTooltip={`Severity: ${sev}`}>
+          {sev.toUpperCase()}
+        </DotLabel>
+      </Box>
+    );
+  };
+
   const recommendedTargetInline = (check: HardeningCheck) => {
     const target = check.recommendedValue != null ? String(check.recommendedValue).trim() : '';
     return (
@@ -630,388 +787,757 @@ export function SecurityAudit() {
     );
   };
 
-  // Trailing chevron affordance that signals the row opens a detail modal.
   const chevronCell = () => (
     <Box sx={{ width: 40, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', color: (t) => textTertiary(t) }}>
       <ChevronRight size={18} strokeWidth={1.75} />
     </Box>
   );
 
-  // High-level list rows carry the check name only; detail moves to the modal.
   const checkNameBlock = (check: HardeningCheck) => (
     <Box sx={{ minWidth: 0, pr: 1 }}>
-      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa') }} noWrap>{check.name}</Typography>
+      <Typography
+        sx={{
+          fontFamily: T.font,
+          fontSize: '0.8125rem',
+          fontWeight: 600,
+          color: (th) => pick(th, T.text, '#fafafa'),
+        }}
+        noWrap
+      >
+        {check.name}
+      </Typography>
     </Box>
   );
 
-  const detailCheck = detailCheckId && hardeningData
-    ? hardeningData.checks.find((c) => c.id === detailCheckId) ?? null
-    : null;
+  const detailCheck =
+    detailCheckId && hardeningData
+      ? hardeningData.checks.find((c) => c.id === detailCheckId) ??
+        ignoredChecks.find((c) => c.id === detailCheckId) ??
+        null
+      : detailCheckId
+        ? ignoredChecks.find((c) => c.id === detailCheckId) ?? null
+        : null;
   const detailWaived = detailCheck ? ignoredIds.has(detailCheck.id) : false;
   const detailStatusColor = (status: HardeningCheck['status']) =>
-    status === 'pass' ? T.success
-    : status === 'warning' ? T.warning
-    : status === 'fail' ? T.danger
-    : status === 'info' ? T.accent
-    : textTertiary(theme);
+    status === 'pass'
+      ? T.success
+      : status === 'warning'
+        ? T.warning
+        : status === 'fail'
+          ? T.danger
+          : status === 'info'
+            ? T.accent
+            : textTertiary(theme);
+
+  const policyBanner =
+    hardeningData?.policyApi && !hardeningData.policyApi.available
+      ? hardeningData.policyApi.message ||
+        'Cloud Identity Policy API unavailable — policy-backed checks need manual review until access is restored.'
+      : null;
 
   return (
     <>
-    <Box sx={{ fontFamily: T.font, minHeight: '100vh' }}>
-      <Box
-        sx={{
-          mb: 3,
-          display: 'flex',
-          flexDirection: { xs: 'column', md: 'row' },
-          gap: 2,
-          alignItems: { md: 'center' },
-          justifyContent: 'space-between',
-        }}
-      >
-        <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (th) => pick(th, T.text, '#fafafa') }}>
-          Security audit
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-          <SegmentedControl value={auditTab} options={[...AUDIT_TABS]} onChange={setAuditTab} />
-          {!loading && hardeningData && (
-          <>
-            <ActionTooltip title="Export to CSV or Google Drive">
-              <span>
-                {isMdUp ? (
-                  <Button
-                    variant="outlined"
-                    endIcon={<ChevronDown size={20} strokeWidth={LU} />}
-                    onClick={(e) => setExportAnchorEl(e.currentTarget)}
-                    sx={exportToolbarButtonSx()}
-                  >
-                    Export
-                  </Button>
-                ) : (
-                  <IconButton
-                    onClick={(e) => setExportAnchorEl(e.currentTarget)}
-                    aria-label="Export"
-                    sx={exportToolbarButtonSx()}
-                  >
-                    <ChevronDown size={20} strokeWidth={LU} />
-                  </IconButton>
-                )}
-              </span>
-            </ActionTooltip>
-            <Menu
-              anchorEl={exportAnchorEl}
-              open={Boolean(exportAnchorEl)}
-              onClose={() => setExportAnchorEl(null)}
-              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-              PaperProps={{
-                sx: (th) => ({
-                  ...(typeof menuPaperProps.PaperProps.sx === 'function'
-                    ? menuPaperProps.PaperProps.sx(th)
-                    : {}),
-                  ...(exportAnchorEl ? { minWidth: exportAnchorEl.offsetWidth } : {}),
-                }),
-              }}
-              MenuListProps={{ dense: true, sx: { py: 0.5 } }}
-            >
-              <ExportMenuRow label="Export to CSV" icon={<Download size={16} strokeWidth={LU} />} onClick={handleExportCSV} />
-              <ExportMenuRow label="Export to Drive" icon={<CloudUpload size={16} strokeWidth={LU} />} onClick={handleExportDrive} />
-              <ExportMenuRow label="Export to PDF" icon={<FileText size={16} strokeWidth={LU} />} onClick={handleExportPDF} />
-            </Menu>
-          </>
-          )}
-        </Box>
-      </Box>
-
-      {/* Run controls: explicit run button + last-run note (mirrors the Drive audit) */}
-      <Box sx={(th) => ({
-        display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', mb: 2,
-        p: 1.5, borderRadius: T.radius, border: `1px solid ${pick(th, T.border, '#3f3f46')}`, bgcolor: pick(th, T.surface, '#27272a'),
-      })}>
-        <Button
-          size="small"
-          variant="contained"
-          onClick={fetchHardening}
-          disabled={loading}
-          startIcon={loading ? <CircularProgress size={14} color="inherit" /> : <Play size={15} strokeWidth={1.75} />}
-          sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 32, px: 2, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
+      <Box sx={{ fontFamily: T.font, minHeight: '100vh' }}>
+        <Box
+          sx={{
+            mb: 3,
+            display: 'flex',
+            flexDirection: { xs: 'column', md: 'row' },
+            gap: 2,
+            alignItems: { md: 'center' },
+            justifyContent: 'space-between',
+          }}
         >
-          {loading ? 'Running…' : 'Run audit'}
-        </Button>
-        <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
-          {lastRunLabel}
-        </Typography>
-      </Box>
-
-      {loadError && !loading && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>{loadError}</Alert>
-      )}
-
-      {loading ? (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-          <CircularProgress />
+          <Box>
+            <Typography
+              sx={{
+                fontFamily: T.font,
+                fontWeight: 700,
+                fontSize: '1.5rem',
+                letterSpacing: '-0.02em',
+                color: (th) => pick(th, T.text, '#fafafa'),
+              }}
+            >
+              Security audit
+            </Typography>
+            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mt: 0.5 }}>
+              Workspace hardening baseline — on-demand snapshot for client reviews. Score excludes waived, info, and
+              manual items.
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+            <SegmentedControl value={auditTab} options={[...AUDIT_TABS]} onChange={setAuditTab} />
+            {!running && hardeningData && (
+              <>
+                <ActionTooltip title="Export last saved audit (CSV, PDF, or Drive)">
+                  <span>
+                    {isMdUp ? (
+                      <Button
+                        variant="outlined"
+                        endIcon={<ChevronDown size={20} strokeWidth={LU} />}
+                        onClick={(e) => setExportAnchorEl(e.currentTarget)}
+                        sx={exportToolbarButtonSx()}
+                      >
+                        Export
+                      </Button>
+                    ) : (
+                      <IconButton
+                        onClick={(e) => setExportAnchorEl(e.currentTarget)}
+                        aria-label="Export"
+                        sx={exportToolbarButtonSx()}
+                      >
+                        <ChevronDown size={20} strokeWidth={LU} />
+                      </IconButton>
+                    )}
+                  </span>
+                </ActionTooltip>
+                <Menu
+                  anchorEl={exportAnchorEl}
+                  open={Boolean(exportAnchorEl)}
+                  onClose={() => setExportAnchorEl(null)}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                  PaperProps={{
+                    sx: (th) => ({
+                      ...(typeof menuPaperProps.PaperProps.sx === 'function'
+                        ? menuPaperProps.PaperProps.sx(th)
+                        : {}),
+                      ...(exportAnchorEl ? { minWidth: exportAnchorEl.offsetWidth } : {}),
+                    }),
+                  }}
+                  MenuListProps={{ dense: true, sx: { py: 0.5 } }}
+                >
+                  <ExportMenuRow
+                    label="Export to CSV"
+                    icon={<Download size={16} strokeWidth={LU} />}
+                    onClick={handleExportCSV}
+                  />
+                  <ExportMenuRow
+                    label="Export to Drive"
+                    icon={<CloudUpload size={16} strokeWidth={LU} />}
+                    onClick={handleExportDrive}
+                  />
+                  <ExportMenuRow
+                    label="Export to PDF"
+                    icon={<FileText size={16} strokeWidth={LU} />}
+                    onClick={handleExportPDF}
+                  />
+                </Menu>
+              </>
+            )}
+          </Box>
         </Box>
-      ) : hardeningData ? (
-            <>
-              {auditTab === 0 &&
-                (() => {
-                  const s = activeStats;
-                  // Score over graded checks only (pass/warning/fail). Info + manual
-                  // are neutral (org-dependent / not automatically verifiable).
-                  const denom = s.pass + s.warning + s.fail;
-                  const pctPass = denom === 0 ? 0 : Math.round((s.pass / denom) * 100);
-                  const headlineColor = pctPass >= 80 ? T.success : pctPass >= 50 ? T.accent : T.warning;
-                  return (
+
+        <Box
+          sx={(th) => ({
+            display: 'flex',
+            gap: 1.5,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            mb: 2,
+            p: 1.5,
+            borderRadius: T.radius,
+            border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
+            bgcolor: pick(th, T.surface, '#27272a'),
+          })}
+        >
+          <ActionTooltip title={canTakeAction ? 'Re-evaluate all checks and save for the organization' : 'Super admin only'}>
+            <span>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={runAudit}
+                disabled={running || bootLoading || !canTakeAction}
+                startIcon={
+                  running ? <CircularProgress size={14} color="inherit" /> : <Play size={15} strokeWidth={1.75} />
+                }
+                sx={{
+                  fontFamily: T.font,
+                  textTransform: 'none',
+                  borderRadius: T.radius,
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  height: 32,
+                  px: 2,
+                  bgcolor: T.accent,
+                  '&:hover': { bgcolor: T.accentHover },
+                }}
+              >
+                {running ? 'Running…' : 'Run audit'}
+              </Button>
+            </span>
+          </ActionTooltip>
+          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+            {lastRunLabel}
+          </Typography>
+        </Box>
+
+        {policyBanner && !running && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {policyBanner}
+          </Alert>
+        )}
+
+        {loadError && !running && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>
+            {loadError}
+          </Alert>
+        )}
+
+        {bootLoading || running ? (
+          <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+            <CircularProgress />
+          </Box>
+        ) : hardeningData ? (
+          <>
+            {auditTab === 0 &&
+              (() => {
+                const s = activeStats;
+                const denom = s.pass + s.warning + s.fail;
+                const pctPass = denom === 0 ? 0 : Math.round((s.pass / denom) * 100);
+                const headlineColor = pctPass >= 80 ? T.success : pctPass >= 50 ? T.accent : T.warning;
+                return (
+                  <Box
+                    sx={(th) => ({
+                      border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
+                      borderRadius: T.radiusLg,
+                      p: 2.5,
+                      mb: 3,
+                      bgcolor: pick(th, T.surface, '#18181b'),
+                    })}
+                  >
                     <Box
-                      sx={(th) => ({
-                        border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
-                        borderRadius: T.radiusLg,
-                        p: 2.5,
-                        mb: 3,
-                        bgcolor: pick(th, T.surface, '#18181b'),
-                      })}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'baseline',
+                        justifyContent: 'space-between',
+                        mb: 2,
+                        flexWrap: 'wrap',
+                        gap: 2,
+                      }}
                     >
-                      <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 2 }}>
-                        <Box>
-                          <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '2rem', letterSpacing: '-0.03em', color: headlineColor, lineHeight: 1 }}>
-                            {pctPass}%
-                          </Typography>
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mt: 0.5 }}>
-                            of graded checks pass automated verification (info &amp; manual excluded)
-                          </Typography>
-                          {ignoredCount > 0 && (
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t), mt: 0.75 }}>
-                              {ignoredCount} waived — excluded from this score.{' '}
-                              <Box
-                                component="button"
-                                type="button"
-                                onClick={() => setAuditTab(3)}
-                                sx={{
-                                  p: 0,
-                                  border: 'none',
-                                  background: 'none',
-                                  cursor: 'pointer',
-                                  font: 'inherit',
-                                  color: T.accent,
-                                  textDecoration: 'underline',
-                                  '&:hover': { opacity: 0.9 },
-                                }}
-                              >
-                                View waived
-                              </Box>
-                            </Typography>
-                          )}
-                        </Box>
-                        <Box sx={{ display: 'flex', gap: 3, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                          <Box sx={{ textAlign: 'right' }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '1.25rem', fontWeight: 600, color: T.success }}>{s.pass}</Typography>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', color: (t) => textTertiary(t), textTransform: 'uppercase', letterSpacing: '0.06em' }}>Pass</Typography>
-                          </Box>
-                          <Box sx={{ textAlign: 'right' }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '1.25rem', fontWeight: 600, color: T.warning }}>{s.warning}</Typography>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', color: (t) => textTertiary(t), textTransform: 'uppercase', letterSpacing: '0.06em' }}>Warning</Typography>
-                          </Box>
-                          <Box sx={{ textAlign: 'right' }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '1.25rem', fontWeight: 600, color: T.danger }}>{s.fail}</Typography>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', color: (t) => textTertiary(t), textTransform: 'uppercase', letterSpacing: '0.06em' }}>Fail</Typography>
-                          </Box>
-                          <Box sx={{ textAlign: 'right' }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '1.25rem', fontWeight: 600, color: T.accent }}>{s.info}</Typography>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', color: (t) => textTertiary(t), textTransform: 'uppercase', letterSpacing: '0.06em' }}>Info</Typography>
-                          </Box>
-                          <Box sx={{ textAlign: 'right' }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '1.25rem', fontWeight: 600, color: (t) => textTertiary(t) }}>{s.manual}</Typography>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', color: (t) => textTertiary(t), textTransform: 'uppercase', letterSpacing: '0.06em' }}>Manual</Typography>
-                          </Box>
-                        </Box>
-                      </Box>
-                      <LinearProgress
-                        variant="determinate"
-                        value={pctPass}
-                        sx={(th) => ({
-                          height: 6,
-                          borderRadius: 3,
-                          bgcolor: pick(th, '#e8e8e4', '#27272a'),
-                          '& .MuiLinearProgress-bar': {
-                            borderRadius: 3,
-                            bgcolor: pctPass >= 80 ? T.success : pctPass >= 50 ? T.accent : T.warning,
-                            transition: 'transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
-                          },
-                        })}
-                      />
-                    </Box>
-                  );
-                })()}
-
-              {auditTab === 0 &&
-                orderedHardeningCategories(hardeningData.checks.map((c) => c.category)).map((category) => {
-                  const categoryChecks = hardeningData.checks.filter((c) => c.category === category);
-                  if (categoryChecks.length === 0) return null;
-
-                  return (
-                    <Box key={category} sx={{ mb: 4 }}>
-                      <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (th) => pick(th, T.text, '#fafafa'), mt: 3, mb: 2 }}>
-                        {category}
-                      </Typography>
-                      <ListShell>
-                        <ListHeaderRow>
-                          <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="26%" minWidth={180} />
-                          <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
-                          <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="16%" minWidth={120} />
-                          <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} minWidth={160} />
-                          <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={40} align="right" />
-                        </ListHeaderRow>
-                        {categoryChecks.map((check, idx) => {
-                          const waived = ignoredIds.has(check.id);
-                          return (
+                      <Box>
+                        <Typography
+                          sx={{
+                            fontFamily: T.font,
+                            fontWeight: 700,
+                            fontSize: '2rem',
+                            letterSpacing: '-0.03em',
+                            color: headlineColor,
+                            lineHeight: 1,
+                          }}
+                        >
+                          {pctPass}%
+                        </Typography>
+                        <Typography
+                          sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mt: 0.5 }}
+                        >
+                          of graded checks pass automated verification (info &amp; manual excluded)
+                        </Typography>
+                        {ignoredCount > 0 && (
+                          <Typography
+                            sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t), mt: 0.75 }}
+                          >
+                            {ignoredCount} waived — client-accepted risk, excluded from this score.{' '}
                             <Box
-                              key={check.id}
+                              component="button"
+                              type="button"
+                              onClick={() => setAuditTab(3)}
                               sx={{
-                                opacity: waived ? 0.72 : 1,
+                                p: 0,
+                                border: 'none',
+                                background: 'none',
+                                cursor: 'pointer',
+                                font: 'inherit',
+                                color: T.accent,
+                                textDecoration: 'underline',
+                                '&:hover': { opacity: 0.9 },
                               }}
                             >
-                              <ListDataRow last={idx === categoryChecks.length - 1} onClick={() => openDetail(check.id)}>
-                                <Box sx={{ width: '26%', minWidth: 180 }}>{checkNameBlock(check)}</Box>
-                                {statusCell(check, true)}
-                                <Box sx={{ width: '16%', minWidth: 120 }}>
-                                  <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{String(check.currentValue ?? 'N/A')}</Typography>
-                                </Box>
-                                <Box sx={{ flex: 1, minWidth: 160 }}>{recommendedTargetInline(check)}</Box>
-                                {chevronCell()}
-                              </ListDataRow>
+                              View waived
                             </Box>
-                          );
-                        })}
-                      </ListShell>
+                          </Typography>
+                        )}
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 3, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                        {(
+                          [
+                            ['Pass', s.pass, T.success],
+                            ['Warning', s.warning, T.warning],
+                            ['Fail', s.fail, T.danger],
+                            ['Info', s.info, T.accent],
+                            ['Manual', s.manual, textTertiary(theme)],
+                          ] as const
+                        ).map(([label, n, color]) => (
+                          <Box key={label} sx={{ textAlign: 'right' }}>
+                            <Typography sx={{ fontFamily: T.font, fontSize: '1.25rem', fontWeight: 600, color }}>
+                              {n}
+                            </Typography>
+                            <Typography
+                              sx={{
+                                fontFamily: T.font,
+                                fontSize: '0.6875rem',
+                                color: (t) => textTertiary(t),
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.06em',
+                              }}
+                            >
+                              {label}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Box>
                     </Box>
-                  );
-                })}
+                    <LinearProgress
+                      variant="determinate"
+                      value={pctPass}
+                      sx={(th) => ({
+                        height: 6,
+                        borderRadius: 3,
+                        bgcolor: pick(th, '#e8e8e4', '#27272a'),
+                        '& .MuiLinearProgress-bar': {
+                          borderRadius: 3,
+                          bgcolor: pctPass >= 80 ? T.success : pctPass >= 50 ? T.accent : T.warning,
+                          transition: 'transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
+                        },
+                      })}
+                    />
+                  </Box>
+                );
+              })()}
 
-              {auditTab === 1 && (
-                <Box sx={{ mb: 3 }}>
-                  {passingChecks.length === 0 ? (
-                    <Box sx={{ py: 6, textAlign: 'center' }}>
-                      <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>No passing checks in this view.</Typography>
-                    </Box>
-                  ) : (
+            {auditTab === 0 &&
+              orderedHardeningCategories(hardeningData.checks.map((c) => c.category)).map((category) => {
+                const categoryChecks = hardeningData.checks.filter((c) => c.category === category);
+                if (categoryChecks.length === 0) return null;
+
+                return (
+                  <Box key={category} sx={{ mb: 4 }}>
+                    <Typography
+                      sx={{
+                        fontFamily: T.font,
+                        fontWeight: 700,
+                        fontSize: '1.125rem',
+                        letterSpacing: '-0.02em',
+                        color: (th) => pick(th, T.text, '#fafafa'),
+                        mt: 3,
+                        mb: 2,
+                      }}
+                    >
+                      {category}
+                    </Typography>
                     <ListShell>
                       <ListHeaderRow>
-                        <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="20%" minWidth={160} />
-                        <ColumnHeader label="Category" columnId="cat" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={120} />
-                        <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
-                        <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="14%" minWidth={120} />
-                        <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} minWidth={160} />
-                        <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={40} align="right" />
+                        <ColumnHeader
+                          label="Check"
+                          columnId="check"
+                          sortConfig={STATIC_SORT}
+                          onSort={noopSort}
+                          sortable={false}
+                          width="22%"
+                          minWidth={160}
+                        />
+                        <ColumnHeader
+                          label="Severity"
+                          columnId="sev"
+                          sortConfig={STATIC_SORT}
+                          onSort={noopSort}
+                          sortable={false}
+                          width={88}
+                        />
+                        <ColumnHeader
+                          label="Status"
+                          columnId="st"
+                          sortConfig={STATIC_SORT}
+                          onSort={noopSort}
+                          sortable={false}
+                          width={100}
+                        />
+                        <ColumnHeader
+                          label="Current Value"
+                          columnId="cv"
+                          sortConfig={STATIC_SORT}
+                          onSort={noopSort}
+                          sortable={false}
+                          width="14%"
+                          minWidth={100}
+                        />
+                        <ColumnHeader
+                          label="Recommended"
+                          columnId="rec"
+                          sortConfig={STATIC_SORT}
+                          onSort={noopSort}
+                          sortable={false}
+                          minWidth={140}
+                        />
+                        <ColumnHeader
+                          label=""
+                          columnId="act"
+                          sortConfig={STATIC_SORT}
+                          onSort={noopSort}
+                          sortable={false}
+                          width={40}
+                          align="right"
+                        />
                       </ListHeaderRow>
-                      {passingChecks.map((check, idx) => (
-                        <ListDataRow key={check.id} last={idx === passingChecks.length - 1} onClick={() => openDetail(check.id)}>
-                          <Box sx={{ width: '20%', minWidth: 160 }}>{checkNameBlock(check)}</Box>
-                          <Box sx={{ width: 120, flexShrink: 0 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{check.category}</Typography>
+                      {categoryChecks.map((check, idx) => {
+                        const waived = ignoredIds.has(check.id);
+                        return (
+                          <Box key={check.id} sx={{ opacity: waived ? 0.72 : 1 }}>
+                            <ListDataRow
+                              last={idx === categoryChecks.length - 1}
+                              onClick={() => openDetail(check.id)}
+                            >
+                              <Box sx={{ width: '22%', minWidth: 160 }}>{checkNameBlock(check)}</Box>
+                              {severityCell(check)}
+                              {statusCell(check, true)}
+                              <Box sx={{ width: '14%', minWidth: 100 }}>
+                                <Typography
+                                  sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}
+                                  noWrap
+                                >
+                                  {String(check.currentValue ?? 'N/A')}
+                                </Typography>
+                              </Box>
+                              <Box sx={{ flex: 1, minWidth: 140 }}>{recommendedTargetInline(check)}</Box>
+                              {chevronCell()}
+                            </ListDataRow>
                           </Box>
-                          {statusCell(check, false)}
-                          <Box sx={{ width: '14%', minWidth: 120 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{String(check.currentValue ?? 'N/A')}</Typography>
-                          </Box>
-                          <Box sx={{ flex: 1, minWidth: 160 }}>{recommendedTargetInline(check)}</Box>
-                          {chevronCell()}
-                        </ListDataRow>
-                      ))}
+                        );
+                      })}
                     </ListShell>
-                  )}
-                </Box>
-              )}
+                  </Box>
+                );
+              })}
 
-              {auditTab === 2 && (
-                <Box sx={{ mb: 3 }}>
-                  {failingChecks.length === 0 ? (
-                    <Box sx={{ py: 6, textAlign: 'center' }}>
-                      <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>Nothing to fix — all remaining checks pass or are waived.</Typography>
-                    </Box>
-                  ) : (
-                    <ListShell>
-                      <ListHeaderRow>
-                        <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="20%" minWidth={160} />
-                        <ColumnHeader label="Category" columnId="cat" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={120} />
-                        <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
-                        <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="14%" minWidth={120} />
-                        <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} minWidth={160} />
-                        <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={40} align="right" />
-                      </ListHeaderRow>
-                      {failingChecks.map((check, idx) => (
-                        <ListDataRow key={check.id} last={idx === failingChecks.length - 1} onClick={() => openDetail(check.id)}>
-                          <Box sx={{ width: '20%', minWidth: 160 }}>{checkNameBlock(check)}</Box>
-                          <Box sx={{ width: 120, flexShrink: 0 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{check.category}</Typography>
-                          </Box>
-                          {statusCell(check, false)}
-                          <Box sx={{ width: '14%', minWidth: 120 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{String(check.currentValue ?? 'N/A')}</Typography>
-                          </Box>
-                          <Box sx={{ flex: 1, minWidth: 160 }}>{recommendedTargetInline(check)}</Box>
-                          {chevronCell()}
-                        </ListDataRow>
-                      ))}
-                    </ListShell>
-                  )}
-                </Box>
-              )}
+            {auditTab === 1 && (
+              <Box sx={{ mb: 3 }}>
+                {passingChecks.length === 0 ? (
+                  <Box sx={{ py: 6, textAlign: 'center' }}>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>
+                      No passing checks in this view.
+                    </Typography>
+                  </Box>
+                ) : (
+                  <ListShell>
+                    <ListHeaderRow>
+                      <ColumnHeader
+                        label="Check"
+                        columnId="check"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width="18%"
+                        minWidth={140}
+                      />
+                      <ColumnHeader
+                        label="Category"
+                        columnId="cat"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width={120}
+                      />
+                      <ColumnHeader
+                        label="Severity"
+                        columnId="sev"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width={88}
+                      />
+                      <ColumnHeader
+                        label="Status"
+                        columnId="st"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width={100}
+                      />
+                      <ColumnHeader
+                        label="Current Value"
+                        columnId="cv"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width="12%"
+                        minWidth={100}
+                      />
+                      <ColumnHeader
+                        label="Recommended"
+                        columnId="rec"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        minWidth={140}
+                      />
+                      <ColumnHeader
+                        label=""
+                        columnId="act"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width={40}
+                        align="right"
+                      />
+                    </ListHeaderRow>
+                    {passingChecks.map((check, idx) => (
+                      <ListDataRow key={check.id} last={idx === passingChecks.length - 1} onClick={() => openDetail(check.id)}>
+                        <Box sx={{ width: '18%', minWidth: 140 }}>{checkNameBlock(check)}</Box>
+                        <Box sx={{ width: 120, flexShrink: 0 }}>
+                          <Typography
+                            sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}
+                            noWrap
+                          >
+                            {check.category}
+                          </Typography>
+                        </Box>
+                        {severityCell(check)}
+                        {statusCell(check, false)}
+                        <Box sx={{ width: '12%', minWidth: 100 }}>
+                          <Typography
+                            sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}
+                            noWrap
+                          >
+                            {String(check.currentValue ?? 'N/A')}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 140 }}>{recommendedTargetInline(check)}</Box>
+                        {chevronCell()}
+                      </ListDataRow>
+                    ))}
+                  </ListShell>
+                )}
+              </Box>
+            )}
 
-              {auditTab === 3 && (
-                <Box sx={{ mb: 3 }}>
-                  {ignoredChecks.length === 0 ? (
-                    <Box sx={{ py: 6, textAlign: 'center' }}>
-                      <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>
-                        No waived checks. Use <Box component="span" sx={{ fontWeight: 600 }}>Waive</Box> on a row to exclude it from your score.
-                      </Typography>
-                    </Box>
-                  ) : (
-                    <ListShell>
-                      <ListHeaderRow>
-                        <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="20%" minWidth={160} />
-                        <ColumnHeader label="Category" columnId="cat" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={120} />
-                        <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
-                        <ColumnHeader label="Current Value" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width="14%" minWidth={120} />
-                        <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} minWidth={160} />
-                        <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={40} align="right" />
-                      </ListHeaderRow>
-                      {ignoredChecks.map((check, idx) => (
-                        <ListDataRow key={check.id} last={idx === ignoredChecks.length - 1} onClick={() => openDetail(check.id)}>
-                          <Box sx={{ width: '20%', minWidth: 160 }}>{checkNameBlock(check)}</Box>
-                          <Box sx={{ width: 120, flexShrink: 0 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{check.category}</Typography>
-                          </Box>
-                          {statusCell(check, true)}
-                          <Box sx={{ width: '14%', minWidth: 120 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{String(check.currentValue ?? 'N/A')}</Typography>
-                          </Box>
-                          <Box sx={{ flex: 1, minWidth: 160 }}>{recommendedTargetInline(check)}</Box>
-                          {chevronCell()}
-                        </ListDataRow>
-                      ))}
-                    </ListShell>
-                  )}
-                </Box>
-              )}
-            </>
-          ) : (
-            <Box sx={{ py: 8, textAlign: 'center' }}>
-              <Typography sx={{ fontFamily: T.font, fontSize: '1rem', fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa'), mb: 1 }}>
-                No audit yet
-              </Typography>
-              <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
-                Click <Box component="span" sx={{ fontWeight: 600 }}>Run audit</Box> to evaluate your Workspace against the hardening checklist.
-              </Typography>
-            </Box>
-          )}
-    </Box>
+            {auditTab === 2 && (
+              <Box sx={{ mb: 3 }}>
+                {failingChecks.length === 0 ? (
+                  <Box sx={{ py: 6, textAlign: 'center' }}>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>
+                      Nothing to fix — all remaining checks pass or are waived.
+                    </Typography>
+                  </Box>
+                ) : (
+                  <ListShell>
+                    <ListHeaderRow>
+                      <ColumnHeader
+                        label="Check"
+                        columnId="check"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width="18%"
+                        minWidth={140}
+                      />
+                      <ColumnHeader
+                        label="Category"
+                        columnId="cat"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width={120}
+                      />
+                      <ColumnHeader
+                        label="Severity"
+                        columnId="sev"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width={88}
+                      />
+                      <ColumnHeader
+                        label="Status"
+                        columnId="st"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width={100}
+                      />
+                      <ColumnHeader
+                        label="Current Value"
+                        columnId="cv"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width="12%"
+                        minWidth={100}
+                      />
+                      <ColumnHeader
+                        label="Recommended"
+                        columnId="rec"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        minWidth={140}
+                      />
+                      <ColumnHeader
+                        label=""
+                        columnId="act"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width={40}
+                        align="right"
+                      />
+                    </ListHeaderRow>
+                    {failingChecks.map((check, idx) => (
+                      <ListDataRow key={check.id} last={idx === failingChecks.length - 1} onClick={() => openDetail(check.id)}>
+                        <Box sx={{ width: '18%', minWidth: 140 }}>{checkNameBlock(check)}</Box>
+                        <Box sx={{ width: 120, flexShrink: 0 }}>
+                          <Typography
+                            sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}
+                            noWrap
+                          >
+                            {check.category}
+                          </Typography>
+                        </Box>
+                        {severityCell(check)}
+                        {statusCell(check, false)}
+                        <Box sx={{ width: '12%', minWidth: 100 }}>
+                          <Typography
+                            sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}
+                            noWrap
+                          >
+                            {String(check.currentValue ?? 'N/A')}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 140 }}>{recommendedTargetInline(check)}</Box>
+                        {chevronCell()}
+                      </ListDataRow>
+                    ))}
+                  </ListShell>
+                )}
+              </Box>
+            )}
+
+            {auditTab === 3 && (
+              <Box sx={{ mb: 3 }}>
+                {ignoredChecks.length === 0 ? (
+                  <Box sx={{ py: 6, textAlign: 'center' }}>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>
+                      No waived checks. Use <Box component="span" sx={{ fontWeight: 600 }}>Waive</Box> on a finding to
+                      record client-accepted risk (survives re-runs).
+                    </Typography>
+                  </Box>
+                ) : (
+                  <ListShell>
+                    <ListHeaderRow>
+                      <ColumnHeader
+                        label="Check"
+                        columnId="check"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width="20%"
+                        minWidth={140}
+                      />
+                      <ColumnHeader
+                        label="Category"
+                        columnId="cat"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width={140}
+                      />
+                      <ColumnHeader
+                        label="Severity"
+                        columnId="sev"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width={88}
+                      />
+                      <ColumnHeader
+                        label="Reason"
+                        columnId="reason"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        minWidth={160}
+                      />
+                      <ColumnHeader
+                        label=""
+                        columnId="act"
+                        sortConfig={STATIC_SORT}
+                        onSort={noopSort}
+                        sortable={false}
+                        width={40}
+                        align="right"
+                      />
+                    </ListHeaderRow>
+                    {ignoredChecks.map((check, idx) => (
+                      <ListDataRow key={check.id} last={idx === ignoredChecks.length - 1} onClick={() => openDetail(check.id)}>
+                        <Box sx={{ width: '20%', minWidth: 140 }}>{checkNameBlock(check)}</Box>
+                        <Box sx={{ width: 140, flexShrink: 0 }}>
+                          <Typography
+                            sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}
+                            noWrap
+                          >
+                            {check.category}
+                          </Typography>
+                        </Box>
+                        {severityCell(check)}
+                        <Box sx={{ flex: 1, minWidth: 160 }}>
+                          <Typography
+                            sx={{
+                              fontFamily: T.font,
+                              fontSize: '0.8125rem',
+                              fontStyle: waiveReasons[check.id] ? 'italic' : 'normal',
+                              color: (t) => textSecondary(t),
+                            }}
+                            noWrap
+                          >
+                            {waiveReasons[check.id] || 'No reason recorded'}
+                          </Typography>
+                        </Box>
+                        {chevronCell()}
+                      </ListDataRow>
+                    ))}
+                  </ListShell>
+                )}
+              </Box>
+            )}
+          </>
+        ) : (
+          <Box sx={{ py: 8, textAlign: 'center', maxWidth: 480, mx: 'auto' }}>
+            <Typography
+              sx={{
+                fontFamily: T.font,
+                fontWeight: 600,
+                fontSize: '1.0625rem',
+                color: (th) => pick(th, T.text, '#fafafa'),
+                mb: 1,
+              }}
+            >
+              No security audit on file
+            </Typography>
+            <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
+              Click <Box component="span" sx={{ fontWeight: 600 }}>Run audit</Box> to evaluate this Workspace against the
+              hardening baseline. The snapshot and waivers are stored for the organization (not just this browser).
+            </Typography>
+          </Box>
+        )}
+      </Box>
+
       <Dialog open={Boolean(detailCheck)} onClose={closeDetail} maxWidth="sm" fullWidth>
         {detailCheck && (
           <>
             <DialogTitle sx={{ fontFamily: T.font, fontWeight: 700, pr: 6 }}>
               {detailCheck.name}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1, flexWrap: 'wrap' }}>
-                <DotLabel dotColor={detailStatusColor(detailCheck.status)} dotTooltip={detailCheck.status.toUpperCase()}>
+                <DotLabel
+                  dotColor={detailStatusColor(detailCheck.status)}
+                  dotTooltip={detailCheck.status.toUpperCase()}
+                >
                   {detailCheck.status.toUpperCase()}
+                </DotLabel>
+                <DotLabel
+                  dotColor={severityColor(detailCheck.severity)}
+                  dotTooltip={`Severity: ${detailCheck.severity || 'medium'}`}
+                >
+                  {(detailCheck.severity || 'medium').toUpperCase()}
                 </DotLabel>
                 <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
                   {detailCheck.category}
@@ -1037,31 +1563,93 @@ export function SecurityAudit() {
 
               <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap', mb: 2.5 }}>
                 <Box sx={{ minWidth: 120 }}>
-                  <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 0.5 }}>
+                  <Typography
+                    sx={{
+                      fontFamily: T.font,
+                      fontSize: '0.6875rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      color: (t) => textTertiary(t),
+                      mb: 0.5,
+                    }}
+                  >
                     Current value
                   </Typography>
-                  <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa') }}>
+                  <Typography
+                    sx={{
+                      fontFamily: T.font,
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      color: (th) => pick(th, T.text, '#fafafa'),
+                    }}
+                  >
                     {String(detailCheck.currentValue ?? 'N/A')}
                   </Typography>
                 </Box>
                 <Box sx={{ minWidth: 120 }}>
-                  <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 0.5 }}>
+                  <Typography
+                    sx={{
+                      fontFamily: T.font,
+                      fontSize: '0.6875rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      color: (t) => textTertiary(t),
+                      mb: 0.5,
+                    }}
+                  >
                     Recommended
                   </Typography>
-                  <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa') }}>
-                    {detailCheck.recommendedValue != null && String(detailCheck.recommendedValue).trim() ? String(detailCheck.recommendedValue) : '—'}
+                  <Typography
+                    sx={{
+                      fontFamily: T.font,
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      color: (th) => pick(th, T.text, '#fafafa'),
+                    }}
+                  >
+                    {detailCheck.recommendedValue != null && String(detailCheck.recommendedValue).trim()
+                      ? String(detailCheck.recommendedValue)
+                      : '—'}
                   </Typography>
                 </Box>
               </Box>
 
+              {detailCheck.rationale && (
+                <Box sx={{ mb: 2.5 }}>
+                  <Typography
+                    sx={{
+                      fontFamily: T.font,
+                      fontSize: '0.6875rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      color: (t) => textTertiary(t),
+                      mb: 0.5,
+                    }}
+                  >
+                    Why this matters
+                  </Typography>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
+                    {detailCheck.rationale}
+                  </Typography>
+                </Box>
+              )}
+
               {(() => {
-                const target = detailCheck.recommendedValue != null ? String(detailCheck.recommendedValue).trim() : '';
                 const guidance = (detailCheck.recommendation ?? '').trim();
-                if (!guidance || guidance.toLowerCase() === target.toLowerCase()) return null;
+                if (!guidance) return null;
                 return (
                   <Box sx={{ mb: 2.5 }}>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 0.5 }}>
-                      Guidance
+                    <Typography
+                      sx={{
+                        fontFamily: T.font,
+                        fontSize: '0.6875rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
+                        color: (t) => textTertiary(t),
+                        mb: 0.5,
+                      }}
+                    >
+                      Recommendation
                     </Typography>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
                       {guidance}
@@ -1072,7 +1660,16 @@ export function SecurityAudit() {
 
               {detailCheck.issues && detailCheck.issues.length > 0 && (
                 <Box sx={{ mb: 2.5 }}>
-                  <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 0.75 }}>
+                  <Typography
+                    sx={{
+                      fontFamily: T.font,
+                      fontSize: '0.6875rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      color: (t) => textTertiary(t),
+                      mb: 0.75,
+                    }}
+                  >
                     Findings
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
@@ -1085,22 +1682,51 @@ export function SecurityAudit() {
                 </Box>
               )}
 
-              {/* Waive controls — mirror the list behaviour: a button reveals the reason field. */}
-              <Box sx={(th) => ({ mt: 1, pt: 2, borderTop: `1px solid ${pick(th, T.borderSubtle, '#27272a')}` })}>
+              <Box
+                sx={(th) => ({
+                  mt: 1,
+                  pt: 2,
+                  borderTop: `1px solid ${pick(th, T.borderSubtle, '#27272a')}`,
+                })}
+              >
                 {detailWaived && !reasonEditing ? (
                   <Box>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mb: 0.5 }}>
-                      Waived — excluded from the compliance score.
+                      Waived — client-accepted risk, excluded from the compliance score. Survives re-runs.
                     </Typography>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontStyle: waiveReasons[detailCheck.id] ? 'italic' : 'normal', color: (t) => textTertiary(t), mb: 1.5 }}>
-                      {waiveReasons[detailCheck.id] ? `Reason: ${waiveReasons[detailCheck.id]}` : 'No reason recorded.'}
+                    <Typography
+                      sx={{
+                        fontFamily: T.font,
+                        fontSize: '0.8125rem',
+                        fontStyle: waiveReasons[detailCheck.id] ? 'italic' : 'normal',
+                        color: (t) => textTertiary(t),
+                        mb: 0.5,
+                      }}
+                    >
+                      {waiveReasons[detailCheck.id]
+                        ? `Reason: ${waiveReasons[detailCheck.id]}`
+                        : 'No reason recorded.'}
                     </Typography>
+                    {waivers[detailCheck.id]?.waivedBy && (
+                      <Typography
+                        sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t), mb: 1.5 }}
+                      >
+                        By {waivers[detailCheck.id].waivedBy}
+                        {waivers[detailCheck.id].waivedAt
+                          ? ` · ${new Date(waivers[detailCheck.id].waivedAt!).toLocaleString()}`
+                          : ''}
+                      </Typography>
+                    )}
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       <Button
                         size="small"
                         variant="outlined"
+                        disabled={!canTakeAction || waiveBusy}
                         startIcon={<Pencil size={15} strokeWidth={1.75} />}
-                        onClick={() => { setReasonDraft(waiveReasons[detailCheck.id] ?? ''); setReasonEditing(true); }}
+                        onClick={() => {
+                          setReasonDraft(waiveReasons[detailCheck.id] ?? '');
+                          setReasonEditing(true);
+                        }}
                         sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius }}
                       >
                         {waiveReasons[detailCheck.id] ? 'Edit reason' : 'Add reason'}
@@ -1108,6 +1734,7 @@ export function SecurityAudit() {
                       <Button
                         size="small"
                         variant="outlined"
+                        disabled={!canTakeAction || waiveBusy}
                         startIcon={<RotateCcw size={15} strokeWidth={1.75} />}
                         onClick={() => untrackWaive(detailCheck.id)}
                         sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius }}
@@ -1119,73 +1746,90 @@ export function SecurityAudit() {
                 ) : reasonEditing ? (
                   <Box>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mb: 1 }}>
-                      Add a note so future audits capture why this is waived (optional).
+                      Record why this finding is accepted (shown in exports and to other admins).
                     </Typography>
                     <TextField
                       autoFocus
                       fullWidth
                       multiline
                       minRows={2}
-                      maxRows={6}
-                      placeholder="e.g. Mail delegation required for shared support inbox — approved by IT, 2026-07"
+                      size="small"
+                      placeholder="e.g. Client accepted residual risk — partner domain allowlist required for ops"
                       value={reasonDraft}
                       onChange={(e) => setReasonDraft(e.target.value)}
-                      InputProps={{ sx: { fontFamily: T.font, fontSize: '0.875rem' } }}
+                      sx={{ mb: 1.5, fontFamily: T.font }}
                     />
-                    <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
                       <Button
                         size="small"
                         variant="contained"
-                        onClick={() => { applyWaive(detailCheck.id, reasonDraft); setReasonEditing(false); }}
-                        sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
+                        disabled={waiveBusy}
+                        onClick={async () => {
+                          await applyWaive(detailCheck.id, reasonDraft);
+                          setReasonEditing(false);
+                        }}
+                        sx={{
+                          fontFamily: T.font,
+                          textTransform: 'none',
+                          borderRadius: T.radius,
+                          bgcolor: T.accent,
+                          '&:hover': { bgcolor: T.accentHover },
+                        }}
                       >
-                        {detailWaived ? 'Save reason' : 'Confirm waive'}
+                        Save waiver
                       </Button>
                       <Button
                         size="small"
-                        onClick={() => { setReasonEditing(false); setReasonDraft(waiveReasons[detailCheck.id] ?? ''); }}
-                        sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, color: (t) => textSecondary(t) }}
+                        variant="outlined"
+                        disabled={waiveBusy}
+                        onClick={() => setReasonEditing(false)}
+                        sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius }}
                       >
                         Cancel
                       </Button>
                     </Box>
                   </Box>
                 ) : (
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<EyeOff size={15} strokeWidth={1.75} />}
-                    onClick={() => { setReasonDraft(''); setReasonEditing(true); }}
-                    sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius }}
-                  >
-                    Waive — exclude from score
-                  </Button>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={!canTakeAction || waiveBusy}
+                      startIcon={<EyeOff size={15} strokeWidth={1.75} />}
+                      onClick={() => {
+                        setReasonDraft('');
+                        setReasonEditing(true);
+                      }}
+                      sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius }}
+                    >
+                      Waive
+                    </Button>
+                    {detailCheck.adminConsoleUrl && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<ExternalLink size={15} strokeWidth={1.75} />}
+                        href={detailCheck.adminConsoleUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius }}
+                      >
+                        Open Admin console
+                      </Button>
+                    )}
+                  </Box>
                 )}
               </Box>
             </DialogContent>
-            <DialogActions sx={{ px: 3, pb: 2 }}>
-              {detailCheck.adminConsoleUrl && (
-                <Button
-                  href={detailCheck.adminConsoleUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  startIcon={<ExternalLink size={15} strokeWidth={1.75} />}
-                  sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, color: T.accent, mr: 'auto' }}
-                >
-                  Open in Admin console
-                </Button>
-              )}
-              <Button
-                variant="contained"
-                onClick={closeDetail}
-                sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
-              >
+            <DialogActions>
+              <Button onClick={closeDetail} sx={{ fontFamily: T.font, textTransform: 'none' }}>
                 Close
               </Button>
             </DialogActions>
           </>
         )}
       </Dialog>
+
       <Snackbar
         open={snackbar.open}
         autoHideDuration={4000}
@@ -1195,7 +1839,7 @@ export function SecurityAudit() {
         <Alert
           onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
           severity={snackbar.severity}
-          sx={{ width: '100%', fontFamily: T.font, borderRadius: T.radius, alignItems: 'center' }}
+          sx={{ width: '100%' }}
         >
           {snackbar.message}
         </Alert>
