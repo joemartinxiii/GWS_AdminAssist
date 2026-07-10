@@ -104,6 +104,11 @@ export function requireAllowedEmail(email: string): { valid: boolean; error?: st
   return { valid: true };
 }
 
+/** True if two emails are the same mailbox (case-insensitive). */
+export function emailsEqual(a: string, b: string): boolean {
+  return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+}
+
 /**
  * Both parties for delegation should be on the org allowlist (or same domain
  * when env is unset in tests).

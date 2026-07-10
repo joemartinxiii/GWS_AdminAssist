@@ -107,17 +107,31 @@ export class GmailService extends WorkspaceService {
   }
 
   /**
-   * Get all delegations across all users in the domain
+   * Get all delegations across all users in the domain.
+   * Returns coverage metadata so the UI can show partial failures (no Gmail,
+   * suspended, rate limits) instead of a silently incomplete table.
    */
-  async getAllDelegations(userEmail: string, maxUsers: number = 500): Promise<Array<{
-    userEmail: string;
-    delegateEmail: string;
-    verificationStatus: string;
-  }>> {
+  async getAllDelegations(
+    userEmail: string,
+    maxUsers: number = 500
+  ): Promise<{
+    delegations: Array<{
+      userEmail: string;
+      delegateEmail: string;
+      verificationStatus: string;
+    }>;
+    coverage: {
+      usersTotal: number;
+      usersOk: number;
+      usersFailed: number;
+      usersSkippedSuspended: number;
+      failures: Array<{ email: string; error: string }>;
+    };
+  }> {
     const admin = await this.adminFor(userEmail);
 
-    // Get all users in the domain
-    const users: Array<{ primaryEmail: string }> = [];
+    // Get all users in the tenant (all domains)
+    const users: Array<{ primaryEmail: string; suspended?: boolean }> = [];
     let pageToken: string | undefined;
 
     do {
@@ -126,12 +140,18 @@ export class GmailService extends WorkspaceService {
           customer: 'my_customer',
           maxResults: Math.min(maxUsers, 500),
           pageToken,
+          projection: 'basic',
         })
       );
 
       if (response.data.users) {
         for (const user of response.data.users) {
-          users.push({ primaryEmail: user.primaryEmail || '' });
+          if (user.primaryEmail) {
+            users.push({
+              primaryEmail: user.primaryEmail,
+              suspended: user.suspended === true,
+            });
+          }
         }
       }
 
@@ -140,23 +160,62 @@ export class GmailService extends WorkspaceService {
 
     // Fetch each user's delegations with bounded concurrency. Doing this
     // sequentially made the endpoint scale linearly with directory size and
-    // time out on larger tenants.
-    const perUser = await mapWithConcurrency(users, GMAIL_SCAN_CONCURRENCY, async (user) => {
+    // time out on larger tenants. Each worker returns a tagged result so
+    // counters stay correct under concurrency.
+    type ScanResult =
+      | { kind: 'skipped' }
+      | {
+          kind: 'ok';
+          rows: Array<{
+            userEmail: string;
+            delegateEmail: string;
+            verificationStatus: string;
+          }>;
+        }
+      | { kind: 'fail'; email: string; error: string };
+
+    const scanned = await mapWithConcurrency(users, GMAIL_SCAN_CONCURRENCY, async (user): Promise<ScanResult> => {
+      if (user.suspended) {
+        return { kind: 'skipped' };
+      }
       try {
         const delegations = await this.getDelegations(userEmail, user.primaryEmail);
-        return delegations.map((delegation) => ({
-          userEmail: user.primaryEmail,
-          delegateEmail: delegation.delegateEmail,
-          verificationStatus: delegation.verificationStatus,
-        }));
-      } catch (error) {
-        // Skip users that fail (might not have Gmail enabled)
-        console.warn(`Failed to get delegations for ${user.primaryEmail}:`, error);
-        return [];
+        return {
+          kind: 'ok',
+          rows: delegations.map((delegation) => ({
+            userEmail: user.primaryEmail,
+            delegateEmail: delegation.delegateEmail,
+            verificationStatus: delegation.verificationStatus,
+          })),
+        };
+      } catch (error: any) {
+        const message =
+          error?.response?.data?.error?.message ||
+          error?.message ||
+          String(error);
+        console.warn(`Failed to get delegations for ${user.primaryEmail}:`, message);
+        return { kind: 'fail', email: user.primaryEmail, error: message };
       }
     });
 
-    return perUser.flat();
+    const failures = scanned
+      .filter((r): r is Extract<ScanResult, { kind: 'fail' }> => r.kind === 'fail')
+      .map((r) => ({ email: r.email, error: r.error }));
+    const usersOk = scanned.filter((r) => r.kind === 'ok').length;
+    const usersSkippedSuspended = scanned.filter((r) => r.kind === 'skipped').length;
+    const delegations = scanned.flatMap((r) => (r.kind === 'ok' ? r.rows : []));
+
+    return {
+      delegations,
+      coverage: {
+        usersTotal: users.length,
+        usersOk,
+        usersFailed: failures.length,
+        usersSkippedSuspended,
+        // Cap failure detail so large tenants don't return megabyte payloads
+        failures: failures.slice(0, 50),
+      },
+    };
   }
 
   /**

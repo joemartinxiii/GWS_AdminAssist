@@ -43,6 +43,14 @@ interface AllDelegation {
   verificationStatus: string;
 }
 
+interface DelegationCoverage {
+  usersTotal: number;
+  usersOk: number;
+  usersFailed: number;
+  usersSkippedSuspended: number;
+  failures: Array<{ email: string; error: string }>;
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function normalizeEmailInput(raw: string): string {
@@ -71,6 +79,7 @@ export function EmailDelegation() {
   };
   const { confirm, confirmDialog } = useConfirm();
   const [allDelegations, setAllDelegations] = useState<AllDelegation[]>([]);
+  const [coverage, setCoverage] = useState<DelegationCoverage | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -190,15 +199,19 @@ export function EmailDelegation() {
       const payload = response.data;
       if (Array.isArray(payload)) {
         setAllDelegations(payload);
+        setCoverage(null);
       } else if (payload && Array.isArray(payload.delegations)) {
         setAllDelegations(payload.delegations);
+        setCoverage(payload.coverage && typeof payload.coverage === 'object' ? payload.coverage : null);
       } else {
         setAllDelegations([]);
+        setCoverage(null);
       }
       setLoadError(null);
     } catch (error: any) {
       console.error('Error fetching all delegations:', error);
       setAllDelegations([]);
+      setCoverage(null);
       setLoadError(getApiErrorMessage(error, 'Failed to load delegations'));
       showSnackbar(getApiErrorMessage(error, 'Failed to load delegations.'), 'error');
     } finally {
@@ -210,6 +223,10 @@ export function EmailDelegation() {
     if (!normalizedNewUserEmail || !normalizedNewDelegateEmail) return;
     if (!EMAIL_RE.test(normalizedNewUserEmail) || !EMAIL_RE.test(normalizedNewDelegateEmail)) {
       showSnackbar('Enter valid user and delegate email addresses.', 'error');
+      return;
+    }
+    if (normalizedNewUserEmail.toLowerCase() === normalizedNewDelegateEmail.toLowerCase()) {
+      showSnackbar('Cannot delegate a mailbox to itself. Choose a different delegate.', 'error');
       return;
     }
     try {
@@ -385,7 +402,38 @@ export function EmailDelegation() {
         <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (theme) => pick(theme, T.text, '#fafafa') }}>
           Email delegation
         </Typography>
+        <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (theme) => textSecondary(theme), mt: 0.5 }}>
+          Mailbox owner → delegate (any direction, including when you are either party)
+        </Typography>
       </Box>
+
+      {loadError && (
+        <Alert severity="error" sx={{ mb: 2, fontFamily: T.font, borderRadius: T.radius }} onClose={() => setLoadError(null)}>
+          {loadError}
+        </Alert>
+      )}
+
+      {coverage && coverage.usersFailed > 0 && (
+        <Alert severity="warning" sx={{ mb: 2, fontFamily: T.font, borderRadius: T.radius }}>
+          Partial scan: checked {coverage.usersOk} of {coverage.usersTotal} mailboxes
+          {coverage.usersSkippedSuspended > 0 ? ` (${coverage.usersSkippedSuspended} suspended skipped)` : ''}.
+          {' '}{coverage.usersFailed} mailbox{coverage.usersFailed === 1 ? '' : 'es'} could not be read
+          (often no Gmail license or API delay). The table may be incomplete.
+          {coverage.failures.length > 0 && (
+            <Box component="span" sx={{ display: 'block', mt: 0.75, fontSize: '0.8125rem', opacity: 0.9 }}>
+              Examples: {coverage.failures.slice(0, 3).map((f) => f.email).join(', ')}
+              {coverage.failures.length > 3 ? '…' : ''}
+            </Box>
+          )}
+        </Alert>
+      )}
+
+      {coverage && coverage.usersFailed === 0 && coverage.usersTotal > 0 && !loading && (
+        <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (theme) => textTertiary(theme), mb: 1.5 }}>
+          Scanned {coverage.usersOk} mailbox{coverage.usersOk === 1 ? '' : 'es'}
+          {coverage.usersSkippedSuspended > 0 ? ` (${coverage.usersSkippedSuspended} suspended skipped)` : ''}.
+        </Typography>
+      )}
 
       {/* Toolbar */}
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -565,9 +613,7 @@ export function EmailDelegation() {
         </Box>
       ) : (
         <>
-          {loadError && !loading && (
-            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoadError(null)}>{loadError}</Alert>
-          )}
+
           <ListShell>
             <ListHeaderRow>
               <Checkbox

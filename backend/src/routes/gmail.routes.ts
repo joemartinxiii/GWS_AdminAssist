@@ -4,7 +4,12 @@ import { requirePermission, requireAnyAdmin, requireSuperAdmin } from '../middle
 import { auditLog } from '../middleware/audit.middleware';
 import { gmailService } from '../services/gmail.service';
 import { driveService } from '../services/drive.service';
-import { validateEmail, validateDelegationDomain, requireAllowedEmail } from '../utils/validation';
+import {
+  validateEmail,
+  validateDelegationDomain,
+  requireAllowedEmail,
+  emailsEqual,
+} from '../utils/validation';
 import { normalizeEmailParam } from '../utils/email';
 import { convertToCSV } from '../utils/csv';
 import { sendApiError } from '../utils/apiError';
@@ -116,8 +121,9 @@ router.post(
 router.get('/delegations', requireAnyAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const maxUsers = parseInt(req.query.maxUsers as string) || 500;
-    const delegations = await gmailService.getAllDelegations(req.user!.email, maxUsers);
-    res.json(delegations);
+    const result = await gmailService.getAllDelegations(req.user!.email, maxUsers);
+    // Object form includes coverage so the UI can warn on partial scans.
+    res.json(result);
   } catch (error: any) {
     sendApiError(res, error, 'Failed to get delegations', 'gmail.delegations.all');
   }
@@ -130,7 +136,7 @@ router.get('/delegations', requireAnyAdmin, async (req: AuthRequest, res: Respon
 router.post('/delegations/export/drive', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const maxUsers = parseInt(req.body.maxUsers as string) || 500;
-    const delegations = await gmailService.getAllDelegations(req.user!.email, maxUsers);
+    const { delegations } = await gmailService.getAllDelegations(req.user!.email, maxUsers);
     const csvData = delegations.map(d => ({
       'User Email': d.userEmail,
       'Delegate Email': d.delegateEmail,
@@ -159,7 +165,7 @@ router.post('/delegations/export/selected/drive', requireSuperAdmin, async (req:
     if (!Array.isArray(delegations) || delegations.length === 0) {
       return res.status(400).json({ error: 'delegations array is required' });
     }
-    const allDelegations = await gmailService.getAllDelegations(req.user!.email, 5000);
+    const { delegations: allDelegations } = await gmailService.getAllDelegations(req.user!.email, 5000);
     const keySet = new Set(delegations.map(d => `${d.userEmail}|${d.delegateEmail}`));
     const selected = allDelegations.filter(d => keySet.has(`${d.userEmail}|${d.delegateEmail}`));
     const csvData = selected.map(d => ({
@@ -207,6 +213,11 @@ router.post('/:email/delegations', requirePermission('gmail.delegation.manage'),
     const sourceGate = requireAllowedEmail(sourceEmail);
     if (!sourceGate.valid) {
       return res.status(400).json({ error: sourceGate.error });
+    }
+    if (emailsEqual(sourceEmail, delegateEmail)) {
+      return res.status(400).json({
+        error: 'Cannot delegate a mailbox to itself. Choose a different delegate.',
+      });
     }
     // Format + both sides on allowlist
     const domainValidation = validateDelegationDomain(sourceEmail, delegateEmail);
