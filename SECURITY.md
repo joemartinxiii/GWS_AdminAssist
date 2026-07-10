@@ -156,14 +156,24 @@ This tool implements comprehensive security measures to protect your Google Work
 - **Audit logging**: Comprehensive logging of all administrative actions
 
 ### Multi-Domain Support
-For Google Workspace organizations with multiple domains:
+For Google Workspace organizations with multiple domains (secondaries, brands, contractor domains):
 
 ```bash
-# Allow cross-domain operations within trusted domains
-GWS_ALLOWED_DOMAINS=company.com,eu.company.com,subsidiary.com
+WORKSPACE_DOMAIN=company.com
+# Full allowlist — include primary + every domain this install may manage
+GWS_ALLOWED_DOMAINS=company.com,brand.com,ext.company.com
 ```
 
-This enables secure delegation and sharing between domains while maintaining security boundaries.
+**Bootstrap** prompts for primary + optional “other domains” and stores both in Secret Manager (`app-workspace-domain`, `app-allowed-domains`). The admin’s email domain is auto-added when it differs from primary (e.g. `you@ext.company.com`).
+
+| Use | Behavior |
+|-----|----------|
+| Login | Email domain must be on the allowlist **and** user must be a Workspace admin |
+| Lists (users/groups/scans) | Customer-wide Directory (`my_customer`) — all domains in the tenant |
+| Mutations (create user, share, delegate, …) | Target email/domain must be on the allowlist |
+| “External” Drive/group flags | Outside the allowlist = external |
+
+To add a domain later: update secret `app-allowed-domains` and redeploy (or ship a new revision). **No** extra DWD step per domain.
 
 ### Attack Surface Protection
 

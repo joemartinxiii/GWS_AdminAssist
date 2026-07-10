@@ -36,6 +36,8 @@ source "${SCRIPT_DIR}/lib/github-setup.sh"
 
 PROJECT_ID=""
 WORKSPACE_DOMAIN=""
+# Comma-separated secondary/extra domains (optional). Primary is always included.
+ALLOWED_DOMAINS_EXTRA=""
 ADMIN_EMAIL=""
 REGION="$DEFAULT_REGION"
 CREATE_PROJECT=false
@@ -59,6 +61,7 @@ Usage (pre-filled — any flag skips its prompt):
 
 Prompted-or-flags (interactive mode fills these in for you):
   --domain DOMAIN        Primary Workspace domain (default: from admin email)
+  --allowed-domains LIST Extra domains (comma-separated), e.g. brand.com,ext.company.com
   --project PROJECT_ID   GCP project ID (interactive: create new or pick existing)
   --admin EMAIL          Workspace super admin email (default: active gcloud account)
 
@@ -82,6 +85,7 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --domain) WORKSPACE_DOMAIN="$2"; shift 2 ;;
+    --allowed-domains) ALLOWED_DOMAINS_EXTRA="$2"; shift 2 ;;
     --project) PROJECT_ID="$2"; shift 2 ;;
     --admin) ADMIN_EMAIL="$2"; shift 2 ;;
     --create-project) CREATE_PROJECT=true; shift ;;
@@ -135,6 +139,14 @@ else
     WORKSPACE_DOMAIN="$(prompt_default "Primary Workspace domain" "${ADMIN_EMAIL##*@}")"
   fi
 
+  if [[ -z "$ALLOWED_DOMAINS_EXTRA" ]]; then
+    echo ""
+    echo "Secondary / additional domains this tool may manage (optional)."
+    echo "  Include brand domains and contractor domains (e.g. ext.company.com)."
+    echo "  Primary is always included. Leave blank if you only have one domain."
+    ALLOWED_DOMAINS_EXTRA="$(prompt_default "Other domains (comma-separated)" "")"
+  fi
+
   if [[ -z "$PROJECT_ID" ]]; then
     echo ""
     echo "GCP project:"
@@ -178,8 +190,26 @@ fi
 [[ -n "$WORKSPACE_DOMAIN" ]] || die "Missing domain"
 [[ -n "$ADMIN_EMAIL" ]] || die "Missing admin email"
 
+# Build full allowlist: primary + extras + admin email domain (contractor on secondary)
+ADMIN_DOMAIN="${ADMIN_EMAIL##*@}"
+ALLOWED_DOMAINS="$WORKSPACE_DOMAIN"
+if [[ -n "$ALLOWED_DOMAINS_EXTRA" ]]; then
+  ALLOWED_DOMAINS="${ALLOWED_DOMAINS},${ALLOWED_DOMAINS_EXTRA}"
+fi
+if [[ -n "$ADMIN_DOMAIN" && "$ADMIN_DOMAIN" != *"@"* ]]; then
+  # Append admin domain if not already present (case-insensitive)
+  if ! echo ",${ALLOWED_DOMAINS}," | tr '[:upper:]' '[:lower:]' | grep -q ",$(echo "$ADMIN_DOMAIN" | tr '[:upper:]' '[:lower:]'),"; then
+    ALLOWED_DOMAINS="${ALLOWED_DOMAINS},${ADMIN_DOMAIN}"
+    log "Added admin email domain to allowlist: ${ADMIN_DOMAIN}"
+  fi
+fi
+# Normalize: lowercase, strip spaces, dedupe
+ALLOWED_DOMAINS="$(
+  echo "$ALLOWED_DOMAINS" | tr ',' '\n' | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | awk '!seen[$0]++' | paste -sd, -
+)"
+
 if [[ "$ADMIN_EMAIL" != *"@$WORKSPACE_DOMAIN" ]]; then
-  warn "Admin email (${ADMIN_EMAIL}) domain does not match ${WORKSPACE_DOMAIN}"
+  log "Admin email (${ADMIN_EMAIL}) is not on primary domain — ensure ${ADMIN_DOMAIN} is on the allowlist (auto-added when possible)."
 fi
 
 echo ""
@@ -187,7 +217,8 @@ echo "=============================================="
 echo "  Ready to bootstrap"
 echo "=============================================="
 echo "  Project:  ${PROJECT_ID}$([[ "$CREATE_PROJECT" == "true" ]] && echo "  (will be created)")"
-echo "  Domain:   ${WORKSPACE_DOMAIN}"
+echo "  Primary:  ${WORKSPACE_DOMAIN}"
+echo "  Allowlist:${ALLOWED_DOMAINS}"
 echo "  Admin:    ${ADMIN_EMAIL}"
 echo "  Region:   ${REGION}"
 echo "=============================================="
@@ -231,7 +262,7 @@ if [[ "$SKIP_GITHUB" != "true" ]]; then
   fi
 fi
 
-provision_secrets "$PROJECT_ID" "" "" "$WORKSPACE_DOMAIN" "$WORKSPACE_DOMAIN" ""
+provision_secrets "$PROJECT_ID" "" "" "$WORKSPACE_DOMAIN" "$ALLOWED_DOMAINS" ""
 provision_artifact_registry "$PROJECT_ID" "$REGION"
 
 SA_CLIENT_ID="$(get_sa_oauth_client_id "$PROJECT_ID" "$RUNTIME_SA")"
@@ -256,7 +287,7 @@ CLIENT_SECRET="$(printf '%s' "$CLIENT_SECRET" | tr -d '[:space:]')"
 [[ -n "$CLIENT_ID" ]] || die "OAuth Web Client ID was empty — re-run and paste the Client ID"
 [[ -n "$CLIENT_SECRET" ]] || die "OAuth Web Client Secret was empty — re-run and paste the Client secret"
 
-provision_secrets "$PROJECT_ID" "$CLIENT_ID" "$CLIENT_SECRET" "$WORKSPACE_DOMAIN" "$WORKSPACE_DOMAIN" ""
+provision_secrets "$PROJECT_ID" "$CLIENT_ID" "$CLIENT_SECRET" "$WORKSPACE_DOMAIN" "$ALLOWED_DOMAINS" ""
 verify_secrets "$PROJECT_ID"
 
 # Phase 3 — GWS DWD (guided + best-effort keyless validation)
@@ -325,7 +356,8 @@ else
 fi
 echo ""
 echo "  DWD client_id: ${SA_CLIENT_ID}"
-echo "  Workspace domain: ${WORKSPACE_DOMAIN}"
+echo "  Primary domain:   ${WORKSPACE_DOMAIN}"
+echo "  Allowed domains:  ${ALLOWED_DOMAINS}"
 echo ""
 echo "  Role expectations:"
 echo "    Super admins  — full mutations"

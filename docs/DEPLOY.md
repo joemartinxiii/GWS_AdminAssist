@@ -192,8 +192,10 @@ Runtime configuration comes from Secret Manager, injected by Cloud Run. See [SEC
 - `GOOGLE_CLIENT_SECRET` ← `oauth-client-secret:latest`
 - `GOOGLE_REDIRECT_URI` ← `oauth-redirect-uri:latest`
 - `JWT_SECRET` ← `app-jwt-secret:latest`
-- `WORKSPACE_DOMAIN` ← `app-workspace-domain:latest`
-- `GWS_ALLOWED_DOMAINS` ← `app-allowed-domains:latest`
+- `WORKSPACE_DOMAIN` ← `app-workspace-domain:latest` (primary domain)
+- `GWS_ALLOWED_DOMAINS` ← `app-allowed-domains:latest` (primary + secondary/contractor domains, comma-separated)
+
+**Multi-domain:** bootstrap asks for optional extra domains and merges the admin’s email domain into the allowlist. Update `app-allowed-domains` in Secret Manager if you add a domain later, then redeploy. Domain-wide delegation is **not** repeated per domain.
 - `GCP_PROJECT_ID`, `SERVICE_ACCOUNT_EMAIL` set as literal env vars
 - `SCAN_BUCKET`, `SCAN_JOB_NAME`, `SCAN_REGION` set as literal env vars (external-sharing scan — see below)
 - **Keyless domain-wide delegation** — no service-account key is created or stored. Cloud Run runs as the runtime SA, which signs its own delegation tokens via the IAM Credentials API (`signJwt`); the SA holds `roles/iam.serviceAccountTokenCreator` on itself

@@ -1,5 +1,6 @@
 import { WorkspaceService } from './workspace.service';
 import { mapWithConcurrency } from '../utils/concurrency';
+import { getAllowedDomains } from '../utils/validation';
 
 export interface Group {
   id: string;
@@ -40,7 +41,7 @@ export class GroupsService extends WorkspaceService {
     do {
       const response = await this.withRetry(() =>
         dir.groups.list({
-          domain: process.env.WORKSPACE_DOMAIN,
+          customer: 'my_customer',
           maxResults: Math.min(maxResults, 500),
           pageToken,
         })
@@ -310,9 +311,8 @@ export class GroupsService extends WorkspaceService {
    * List groups that have at least one external member (type CUSTOMER or EXTERNAL)
    */
   async listGroupsWithExternalMembers(userEmail: string, maxGroups: number = 500): Promise<Group[]> {
-    const dir = await this.adminFor(userEmail);
     const allGroups = await this.listGroups(userEmail, maxGroups);
-    const workspaceDomain = String(process.env.WORKSPACE_DOMAIN || '').toLowerCase();
+    const allowed = new Set(getAllowedDomains());
 
     // Only groups with members can have external members; skip empties up front.
     const candidates = allGroups.filter((g) => (g.directMembersCount || 0) > 0);
@@ -325,9 +325,11 @@ export class GroupsService extends WorkspaceService {
         const members = await this.listMembers(userEmail, group.email);
         const hasExternal = members.some((m) => {
           if (m.type === 'CUSTOMER' || m.type === 'EXTERNAL') return true;
-          if (!m.email || !workspaceDomain) return false;
+          if (!m.email) return false;
           const memberDomain = m.email.split('@')[1]?.toLowerCase();
-          return Boolean(memberDomain && memberDomain !== workspaceDomain);
+          if (!memberDomain) return false;
+          if (allowed.size === 0) return false;
+          return !allowed.has(memberDomain);
         });
         return hasExternal ? group : null;
       } catch (error: any) {

@@ -4,7 +4,7 @@ import { requirePermission, requireAnyAdmin, requireSuperAdmin } from '../middle
 import { auditLog } from '../middleware/audit.middleware';
 import { driveService, sharedDriveService } from '../services/drive.service';
 import { searchOrgFiles, DriveSearchCriteria } from '../services/driveSearch.service';
-import { validateEmail, validateDomain } from '../utils/validation';
+import { validateEmail, validateDomain, requireAllowedEmail, getAllowedDomains, isDomainAllowed } from '../utils/validation';
 import { convertToCSV, generateExportFilename } from '../utils/csv';
 import { sendApiError } from '../utils/apiError';
 
@@ -312,18 +312,18 @@ router.post('/files/:fileId/permissions', requirePermission('drive.permissions.m
       return res.status(400).json({ error: 'Missing required fields: type, role' });
     }
 
-    // Validate email for user permissions
-    if (type === 'user') {
+    // Validate email for user/group permissions — must be on org allowlist
+    if (type === 'user' || type === 'group') {
       if (!emailAddress) {
-        return res.status(400).json({ error: 'emailAddress required for user type' });
+        return res.status(400).json({ error: 'emailAddress required for user or group type' });
       }
-      const emailValidation = validateEmail(emailAddress);
+      const emailValidation = requireAllowedEmail(String(emailAddress).trim().toLowerCase());
       if (!emailValidation.valid) {
         return res.status(400).json({ error: emailValidation.error });
       }
     }
 
-    // Validate domain for domain permissions
+    // Validate domain for domain permissions — must be on org allowlist
     if (type === 'domain') {
       if (!domain) {
         return res.status(400).json({ error: 'domain required for domain type' });
@@ -333,11 +333,9 @@ router.post('/files/:fileId/permissions', requirePermission('drive.permissions.m
         return res.status(400).json({ error: domainValidation.error });
       }
 
-      // Prevent sharing with external domains
-      const allowedDomains = process.env.GWS_ALLOWED_DOMAINS?.split(',').map(d => d.trim()) || [process.env.WORKSPACE_DOMAIN];
-      if (!allowedDomains.includes(domain)) {
+      if (!isDomainAllowed(domain)) {
         return res.status(400).json({
-          error: `Cannot share with domain '${domain}'. Allowed domains: ${allowedDomains.join(', ')}`
+          error: `Cannot share with domain '${domain}'. Allowed domains: ${getAllowedDomains().join(', ') || '(none configured)'}`,
         });
       }
     }
@@ -690,8 +688,26 @@ router.post('/shared-drives/:driveId/permissions', requirePermission('drive.perm
       return res.status(400).json({ error: 'emailAddress required for user or group type' });
     }
 
-    if (type === 'domain' && !domain) {
-      return res.status(400).json({ error: 'domain required for domain type' });
+    if (type === 'user' || type === 'group') {
+      const emailValidation = requireAllowedEmail(String(emailAddress).trim().toLowerCase());
+      if (!emailValidation.valid) {
+        return res.status(400).json({ error: emailValidation.error });
+      }
+    }
+
+    if (type === 'domain') {
+      if (!domain) {
+        return res.status(400).json({ error: 'domain required for domain type' });
+      }
+      const domainValidation = validateDomain(domain);
+      if (!domainValidation.valid) {
+        return res.status(400).json({ error: domainValidation.error });
+      }
+      if (!isDomainAllowed(domain)) {
+        return res.status(400).json({
+          error: `Cannot share with domain '${domain}'. Allowed domains: ${getAllowedDomains().join(', ') || '(none configured)'}`,
+        });
+      }
     }
 
     const permission = await sharedDriveService.addSharedDrivePermission(

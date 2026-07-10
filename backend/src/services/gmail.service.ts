@@ -123,7 +123,7 @@ export class GmailService extends WorkspaceService {
     do {
       const response = await this.withRetry(() =>
         admin.users.list({
-          domain: process.env.WORKSPACE_DOMAIN,
+          customer: 'my_customer',
           maxResults: Math.min(maxUsers, 500),
           pageToken,
         })

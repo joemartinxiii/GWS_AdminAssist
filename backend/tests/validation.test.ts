@@ -53,26 +53,31 @@ describe('Validation Tests', () => {
   });
 
   describe('validateDelegationDomain', () => {
-    const originalEnv = process.env.GWS_ALLOWED_DOMAINS;
+    const originalAllowed = process.env.GWS_ALLOWED_DOMAINS;
+    const originalPrimary = process.env.WORKSPACE_DOMAIN;
 
     afterEach(() => {
-      process.env.GWS_ALLOWED_DOMAINS = originalEnv;
+      process.env.GWS_ALLOWED_DOMAINS = originalAllowed;
+      process.env.WORKSPACE_DOMAIN = originalPrimary;
     });
 
     test('should allow delegation within same domain', () => {
-      delete process.env.GWS_ALLOWED_DOMAINS; // Ensure no env var set
+      delete process.env.GWS_ALLOWED_DOMAINS;
+      delete process.env.WORKSPACE_DOMAIN;
       const result = validateDelegationDomain('user@company.com', 'delegate@company.com');
       expect(result.valid).toBe(true);
     });
 
     test('should allow delegation to allowed domains', () => {
+      process.env.WORKSPACE_DOMAIN = 'company.com';
       process.env.GWS_ALLOWED_DOMAINS = 'company.com,subsidiary.com';
       const result = validateDelegationDomain('user@company.com', 'delegate@subsidiary.com');
       expect(result.valid).toBe(true);
     });
 
     test('should reject delegation to external domains', () => {
-      delete process.env.GWS_ALLOWED_DOMAINS; // Ensure no env var set
+      process.env.WORKSPACE_DOMAIN = 'company.com';
+      process.env.GWS_ALLOWED_DOMAINS = 'company.com';
       const result = validateDelegationDomain('user@company.com', 'attacker@evil.com');
       expect(result.valid).toBe(false);
       expect(result.error).toContain('not allowed');

@@ -4,7 +4,7 @@ import { requirePermission, requireAnyAdmin, requireSuperAdmin } from '../middle
 import { auditLog } from '../middleware/audit.middleware';
 import { gmailService } from '../services/gmail.service';
 import { driveService } from '../services/drive.service';
-import { validateEmail, validateDelegationDomain } from '../utils/validation';
+import { validateEmail, validateDelegationDomain, requireAllowedEmail } from '../utils/validation';
 import { normalizeEmailParam } from '../utils/email';
 import { convertToCSV } from '../utils/csv';
 import { sendApiError } from '../utils/apiError';
@@ -204,13 +204,11 @@ router.post('/:email/delegations', requirePermission('gmail.delegation.manage'),
     if (!sourceEmail) return res.status(400).json({ error: 'Invalid source email' });
     const delegateEmail = normalizeEmailParam(String(req.body.delegateEmail || ''));
 
-    // Validate email format
-    const emailValidation = validateEmail(delegateEmail);
-    if (!emailValidation.valid) {
-      return res.status(400).json({ error: emailValidation.error });
+    const sourceGate = requireAllowedEmail(sourceEmail);
+    if (!sourceGate.valid) {
+      return res.status(400).json({ error: sourceGate.error });
     }
-
-    // Validate domain restrictions
+    // Format + both sides on allowlist
     const domainValidation = validateDelegationDomain(sourceEmail, delegateEmail);
     if (!domainValidation.valid) {
       return res.status(400).json({ error: domainValidation.error });
@@ -280,8 +278,17 @@ router.post('/:email/send-as', requirePermission('gmail.sendas.manage'), auditLo
       return res.status(400).json({ error: 'Missing required field: sendAsEmail' });
     }
 
+    const mailboxGate = requireAllowedEmail(targetEmail);
+    if (!mailboxGate.valid) {
+      return res.status(400).json({ error: mailboxGate.error });
+    }
+    const sendAsGate = requireAllowedEmail(String(sendAsEmail).trim().toLowerCase());
+    if (!sendAsGate.valid) {
+      return res.status(400).json({ error: sendAsGate.error });
+    }
+
     await gmailService.createSendAs(req.user!.email, targetEmail, {
-      sendAsEmail,
+      sendAsEmail: String(sendAsEmail).trim().toLowerCase(),
       displayName,
       replyToAddress,
     });

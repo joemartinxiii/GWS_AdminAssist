@@ -54,9 +54,10 @@ export class UserService extends WorkspaceService {
     let pageToken: string | undefined;
 
     do {
+      // customer-wide: includes all secondary domains in this Workspace tenant
       const response = await this.withRetry(() =>
         admin.users.list({
-          domain: process.env.WORKSPACE_DOMAIN,
+          customer: 'my_customer',
           maxResults: Math.min(maxResults, 500),
           pageToken,
           projection: 'full',
@@ -374,7 +375,7 @@ export class UserService extends WorkspaceService {
 
     const response = await this.withRetry(() =>
       admin.users.list({
-        domain: process.env.WORKSPACE_DOMAIN,
+        customer: 'my_customer',
         query: query,
         maxResults: 100,
         projection: 'full',

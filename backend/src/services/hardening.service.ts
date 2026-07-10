@@ -167,7 +167,7 @@ export class HardeningService extends WorkspaceService {
     try {
       const admin = await this.adminFor(userEmail);
       const usersResponse = await this.withRetry(() =>
-        admin.users.list({ domain: process.env.WORKSPACE_DOMAIN, maxResults: 100 })
+        admin.users.list({ customer: 'my_customer', maxResults: 100 })
       );
       const users = usersResponse.data.users || [];
       const usersWith2FA = users.filter((u: any) => u.isEnforcedIn2Sv === true).length;

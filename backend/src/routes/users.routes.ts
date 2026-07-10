@@ -5,7 +5,7 @@ import { auditLog } from '../middleware/audit.middleware';
 import { userService } from '../services/user.service';
 import { driveService } from '../services/drive.service';
 import { groupsService } from '../services/groups.service';
-import { sanitizeText, validateEmail } from '../utils/validation';
+import { sanitizeText, validateEmail, requireAllowedEmail } from '../utils/validation';
 import { convertToCSV, generateExportFilename } from '../utils/csv';
 import { normalizeEmailParam } from '../utils/email';
 import { sendApiError } from '../utils/apiError';
@@ -377,8 +377,13 @@ router.post('/', requirePermission('users.create'), auditLog('user.create', 'use
       });
     }
 
+    const emailGate = requireAllowedEmail(String(primaryEmail).trim().toLowerCase());
+    if (!emailGate.valid) {
+      return res.status(400).json({ error: emailGate.error });
+    }
+
     const user = await userService.createUser(req.user!.email, {
-      primaryEmail,
+      primaryEmail: String(primaryEmail).trim().toLowerCase(),
       password,
       givenName,
       familyName,

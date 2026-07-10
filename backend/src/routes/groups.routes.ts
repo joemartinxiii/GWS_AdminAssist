@@ -4,7 +4,7 @@ import { requirePermission, requireAnyAdmin, requireSuperAdmin } from '../middle
 import { auditLog } from '../middleware/audit.middleware';
 import { groupsService } from '../services/groups.service';
 import { driveService } from '../services/drive.service';
-import { validateEmail } from '../utils/validation';
+import { validateEmail, requireAllowedEmail } from '../utils/validation';
 import { convertToCSV, generateExportFilename } from '../utils/csv';
 import { normalizeEmailParam } from '../utils/email';
 import { sendApiError } from '../utils/apiError';
@@ -126,8 +126,13 @@ router.post('/', requirePermission('groups.create'), auditLog('group.create', 'g
       return res.status(400).json({ error: 'Missing required fields: email, name' });
     }
 
+    const groupEmailGate = requireAllowedEmail(String(email).trim().toLowerCase());
+    if (!groupEmailGate.valid) {
+      return res.status(400).json({ error: groupEmailGate.error });
+    }
+
     const group = await groupsService.createGroup(req.user!.email, {
-      email,
+      email: String(email).trim().toLowerCase(),
       name,
       description,
     });
@@ -195,8 +200,7 @@ router.post('/:email/members', requirePermission('groups.update'), auditLog('gro
     const memberEmail = normalizeEmailParam(String(req.body.memberEmail || ''));
     const { role } = req.body;
 
-    // Validate email format
-    const emailValidation = validateEmail(memberEmail);
+    const emailValidation = requireAllowedEmail(memberEmail);
     if (!emailValidation.valid) {
       return res.status(400).json({ error: emailValidation.error });
     }

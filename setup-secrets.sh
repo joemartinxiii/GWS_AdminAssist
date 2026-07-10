@@ -54,10 +54,18 @@ if [ -z "$JWT_SECRET" ]; then
 fi
 
 if [ -z "$WORKSPACE_DOMAIN" ]; then
-  read -p "Enter Workspace Domain (e.g. yourcompany.com): " WORKSPACE_DOMAIN
+  read -p "Enter primary Workspace domain (e.g. yourcompany.com): " WORKSPACE_DOMAIN
 fi
 
-ALLOWED_DOMAINS="${ALLOWED_DOMAINS:-$WORKSPACE_DOMAIN}"
+if [ -z "$ALLOWED_DOMAINS" ]; then
+  read -p "Other allowed domains (comma-separated, optional; primary always included): " ALLOWED_EXTRA
+  ALLOWED_DOMAINS="$WORKSPACE_DOMAIN"
+  if [ -n "${ALLOWED_EXTRA:-}" ]; then
+    ALLOWED_DOMAINS="${ALLOWED_DOMAINS},${ALLOWED_EXTRA}"
+  fi
+fi
+# Normalize lowercase, no spaces
+ALLOWED_DOMAINS="$(echo "$ALLOWED_DOMAINS" | tr '[:upper:]' '[:lower:]' | tr -d ' ')"
 
 provision_secrets "$PROJECT_ID" "$CLIENT_ID" "$CLIENT_SECRET" "$WORKSPACE_DOMAIN" \
   "$ALLOWED_DOMAINS" "" "$JWT_SECRET" "$REDIRECT_URI"
