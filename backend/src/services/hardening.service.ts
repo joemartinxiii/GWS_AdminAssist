@@ -114,6 +114,7 @@ export function policyApiMetaFromSnapshot(snapshot: PolicySnapshot): PolicyApiMe
   const raw = snapshot.error || '';
   let code = 'unavailable';
   if (/HTTP\s*429|429|rate.?limit|RESOURCE_EXHAUSTED/i.test(raw)) code = 'http_429';
+  else if (/HTTP\s*503|503/i.test(raw)) code = 'http_503';
   else if (/HTTP\s*403|403/i.test(raw)) code = 'http_403';
   else if (/HTTP\s*401|401/i.test(raw)) code = 'http_401';
   else if (/HTTP\s*404|404/i.test(raw)) code = 'http_404';
@@ -123,6 +124,15 @@ export function policyApiMetaFromSnapshot(snapshot: PolicySnapshot): PolicyApiMe
     code,
     message: humanizeApiFailure(raw || 'unavailable', 'Cloud Identity Policy API'),
   };
+}
+
+/**
+ * Transient Google throttling / outage — do not replace a good last-run with a
+ * mostly-manual degraded snapshot. Config issues (403/401) are not transient.
+ */
+export function isTransientPolicyFailure(meta: PolicyApiMeta): boolean {
+  if (meta.available) return false;
+  return meta.code === 'http_429' || meta.code === 'http_503';
 }
 
 export class HardeningService extends WorkspaceService {
@@ -1116,9 +1126,24 @@ export class HardeningService extends WorkspaceService {
 
   // --- Orchestration --------------------------------------------------------
 
+  /**
+   * Probe Cloud Identity Policy API (with retries inside policyService).
+   * Call this before a full run so transient 429s can abort without writing a
+   * degraded snapshot.
+   */
+  async preflightPolicyApi(userEmail: string): Promise<{
+    snapshot: PolicySnapshot;
+    policyApi: PolicyApiMeta;
+  }> {
+    const snapshot = await policyService.loadOrgPolicies(userEmail);
+    return { snapshot, policyApi: policyApiMetaFromSnapshot(snapshot) };
+  }
+
   async runAllChecks(
     userEmail: string,
-    domain: string
+    domain: string,
+    /** Reuse a snapshot from preflight to avoid a second Policy list. */
+    preloadedSnapshot?: PolicySnapshot
   ): Promise<{
     checks: HardeningCheck[];
     statistics: HardeningStatistics;
@@ -1127,7 +1152,8 @@ export class HardeningService extends WorkspaceService {
     const checks: HardeningCheck[] = [];
 
     // Load org policies once (super-admin subject, keyless DWD). Never throws.
-    const snapshot = await policyService.loadOrgPolicies(userEmail);
+    const snapshot =
+      preloadedSnapshot ?? (await policyService.loadOrgPolicies(userEmail));
     const policyApi = policyApiMetaFromSnapshot(snapshot);
     // Note: we intentionally do NOT inject a synthetic "Policy API 403" checklist
     // row. Unavailability is returned as policyApi meta for a UI banner; individual

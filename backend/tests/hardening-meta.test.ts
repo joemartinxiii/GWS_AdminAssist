@@ -1,4 +1,8 @@
-import { humanizeApiFailure, policyApiMetaFromSnapshot } from '../src/services/hardening.service';
+import {
+  humanizeApiFailure,
+  policyApiMetaFromSnapshot,
+  isTransientPolicyFailure,
+} from '../src/services/hardening.service';
 import { PolicySnapshot } from '../src/services/policy.service';
 
 describe('hardening humanizeApiFailure', () => {
@@ -42,5 +46,15 @@ describe('policyApiMetaFromSnapshot', () => {
     const meta = policyApiMetaFromSnapshot(snap);
     expect(meta.code).toBe('http_429');
     expect(meta.message).toMatch(/rate-limited/i);
+  });
+});
+
+describe('isTransientPolicyFailure', () => {
+  test('429 and 503 are transient; 403 and available are not', () => {
+    expect(isTransientPolicyFailure({ available: true })).toBe(false);
+    expect(isTransientPolicyFailure({ available: false, code: 'http_429' })).toBe(true);
+    expect(isTransientPolicyFailure({ available: false, code: 'http_503' })).toBe(true);
+    expect(isTransientPolicyFailure({ available: false, code: 'http_403' })).toBe(false);
+    expect(isTransientPolicyFailure({ available: false, code: 'unavailable' })).toBe(false);
   });
 });

@@ -5,7 +5,10 @@ import { driveService } from '../services/drive.service';
 import { userService } from '../services/user.service';
 import { groupsService } from '../services/groups.service';
 import { auditLogService } from '../services/audit-log.service';
-import { hardeningService } from '../services/hardening.service';
+import {
+  hardeningService,
+  isTransientPolicyFailure,
+} from '../services/hardening.service';
 import { gmailService } from '../services/gmail.service';
 import { sendApiError } from '../utils/apiError';
 import { convertToCSV } from '../utils/csv';
@@ -857,12 +860,40 @@ router.get('/hardening/latest', requireAnyAdmin, async (_req: AuthRequest, res: 
  * POST /api/audit/hardening/run
  * Sync re-evaluate all checks, persist latest.json, return snapshot + waivers.
  * Super admin only (Policy API requires super-admin subject).
+ *
+ * Preflight: load Cloud Identity Policy API first. On transient failure (429/503
+ * after retries), abort without writing a degraded mostly-manual snapshot so the
+ * org keeps its last good run and the admin does not see a "failed" score.
+ * Permanent config issues (403/401) still proceed with manual fallbacks.
  */
 router.post('/hardening/run', requireSuperAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const domain = process.env.WORKSPACE_DOMAIN || req.user!.email.split('@')[1];
     const started = Date.now();
-    const result = await hardeningService.runAllChecks(req.user!.email, domain);
+
+    const { snapshot, policyApi } = await hardeningService.preflightPolicyApi(req.user!.email);
+
+    if (isTransientPolicyFailure(policyApi)) {
+      const [previous, waivers] = await Promise.all([
+        getSecurityAuditLatest(),
+        getSecurityAuditWaivers(),
+      ]);
+      const message =
+        policyApi.message ||
+        'Google Policy API is temporarily unavailable. Previous audit results were left unchanged.';
+      return res.status(503).json({
+        error: previous
+          ? `${message} Your last saved audit is still on file — try Run again in a minute.`
+          : `${message} No prior audit was saved; try Run again in a minute.`,
+        code: 'policy_api_rate_limited',
+        retryable: true,
+        policyApi,
+        // Preserve last good snapshot for clients that want to re-bind state.
+        previous: previous ? buildHardeningPayload(previous, waivers) : null,
+      });
+    }
+
+    const result = await hardeningService.runAllChecks(req.user!.email, domain, snapshot);
     const report: SecurityAuditReport = {
       ranAt: new Date().toISOString(),
       triggeredBy: req.user!.email,

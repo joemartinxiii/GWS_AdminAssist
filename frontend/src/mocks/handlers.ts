@@ -143,10 +143,13 @@ export const handlers = [
     json({ ...hardeningData, waivers: hardeningData.waivers })
   ),
   http.post('*/api/audit/hardening/run', () =>
+    // Mock always passes preflight (Policy available in demo payload).
     json({
       ...hardeningData,
+      status: 'ready',
       ranAt: new Date().toISOString(),
       triggeredBy: 'admin@example.com',
+      policyApi: { available: true },
       waivers: hardeningData.waivers,
     })
   ),

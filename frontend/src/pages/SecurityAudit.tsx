@@ -526,8 +526,38 @@ export function SecurityAudit() {
       const response = await apiClient.post<HardeningPayload>('/audit/hardening/run');
       applyPayload(response.data, setHardeningData, setWaivers, setLastRunAt, setTriggeredBy);
       showSnackbar('Audit complete — results saved for the organization.');
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error running hardening checks:', error);
+      const ax = error as {
+        response?: {
+          status?: number;
+          data?: {
+            error?: string;
+            code?: string;
+            retryable?: boolean;
+            previous?: HardeningPayload;
+          };
+        };
+      };
+      // Preflight blocked on Google rate limit / transient outage — keep last good
+      // results on screen; do not replace with an empty or failed-looking state.
+      if (ax?.response?.status === 503 && ax.response.data?.code === 'policy_api_rate_limited') {
+        if (ax.response.data.previous) {
+          applyPayload(
+            ax.response.data.previous,
+            setHardeningData,
+            setWaivers,
+            setLastRunAt,
+            setTriggeredBy
+          );
+        }
+        const msg =
+          ax.response.data.error ||
+          'Google is temporarily rate-limiting the Policy API. Your last audit was left unchanged — try again in a minute.';
+        showSnackbar(msg, 'info');
+        setLoadError(null);
+        return;
+      }
       setLoadError(getApiErrorMessage(error, 'Audit failed'));
     } finally {
       setRunning(false);
@@ -612,7 +642,7 @@ export function SecurityAudit() {
   };
 
   const lastRunLabel = useMemo(() => {
-    if (running) return 'Running audit…';
+    if (running) return 'Checking Google connectivity, then evaluating checks…';
     if (!lastRunAt) return 'Not run yet — results are saved to the organization after each run';
     const who = triggeredBy ? ` · ${triggeredBy}` : '';
     return `Last run: ${lastRunAt.toLocaleString()}${who}`;
