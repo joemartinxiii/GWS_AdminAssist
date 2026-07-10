@@ -32,14 +32,14 @@ export class GroupsService extends WorkspaceService {
    * List all groups in the domain
    */
   async listGroups(userEmail: string, maxResults: number = 500): Promise<Group[]> {
-    await this.initialize(userEmail);
+    const dir = await this.adminFor(userEmail);
 
     const groups: Group[] = [];
     let pageToken: string | undefined;
 
     do {
       const response = await this.withRetry(() =>
-        this.groups.groups.list({
+        dir.groups.list({
           domain: process.env.WORKSPACE_DOMAIN,
           maxResults: Math.min(maxResults, 500),
           pageToken,
@@ -69,11 +69,11 @@ export class GroupsService extends WorkspaceService {
    * Get group by email
    */
   async getGroup(userEmail: string, groupEmail: string): Promise<Group | null> {
-    await this.initialize(userEmail);
+    const dir = await this.adminFor(userEmail);
 
     try {
       const response = await this.withRetry(() =>
-        this.groups.groups.get({
+        dir.groups.get({
           groupKey: groupEmail,
         })
       );
@@ -106,10 +106,10 @@ export class GroupsService extends WorkspaceService {
       description?: string;
     }
   ): Promise<Group> {
-    await this.initialize(userEmail);
+    const dir = await this.adminFor(userEmail);
 
     const response = await this.withRetry(() =>
-      this.groups.groups.insert({
+      dir.groups.insert({
         requestBody: {
           email: groupData.email,
           name: groupData.name,
@@ -139,10 +139,10 @@ export class GroupsService extends WorkspaceService {
       description: string;
     }>
   ): Promise<Group> {
-    await this.initialize(userEmail);
+    const dir = await this.adminFor(userEmail);
 
     const response = await this.withRetry(() =>
-      this.groups.groups.patch({
+      dir.groups.patch({
         groupKey: groupEmail,
         requestBody: updates,
       })
@@ -162,10 +162,10 @@ export class GroupsService extends WorkspaceService {
    * Delete group
    */
   async deleteGroup(userEmail: string, groupEmail: string): Promise<void> {
-    await this.initialize(userEmail);
+    const dir = await this.adminFor(userEmail);
 
     await this.withRetry(() =>
-      this.groups.groups.delete({
+      dir.groups.delete({
         groupKey: groupEmail,
       })
     );
@@ -175,14 +175,14 @@ export class GroupsService extends WorkspaceService {
    * List group members
    */
   async listMembers(userEmail: string, groupEmail: string): Promise<GroupMember[]> {
-    await this.initialize(userEmail);
+    const dir = await this.adminFor(userEmail);
 
     const members: GroupMember[] = [];
     let pageToken: string | undefined;
 
     do {
       const response = await this.withRetry(() =>
-        this.groups.members.list({
+        dir.members.list({
           groupKey: groupEmail,
           pageToken,
         })
@@ -210,7 +210,7 @@ export class GroupsService extends WorkspaceService {
    * Get all groups a user is a member of
    */
   async getGroupsForUser(userEmail: string, memberEmail: string): Promise<Group[]> {
-    await this.initialize(userEmail);
+    const dir = await this.adminFor(userEmail);
 
     // Get all groups
     const allGroups = await this.listGroups(userEmail, 1000);
@@ -241,10 +241,10 @@ export class GroupsService extends WorkspaceService {
     memberEmail: string,
     role: 'OWNER' | 'MANAGER' | 'MEMBER' = 'MEMBER'
   ): Promise<GroupMember> {
-    await this.initialize(userEmail);
+    const dir = await this.adminFor(userEmail);
 
     const response = await this.withRetry(() =>
-      this.groups.members.insert({
+      dir.members.insert({
         groupKey: groupEmail,
         requestBody: {
           email: memberEmail,
@@ -271,10 +271,10 @@ export class GroupsService extends WorkspaceService {
     memberEmail: string,
     role: 'OWNER' | 'MANAGER' | 'MEMBER'
   ): Promise<GroupMember> {
-    await this.initialize(userEmail);
+    const dir = await this.adminFor(userEmail);
 
     const response = await this.withRetry(() =>
-      this.groups.members.patch({
+      dir.members.patch({
         groupKey: groupEmail,
         memberKey: memberEmail,
         requestBody: {
@@ -296,10 +296,10 @@ export class GroupsService extends WorkspaceService {
    * Remove member from group
    */
   async removeMember(userEmail: string, groupEmail: string, memberEmail: string): Promise<void> {
-    await this.initialize(userEmail);
+    const dir = await this.adminFor(userEmail);
 
     await this.withRetry(() =>
-      this.groups.members.delete({
+      dir.members.delete({
         groupKey: groupEmail,
         memberKey: memberEmail,
       })
@@ -310,7 +310,7 @@ export class GroupsService extends WorkspaceService {
    * List groups that have at least one external member (type CUSTOMER or EXTERNAL)
    */
   async listGroupsWithExternalMembers(userEmail: string, maxGroups: number = 500): Promise<Group[]> {
-    await this.initialize(userEmail);
+    const dir = await this.adminFor(userEmail);
     const allGroups = await this.listGroups(userEmail, maxGroups);
     const workspaceDomain = String(process.env.WORKSPACE_DOMAIN || '').toLowerCase();
 

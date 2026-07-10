@@ -48,14 +48,14 @@ export class UserService extends WorkspaceService {
    * List all users in the domain
    */
   async listUsers(userEmail: string, maxResults: number = 500): Promise<User[]> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     const users: User[] = [];
     let pageToken: string | undefined;
 
     do {
       const response = await this.withRetry(() =>
-        this.admin.users.list({
+        admin.users.list({
           domain: process.env.WORKSPACE_DOMAIN,
           maxResults: Math.min(maxResults, 500),
           pageToken,
@@ -102,11 +102,11 @@ export class UserService extends WorkspaceService {
    * Get user by email
    */
   async getUser(userEmail: string, targetEmail: string): Promise<User | null> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     try {
       const response = await this.withRetry(() =>
-        this.admin.users.get({
+        admin.users.get({
           userKey: targetEmail,
           projection: 'full',
         })
@@ -159,10 +159,10 @@ export class UserService extends WorkspaceService {
       familyName: string;
     }
   ): Promise<User> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     const response = await this.withRetry(() =>
-      this.admin.users.insert({
+      admin.users.insert({
         requestBody: {
           primaryEmail: userData.primaryEmail,
           password: userData.password,
@@ -213,7 +213,7 @@ export class UserService extends WorkspaceService {
       notes: string;
     }>
   ): Promise<User> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     const requestBody: any = {};
     if (updates.givenName || updates.familyName) {
@@ -225,7 +225,7 @@ export class UserService extends WorkspaceService {
     if (updates.orgUnitPath) requestBody.orgUnitPath = updates.orgUnitPath;
     if (updates.department !== undefined) {
       const cur = await this.withRetry(() =>
-        this.admin.users.get({
+        admin.users.get({
           userKey: targetEmail,
           projection: 'full',
         })
@@ -255,7 +255,7 @@ export class UserService extends WorkspaceService {
     }
 
     const response = await this.withRetry(() =>
-      this.admin.users.update({
+      admin.users.update({
         userKey: targetEmail,
         requestBody,
       })
@@ -292,11 +292,11 @@ export class UserService extends WorkspaceService {
    * Get third-party apps (OAuth tokens) for a user
    */
   async getThirdPartyApps(userEmail: string, targetEmail: string): Promise<ThirdPartyApp[]> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     try {
       const response = await this.withRetry(() =>
-        this.admin.tokens.list({
+        admin.tokens.list({
           userKey: targetEmail,
         })
       );
@@ -324,9 +324,9 @@ export class UserService extends WorkspaceService {
    * Revoke a third-party app (OAuth token) for a user
    */
   async revokeThirdPartyApp(userEmail: string, targetEmail: string, clientId: string): Promise<void> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
     await this.withRetry(() =>
-      this.admin.tokens.delete({
+      admin.tokens.delete({
         userKey: targetEmail,
         clientId,
       })
@@ -337,7 +337,7 @@ export class UserService extends WorkspaceService {
    * Revoke all third-party apps (OAuth tokens) for a user
    */
   async revokeAllThirdPartyApps(userEmail: string, targetEmail: string): Promise<number> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     const apps = await this.getThirdPartyApps(userEmail, targetEmail);
     let revokedCount = 0;
@@ -358,9 +358,9 @@ export class UserService extends WorkspaceService {
    * Delete user
    */
   async deleteUser(userEmail: string, targetEmail: string): Promise<void> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
     await this.withRetry(() =>
-      this.admin.users.delete({
+      admin.users.delete({
         userKey: targetEmail,
       })
     );
@@ -370,10 +370,10 @@ export class UserService extends WorkspaceService {
    * Search users
    */
   async searchUsers(userEmail: string, query: string): Promise<User[]> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     const response = await this.withRetry(() =>
-      this.admin.users.list({
+      admin.users.list({
         domain: process.env.WORKSPACE_DOMAIN,
         query: query,
         maxResults: 100,
@@ -414,7 +414,7 @@ export class UserService extends WorkspaceService {
    * List all organizational units in the domain
    */
   async listOrganizationalUnits(userEmail: string): Promise<Array<{ orgUnitPath: string; name: string }>> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     const orgUnits: Array<{ orgUnitPath: string; name: string }> = [];
     
@@ -426,7 +426,7 @@ export class UserService extends WorkspaceService {
 
     try {
       const response = await this.withRetry(() =>
-        this.admin.orgunits.list({
+        admin.orgunits.list({
           customerId: 'my_customer',
           type: 'all',
         })

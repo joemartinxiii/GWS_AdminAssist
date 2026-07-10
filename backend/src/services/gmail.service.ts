@@ -114,10 +114,9 @@ export class GmailService extends WorkspaceService {
     delegateEmail: string;
     verificationStatus: string;
   }>> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     // Get all users in the domain
-    const admin = this.admin;
     const users: Array<{ primaryEmail: string }> = [];
     let pageToken: string | undefined;
 
@@ -266,16 +265,16 @@ export class GmailService extends WorkspaceService {
     const succeeded: string[] = [];
     const failed: Array<{ email: string; error: string }> = [];
 
-    // Directory reads below use admin impersonation; the per-user send-as calls
-    // build their own mailbox-scoped clients and don't mutate `this.admin`.
-    await this.initialize(adminEmail);
+    // Directory reads use admin-scoped client (request-local). Per-user send-as
+    // calls build their own mailbox-scoped clients via gmailForMailbox.
+    const admin = await this.adminFor(adminEmail);
 
     for (const targetEmail of userEmails) {
       try {
         // Resolve per-user variables from the Directory API
         let resolvedHtml = signatureHtml;
         try {
-          const userRes = await this.admin.users.get({ userKey: targetEmail, projection: 'full' });
+          const userRes = await admin.users.get({ userKey: targetEmail, projection: 'full' });
           const u = userRes.data;
           const orgs = (u.organizations as any[] | undefined) ?? [];
           const phones = (u.phones as any[] | undefined) ?? [];
@@ -343,7 +342,7 @@ export class GmailService extends WorkspaceService {
     body: string,
     isHtml: boolean = false
   ): Promise<void> {
-    await this.initialize(userEmail);
+    const gmail = await this.gmailFor(userEmail);
 
     const recipients = Array.isArray(to) ? to.join(', ') : to;
 
@@ -362,7 +361,7 @@ export class GmailService extends WorkspaceService {
       .replace(/=+$/, '');
 
     await this.withRetry(() =>
-      this.gmail.users.messages.send({
+      gmail.users.messages.send({
         userId: 'me',
         requestBody: {
           raw: encodedMessage,

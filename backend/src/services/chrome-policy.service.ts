@@ -17,13 +17,13 @@ export class ChromePolicyService extends WorkspaceService {
    */
   async checkBrowserUpdates(userEmail: string): Promise<ChromePolicyCheck> {
     try {
-      await this.initialize(userEmail);
+      const chromePolicy = await this.chromePolicyFor(userEmail);
       
       // Get root OU policies
       // Note: Chrome Policy API uses customer ID, not domain
       // We'll use 'my_customer' which is the standard customer ID
       const response = await this.withRetry(() =>
-        this.chromePolicy.customers.policies.resolve({
+        chromePolicy.customers.policies.resolve({
           customer: 'customers/my_customer',
           policyTargetKey: {
             targetResource: 'orgunits/-',
@@ -66,10 +66,10 @@ export class ChromePolicyService extends WorkspaceService {
    */
   async checkCompanyExtensions(userEmail: string): Promise<ChromePolicyCheck> {
     try {
-      await this.initialize(userEmail);
+      const chromePolicy = await this.chromePolicyFor(userEmail);
       
       const response = await this.withRetry(() =>
-        this.chromePolicy.customers.policies.resolve({
+        chromePolicy.customers.policies.resolve({
           customer: 'customers/my_customer',
           policyTargetKey: {
             targetResource: 'orgunits/-',

@@ -2,44 +2,79 @@ import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { getDelegatedAuthClient } from '../config/google.config';
 
-export class WorkspaceService {
-  protected auth: OAuth2Client | null = null;
-  protected admin: any = null;
-  protected drive: any = null;
-  protected gmail: any = null;
-  protected calendar: any = null;
-  protected groups: any = null;
-  protected chromePolicy: any = null;
+/**
+ * Google API clients scoped to a single Workspace subject (impersonated via DWD).
+ * Always treat as request-local — never store on a shared service singleton.
+ */
+export interface WorkspaceClients {
+  auth: OAuth2Client;
+  /** Admin Directory API (users, groups, org units, resources). */
+  admin: any;
+  drive: any;
+  gmail: any;
+  calendar: any;
+  /** Alias of admin (directory) for call sites that historically used this.groups. */
+  groups: any;
+  chromePolicy: any;
+}
 
+/**
+ * Base helpers for Workspace API access.
+ *
+ * Concurrency: Cloud Run may handle multiple requests on one process. Singletons
+ * must not reassign shared `this.admin` / `this.drive` mid-request. Use
+ * `clientsFor(email)` (or the typed helpers) and keep the returned clients in
+ * local variables for the duration of the operation.
+ */
+export class WorkspaceService {
   /**
-   * Initialize service clients authenticated as `userEmail` via keyless
-   * domain-wide delegation. A subject is always required — every Workspace
-   * operation acts on behalf of a specific user.
+   * Build a full set of API clients authenticated as `userEmail` via keyless
+   * domain-wide delegation. Fresh clients every call — safe under concurrency.
    */
-  async initialize(userEmail?: string): Promise<void> {
+  protected async clientsFor(userEmail: string): Promise<WorkspaceClients> {
     if (!userEmail) {
       throw new Error(
-        'WorkspaceService.initialize requires a user email for domain-wide delegation'
+        'WorkspaceService.clientsFor requires a user email for domain-wide delegation'
       );
     }
 
-    this.auth = await getDelegatedAuthClient(userEmail);
+    const auth = await getDelegatedAuthClient(userEmail);
+    const admin = google.admin({ version: 'directory_v1', auth });
+    return {
+      auth,
+      admin,
+      drive: google.drive({ version: 'v3', auth }),
+      gmail: google.gmail({ version: 'v1', auth }),
+      calendar: google.calendar({ version: 'v3', auth }),
+      groups: admin,
+      chromePolicy: google.chromepolicy({ version: 'v1', auth }),
+    };
+  }
 
-    // Initialize API clients
-    this.admin = google.admin({ version: 'directory_v1', auth: this.auth });
-    this.drive = google.drive({ version: 'v3', auth: this.auth });
-    this.gmail = google.gmail({ version: 'v1', auth: this.auth });
-    this.calendar = google.calendar({ version: 'v3', auth: this.auth });
-    this.groups = google.admin({ version: 'directory_v1', auth: this.auth });
-    this.chromePolicy = google.chromepolicy({ version: 'v1', auth: this.auth });
+  protected async adminFor(userEmail: string) {
+    return (await this.clientsFor(userEmail)).admin;
+  }
+
+  protected async driveFor(userEmail: string) {
+    return (await this.clientsFor(userEmail)).drive;
+  }
+
+  protected async gmailFor(userEmail: string) {
+    return (await this.clientsFor(userEmail)).gmail;
+  }
+
+  protected async calendarFor(userEmail: string) {
+    return (await this.clientsFor(userEmail)).calendar;
+  }
+
+  protected async chromePolicyFor(userEmail: string) {
+    return (await this.clientsFor(userEmail)).chromePolicy;
   }
 
   /**
-   * Handle API errors with retry logic
+   * Handle API errors with retry logic.
+   * Returns `any` because the Google API clients are loosely typed.
    */
-  // Returns `any` because the Google API clients (this.admin/drive/gmail/…) are
-  // themselves loosely typed; a generic here would infer `unknown` and force a
-  // cast at every call site. Callers narrow the result as needed.
   protected async withRetry(
     operation: () => Promise<any>,
     maxRetries: number = 3,
@@ -53,30 +88,25 @@ export class WorkspaceService {
       } catch (error: any) {
         lastError = error;
 
-        // googleapis/gaxios expose the HTTP status in different places
-        // depending on the failure; `error.status` alone is often undefined.
         const status: number =
           error?.response?.status ??
           (typeof error?.code === 'number' ? error.code : undefined) ??
           error?.status ??
           0;
 
-        // Rate limiting - wait longer (check before generic 4xx bail-out)
         if (status === 429) {
           const retryAfter = error.response?.headers?.['retry-after'] ?? error.headers?.['retry-after'];
           const wait = retryAfter ? parseInt(retryAfter, 10) * 1000 : delay * Math.pow(2, attempt);
-          await new Promise(resolve => setTimeout(resolve, wait));
+          await new Promise((resolve) => setTimeout(resolve, wait));
           continue;
         }
 
-        // Don't retry on other 4xx errors (client errors)
         if (status >= 400 && status < 500) {
           throw error;
         }
 
-        // Wait before retry
         if (attempt < maxRetries - 1) {
-          await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, attempt)));
+          await new Promise((resolve) => setTimeout(resolve, delay * Math.pow(2, attempt)));
         }
       }
     }
@@ -85,19 +115,17 @@ export class WorkspaceService {
   }
 
   /**
-   * Check if user has admin privileges
+   * Check if user has admin privileges (super or delegated).
    */
   async isAdmin(userEmail: string): Promise<boolean> {
     try {
-      await this.initialize(userEmail);
-      const response = await this.admin.users.get({
+      const admin = await this.adminFor(userEmail);
+      const response = await admin.users.get({
         userKey: userEmail,
         projection: 'full',
       });
-      
-      const isAdmin = response.data.isAdmin === true || 
-                     response.data.isDelegatedAdmin === true;
-      return isAdmin;
+
+      return response.data.isAdmin === true || response.data.isDelegatedAdmin === true;
     } catch (error) {
       console.error('Error checking admin status:', error);
       return false;

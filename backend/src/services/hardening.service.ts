@@ -165,9 +165,9 @@ export class HardeningService extends WorkspaceService {
       adminConsoleUrl: 'https://admin.google.com/ac/security/2sv',
     };
     try {
-      await this.initialize(userEmail);
+      const admin = await this.adminFor(userEmail);
       const usersResponse = await this.withRetry(() =>
-        this.admin.users.list({ domain: process.env.WORKSPACE_DOMAIN, maxResults: 100 })
+        admin.users.list({ domain: process.env.WORKSPACE_DOMAIN, maxResults: 100 })
       );
       const users = usersResponse.data.users || [];
       const usersWith2FA = users.filter((u: any) => u.isEnforcedIn2Sv === true).length;

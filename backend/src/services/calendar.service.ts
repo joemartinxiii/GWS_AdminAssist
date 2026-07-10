@@ -36,28 +36,26 @@ export class CalendarService extends WorkspaceService {
    * List calendars for a user
    */
   async listCalendars(userEmail: string, targetEmail: string): Promise<Calendar[]> {
-    await this.initialize(userEmail);
-    
-    // Keyless DWD: re-target delegation to the calendar owner.
-    await this.initialize(targetEmail);
+    // Impersonate the calendar owner (request-local clients; safe under concurrency).
+    const calendar = await this.calendarFor(targetEmail);
 
     try {
       const response = await this.withRetry(() =>
-        this.calendar.calendarList.list({
+        calendar.calendarList.list({
           minAccessRole: 'reader',
         })
       );
 
       const calendars: Calendar[] = [];
       if (response.data.items) {
-        for (const calendar of response.data.items) {
+        for (const item of response.data.items) {
           calendars.push({
-            id: calendar.id || '',
-            summary: calendar.summary || '',
-            description: calendar.description,
-            timeZone: calendar.timeZone || '',
-            accessRole: calendar.accessRole || '',
-            primary: calendar.primary === true,
+            id: item.id || '',
+            summary: item.summary || '',
+            description: item.description,
+            timeZone: item.timeZone || '',
+            accessRole: item.accessRole || '',
+            primary: item.primary === true,
           });
         }
       }
@@ -75,11 +73,11 @@ export class CalendarService extends WorkspaceService {
    * Get calendar ACL (access control list)
    */
   async getCalendarAcl(userEmail: string, calendarId: string): Promise<CalendarAcl[]> {
-    await this.initialize(userEmail);
+    const calendar = await this.calendarFor(userEmail);
 
     try {
       const response = await this.withRetry(() =>
-        this.calendar.acl.list({
+        calendar.acl.list({
           calendarId,
         })
       );
@@ -110,11 +108,11 @@ export class CalendarService extends WorkspaceService {
    * List calendar resources (rooms, equipment)
    */
   async listResources(userEmail: string): Promise<CalendarResource[]> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     try {
       const response = await this.withRetry(() =>
-        this.admin.resources.calendars.list({
+        admin.resources.calendars.list({
           customer: 'my_customer',
         })
       );
@@ -160,10 +158,10 @@ export class CalendarService extends WorkspaceService {
       floorName?: string;
     }
   ): Promise<CalendarResource> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     const response = await this.withRetry(() =>
-      this.admin.resources.calendars.insert({
+      admin.resources.calendars.insert({
         customer: 'my_customer',
         requestBody: {
           resourceName: resource.resourceName,
@@ -198,10 +196,10 @@ export class CalendarService extends WorkspaceService {
       floorName: string;
     }>
   ): Promise<CalendarResource> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     const response = await this.withRetry(() =>
-      this.admin.resources.calendars.patch({
+      admin.resources.calendars.patch({
         customer: 'my_customer',
         calendarResourceId: resourceId,
         requestBody: updates,
@@ -222,10 +220,10 @@ export class CalendarService extends WorkspaceService {
    * Delete calendar resource
    */
   async deleteResource(userEmail: string, resourceId: string): Promise<void> {
-    await this.initialize(userEmail);
+    const admin = await this.adminFor(userEmail);
 
     await this.withRetry(() =>
-      this.admin.resources.calendars.delete({
+      admin.resources.calendars.delete({
         customer: 'my_customer',
         calendarResourceId: resourceId,
       })
@@ -243,14 +241,12 @@ export class CalendarService extends WorkspaceService {
     timeMax?: string,
     maxResults: number = 250
   ): Promise<any[]> {
-    await this.initialize(userEmail);
-    
-    // Keyless DWD: re-target delegation to the calendar owner.
-    await this.initialize(targetEmail);
+    // Impersonate the calendar owner (request-local clients; safe under concurrency).
+    const calendar = await this.calendarFor(targetEmail);
 
     try {
       const response = await this.withRetry(() =>
-        this.calendar.events.list({
+        calendar.events.list({
           calendarId,
           timeMin: timeMin || new Date().toISOString(),
           timeMax,
@@ -273,13 +269,11 @@ export class CalendarService extends WorkspaceService {
    * Get a specific event
    */
   async getEvent(userEmail: string, targetEmail: string, calendarId: string, eventId: string): Promise<any> {
-    await this.initialize(userEmail);
-    
-    // Keyless DWD: re-target delegation to the calendar owner.
-    await this.initialize(targetEmail);
+    // Impersonate the calendar owner (request-local clients; safe under concurrency).
+    const calendar = await this.calendarFor(targetEmail);
 
     const response = await this.withRetry(() =>
-      this.calendar.events.get({
+      calendar.events.get({
         calendarId,
         eventId,
       })
@@ -305,10 +299,8 @@ export class CalendarService extends WorkspaceService {
       location?: string;
     }
   ): Promise<any> {
-    await this.initialize(userEmail);
-    
-    // Keyless DWD: re-target delegation to the calendar owner.
-    await this.initialize(targetEmail);
+    // Impersonate the calendar owner (request-local clients; safe under concurrency).
+    const calendar = await this.calendarFor(targetEmail);
 
     // First get the current event
     const currentEvent = await this.getEvent(userEmail, targetEmail, calendarId, eventId);
@@ -332,7 +324,7 @@ export class CalendarService extends WorkspaceService {
     }
 
     const response = await this.withRetry(() =>
-      this.calendar.events.update({
+      calendar.events.update({
         calendarId,
         eventId,
         requestBody: updatedEvent,
@@ -384,13 +376,11 @@ export class CalendarService extends WorkspaceService {
     eventId: string,
     sendUpdates: 'all' | 'externalOnly' | 'none' = 'all'
   ): Promise<void> {
-    await this.initialize(userEmail);
-    
-    // Keyless DWD: re-target delegation to the calendar owner.
-    await this.initialize(targetEmail);
+    // Impersonate the calendar owner (request-local clients; safe under concurrency).
+    const calendar = await this.calendarFor(targetEmail);
 
     await this.withRetry(() =>
-      this.calendar.events.delete({
+      calendar.events.delete({
         calendarId,
         eventId,
         sendUpdates,
@@ -414,13 +404,11 @@ export class CalendarService extends WorkspaceService {
       location?: string;
     }
   ): Promise<any> {
-    await this.initialize(userEmail);
-    
-    // Keyless DWD: re-target delegation to the calendar owner.
-    await this.initialize(targetEmail);
+    // Impersonate the calendar owner (request-local clients; safe under concurrency).
+    const calendar = await this.calendarFor(targetEmail);
 
     const response = await this.withRetry(() =>
-      this.calendar.events.insert({
+      calendar.events.insert({
         calendarId,
         requestBody: {
           summary: event.summary,
@@ -457,17 +445,15 @@ export class CalendarService extends WorkspaceService {
     targetCalendarId: string,
     eventId: string
   ): Promise<any> {
-    await this.initialize(userEmail);
-
-    // Impersonate the current organizer to hand off ownership.
-    await this.initialize(sourceEmail);
+    // Impersonate the current organizer to hand off ownership (request-local).
+    const calendar = await this.calendarFor(sourceEmail);
 
     // The destination calendar id for a user's primary calendar is their email.
     const destination =
       !targetCalendarId || targetCalendarId === 'primary' ? targetEmail : targetCalendarId;
 
     const response = await this.withRetry(() =>
-      this.calendar.events.move({
+      calendar.events.move({
         calendarId: sourceCalendarId || 'primary',
         eventId,
         destination,

@@ -47,10 +47,10 @@ export class PermissionsService extends WorkspaceService {
    */
   async getAdminRoles(userEmail: string): Promise<AdminRole> {
     try {
-      await this.initialize(userEmail);
+      const admin = await this.adminFor(userEmail);
       
       const response = await this.withRetry(() =>
-        this.admin.users.get({
+        admin.users.get({
           userKey: userEmail,
           projection: 'full',
         })

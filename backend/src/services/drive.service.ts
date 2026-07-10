@@ -114,13 +114,13 @@ export class DriveService extends WorkspaceService {
     return { externalDomains, externalEmails };
   }
 
-  private async listSharedDriveIds(): Promise<string[]> {
+  private async listSharedDriveIds(drive: any): Promise<string[]> {
     const driveIds: string[] = [];
     let pageToken: string | undefined;
 
     do {
       const response = await this.withRetry(() =>
-        this.drive.drives.list({
+        drive.drives.list({
           pageSize: 100,
           pageToken,
           useDomainAdminAccess: true,
@@ -128,8 +128,8 @@ export class DriveService extends WorkspaceService {
         })
       );
 
-      for (const drive of response.data.drives || []) {
-        if (drive.id) driveIds.push(drive.id);
+      for (const d of response.data.drives || []) {
+        if (d.id) driveIds.push(d.id);
       }
 
       pageToken = response.data.nextPageToken || undefined;
@@ -142,20 +142,20 @@ export class DriveService extends WorkspaceService {
    * Fetch id→name map for all shared drives in one paginated call.
    * Used by bulk scan so we can build paths without per-file API calls.
    */
-  private async fetchSharedDriveNames(): Promise<Map<string, string>> {
+  private async fetchSharedDriveNames(drive: any): Promise<Map<string, string>> {
     const names = new Map<string, string>();
     let pageToken: string | undefined;
     do {
       const response = await this.withRetry(() =>
-        this.drive.drives.list({
+        drive.drives.list({
           pageSize: 100,
           pageToken,
           useDomainAdminAccess: true,
           fields: 'nextPageToken, drives(id, name)',
         })
       );
-      for (const drive of response.data.drives || []) {
-        if (drive.id && drive.name) names.set(drive.id, drive.name);
+      for (const d of response.data.drives || []) {
+        if (d.id && d.name) names.set(d.id, d.name);
       }
       pageToken = response.data.nextPageToken || undefined;
     } while (pageToken);
@@ -179,6 +179,7 @@ export class DriveService extends WorkspaceService {
   }
 
   private async collectAuditCandidates(
+    drive: any,
     query: string,
     maxResults: number,
     onProgress?: (processed: number) => void
@@ -203,7 +204,7 @@ export class DriveService extends WorkspaceService {
     let pageToken: string | undefined;
     do {
       const response = await this.withRetry(() =>
-        this.drive.files.list({
+        drive.files.list({
           q: query,
           fields:
             'nextPageToken, files(id, name, mimeType, driveId, owners, shared, permissions(id, type, role, emailAddress, domain, displayName, deleted, permissionDetails), webViewLink, webContentLink, thumbnailLink, modifiedTime, createdTime, size, description, starred, trashed, version, parents)',
@@ -286,13 +287,17 @@ export class DriveService extends WorkspaceService {
     };
   }
 
-  private async getSharedDrivePermissionsByDriveId(driveId: string): Promise<DriveFile['permissions']> {
+  private async getSharedDrivePermissionsByDriveId(
+    userEmail: string,
+    driveId: string
+  ): Promise<DriveFile['permissions']> {
+    const drive = await this.driveFor(userEmail);
     const permissions: DriveFile['permissions'] = [];
     let pageToken: string | undefined;
 
     do {
       const response = await this.withRetry(() =>
-        this.drive.permissions.list({
+        drive.permissions.list({
           fileId: driveId,
           supportsAllDrives: true,
           useDomainAdminAccess: true,
@@ -360,7 +365,7 @@ export class DriveService extends WorkspaceService {
     let sharedDrivePermissions = sharedDrivePermissionsCache.get(driveFile.driveId);
     if (!sharedDrivePermissions) {
       try {
-        sharedDrivePermissions = await this.getSharedDrivePermissionsByDriveId(driveFile.driveId);
+        sharedDrivePermissions = await this.getSharedDrivePermissionsByDriveId(userEmail, driveFile.driveId);
         sharedDrivePermissionsCache.set(driveFile.driveId, sharedDrivePermissions);
       } catch (error: any) {
         console.warn(`Could not fetch shared-drive permissions for ${driveFile.driveId}:`, error?.message || error);
@@ -407,14 +412,15 @@ export class DriveService extends WorkspaceService {
     maxResults: number = 1000,
     onProgress?: (processed: number, total?: number) => void
   ): Promise<DriveFile[]> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
     const [candidates, sharedDriveNames] = await Promise.all([
       this.collectAuditCandidates(
+        drive,
         this.buildDriveQuery(filter),
         maxResults,
         (processed) => onProgress?.(processed, maxResults)
       ),
-      this.fetchSharedDriveNames(),
+      this.fetchSharedDriveNames(drive),
     ]);
 
     const sharedDrivePermissionsCache = new Map<string, DriveFile['permissions']>();
@@ -478,11 +484,11 @@ export class DriveService extends WorkspaceService {
     domain?: string,
     onProgress?: (processed: number) => void
   ): Promise<ExternalSharingReport[]> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
     const sharedDrivePermissionsCache = new Map<string, DriveFile['permissions']>();
     const [candidates, sharedDriveNames] = await Promise.all([
-      this.collectAuditCandidates('trashed=false', EXTERNAL_SCAN_MAX, onProgress),
-      this.fetchSharedDriveNames(),
+      this.collectAuditCandidates(drive, 'trashed=false', EXTERNAL_SCAN_MAX, onProgress),
+      this.fetchSharedDriveNames(drive),
     ]);
 
     const processed = await mapWithConcurrency(candidates, SCAN_CONCURRENCY, async (candidate) => {
@@ -514,9 +520,8 @@ export class DriveService extends WorkspaceService {
     }
 
     try {
-      if (!this.drive) {
-        await this.initialize(userEmail);
-      }
+      // Request-local Drive client (never shared mutable state)
+      const drive = await this.driveFor(userEmail);
 
       const pathParts: string[] = [];
       let currentParentId = parents[0];
@@ -528,7 +533,7 @@ export class DriveService extends WorkspaceService {
           return '/My Drive';
         }
         try {
-          const parentResponse = await this.drive.files.get({
+          const parentResponse = await drive.files.get({
             fileId: currentParentId,
             fields: 'id, name, parents, driveId',
             supportsAllDrives: true,
@@ -572,14 +577,14 @@ export class DriveService extends WorkspaceService {
    * Get file permissions
    */
   async getFilePermissions(userEmail: string, fileId: string, isSharedDrive = false): Promise<DriveFile['permissions']> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
 
     // NOTE: errors are intentionally propagated so single-file views and
     // mutations surface a real error to the client instead of a misleadingly
     // empty permission list. Bulk scans wrap this call to tolerate per-file
     // failures (see hydrateEffectivePermissions).
     const response = await this.withRetry(() =>
-      this.drive.permissions.list({
+      drive.permissions.list({
         fileId,
         supportsAllDrives: true,
         // useDomainAdminAccess only applies to Shared Drive files; using it on
@@ -605,11 +610,11 @@ export class DriveService extends WorkspaceService {
    * Get file details
    */
   async getFile(userEmail: string, fileId: string): Promise<DriveFile | null> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
 
     try {
       const fileResponse = await this.withRetry(() =>
-        this.drive.files.get({
+        drive.files.get({
           fileId,
           supportsAllDrives: true,
           useDomainAdminAccess: true,
@@ -623,7 +628,7 @@ export class DriveService extends WorkspaceService {
       const ownerEmail = (fileResponse.data.owners || [])[0]?.emailAddress || undefined;
       const adminPath = this.toAdminPath(filePath, ownerEmail, driveId);
       const permissions = driveId
-        ? this.mergePermissions(directPermissions, await this.getSharedDrivePermissionsByDriveId(driveId))
+        ? this.mergePermissions(directPermissions, await this.getSharedDrivePermissionsByDriveId(userEmail, driveId))
         : directPermissions;
 
       return {
@@ -665,10 +670,10 @@ export class DriveService extends WorkspaceService {
     permissionId: string,
     role: 'reader' | 'commenter' | 'writer'
   ): Promise<void> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
 
     await this.withRetry(() =>
-      this.drive.permissions.update({
+      drive.permissions.update({
         fileId,
         permissionId,
         supportsAllDrives: true,
@@ -681,11 +686,11 @@ export class DriveService extends WorkspaceService {
    * Delete file permission
    */
   async deleteFilePermission(userEmail: string, fileId: string, permissionId: string, driveId?: string): Promise<void> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
 
     try {
       await this.withRetry(() =>
-        this.drive.permissions.delete({
+        drive.permissions.delete({
           fileId,
           permissionId,
           supportsAllDrives: true,
@@ -701,7 +706,7 @@ export class DriveService extends WorkspaceService {
         let driveRef = 'the Shared Drive';
         if (resolvedDriveId) {
           try {
-            const driveRes = await this.drive.drives.get({
+            const driveRes = await drive.drives.get({
               driveId: resolvedDriveId,
               useDomainAdminAccess: true,
             });
@@ -740,13 +745,13 @@ export class DriveService extends WorkspaceService {
     fileId: string,
     mode: RemediationMode = 'all'
   ): Promise<{ removed: number; errors: number }> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
 
     // Shared-drive files require useDomainAdminAccess to list permissions.
     let driveId: string | undefined;
     try {
       const meta = await this.withRetry(() =>
-        this.drive.files.get({
+        drive.files.get({
           fileId,
           supportsAllDrives: true,
           useDomainAdminAccess: true,
@@ -852,10 +857,10 @@ export class DriveService extends WorkspaceService {
       domain?: string;
     }
   ): Promise<void> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
 
     await this.withRetry(() =>
-      this.drive.permissions.create({
+      drive.permissions.create({
         fileId,
         supportsAllDrives: true,
         requestBody: {
@@ -878,7 +883,7 @@ export class DriveService extends WorkspaceService {
     mimeType: string = 'text/csv',
     folderId?: string
   ): Promise<{ id: string; webViewLink: string }> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
 
     const fileMetadata: any = {
       name: fileName,
@@ -894,7 +899,7 @@ export class DriveService extends WorkspaceService {
     };
 
     const response = await this.withRetry(() =>
-      this.drive.files.create({
+      drive.files.create({
         requestBody: fileMetadata,
         media,
         fields: 'id, webViewLink',
@@ -959,14 +964,14 @@ export class SharedDriveService extends WorkspaceService {
    * List all shared drives
    */
   async listSharedDrives(userEmail: string): Promise<SharedDrive[]> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
 
     const drives: SharedDrive[] = [];
     let pageToken: string | undefined;
 
     do {
       const response = await this.withRetry(() =>
-        this.drive.drives.list({
+        drive.drives.list({
           pageSize: 100,
           pageToken,
           useDomainAdminAccess: true,
@@ -1022,14 +1027,14 @@ export class SharedDriveService extends WorkspaceService {
    * Get permissions for a shared drive
    */
   async getSharedDrivePermissions(userEmail: string, driveId: string): Promise<SharedDrivePermission[]> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
 
     const permissions: SharedDrivePermission[] = [];
     let pageToken: string | undefined;
 
     do {
       const response = await this.withRetry(() =>
-        this.drive.permissions.list({
+        drive.permissions.list({
           fileId: driveId,
           supportsAllDrives: true,
           useDomainAdminAccess: true,
@@ -1075,9 +1080,8 @@ export class SharedDriveService extends WorkspaceService {
     concurrency = 8
   ): Promise<Record<string, number>> {
     const drives = await this.listSharedDrives(userEmail);
-    // Capture the initialized client so concurrent workers don't race on a
-    // re-initialization of this.drive.
-    const drive = this.drive;
+    // Request-local client for concurrent permission counts (no shared mutable state).
+    const drive = await this.driveFor(userEmail);
     const counts: Record<string, number> = {};
 
     const countOne = async (driveId: string): Promise<number> => {
@@ -1134,7 +1138,7 @@ export class SharedDriveService extends WorkspaceService {
       domain?: string;
     }
   ): Promise<SharedDrivePermission> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
 
     const requestBody: any = {
       type: permission.type,
@@ -1154,7 +1158,7 @@ export class SharedDriveService extends WorkspaceService {
     }
 
     const response = await this.withRetry(() =>
-      this.drive.permissions.create({
+      drive.permissions.create({
         fileId: driveId,
         supportsAllDrives: true,
         useDomainAdminAccess: true,
@@ -1177,10 +1181,10 @@ export class SharedDriveService extends WorkspaceService {
    * Remove a user or group from a shared drive
    */
   async removeSharedDrivePermission(userEmail: string, driveId: string, permissionId: string): Promise<void> {
-    await this.initialize(userEmail);
+    const drive = await this.driveFor(userEmail);
 
     await this.withRetry(() =>
-      this.drive.permissions.delete({
+      drive.permissions.delete({
         fileId: driveId,
         permissionId,
         supportsAllDrives: true,
