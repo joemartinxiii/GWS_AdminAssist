@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-fund --no-audit
 
       - name: Type-check and security tests
         run: |
@@ -37,7 +37,7 @@ jobs:
 
       - name: Lint (informational)
         continue-on-error: true
-        run: npm run lint
+        run: npm run lint:ci
 
       # Keyless auth via Workload Identity Federation (preferred). Works even
       # when org policy blocks SA key creation (iam.disableServiceAccountKeyCreation),

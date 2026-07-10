@@ -21,26 +21,41 @@
     "test:backend": "cd backend && npm test",
     "test:live": "dotenv -e .env.test -- npm run test:live --prefix backend",
     "test:live:read": "dotenv -e .env.test -- npm run test:live:read --prefix backend",
-  "test:e2e:auth": "dotenv -e .env.test -- tsx scripts/mint-test-session.ts",
-  "test:e2e:fixtures": "dotenv -e .env.test -- tsx scripts/discover-tenant-fixtures.ts",
-  "test:e2e:read": "npm run test:e2e:auth && dotenv -e .env.test -- playwright test --grep @read",
-  "test:e2e:mutating": "npm run test:e2e:auth && npm run test:e2e:fixtures && dotenv -e .env.test -- playwright test --grep @mutating",
-  "test:e2e": "npm run test:e2e:auth && npm run test:e2e:fixtures && dotenv -e .env.test -- playwright test",
+    "test:e2e:auth": "dotenv -e .env.test -- tsx scripts/mint-test-session.ts",
+    "test:e2e:fixtures": "dotenv -e .env.test -- tsx scripts/discover-tenant-fixtures.ts",
+    "test:e2e:read": "npm run test:e2e:auth && dotenv -e .env.test -- playwright test --grep @read",
+    "test:e2e:mutating": "npm run test:e2e:auth && npm run test:e2e:fixtures && dotenv -e .env.test -- playwright test --grep @mutating",
+    "test:e2e": "npm run test:e2e:auth && npm run test:e2e:fixtures && dotenv -e .env.test -- playwright test",
     "test:all": "npm run type-check && npm run test:security && dotenv -e .env.test -- env TEST_MUTATIONS=true npm run test:live --prefix backend && npm run test:e2e",
     "test:all:read": "npm run type-check && npm run test:security && npm run test:live:read",
     "smoke:config": "bash scripts/smoke-config.sh",
     "bootstrap:test": "bash scripts/bootstrap-env-test.sh",
     "check:scopes": "tsx scripts/check-scopes.ts",
     "lint": "cd backend && npm run lint",
+    "lint:ci": "cd backend && npm run lint:ci",
     "type-check": "cd backend && npm run type-check"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
     "@types/jsonwebtoken": "^9.0.5",
-    "concurrently": "^8.2.2",
+    "concurrently": "^9.2.1",
     "dotenv": "^16.4.5",
     "dotenv-cli": "^7.4.2",
     "jsonwebtoken": "^9.0.2",
-    "tsx": "^4.7.0"
+    "tsx": "^4.23.0"
+  },
+  "overrides": {
+    "glob": "^13.0.0",
+    "uuid": "^11.1.0"
+  },
+  "allowScripts": {
+    "core-js@3.49.0": true,
+    "esbuild@0.28.1": true,
+    "esbuild@0.21.5": true,
+    "fsevents@2.3.3": true,
+    "fsevents@2.3.2": true,
+    "msw@2.15.0": true,
+    "protobufjs@7.6.5": true,
+    "unrs-resolver@1.12.2": true
   }
 }

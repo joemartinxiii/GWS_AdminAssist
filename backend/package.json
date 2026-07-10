@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src",
+    "lint:ci": "eslint src --quiet",
     "type-check": "tsc --noEmit",
     "test": "jest",
     "test:security": "jest tests/security-validation.test.ts",
@@ -16,9 +17,9 @@
     "test:live:read": "jest -c jest.live.config.js --runInBand --testNamePattern=@read"
   },
   "dependencies": {
-    "@google-cloud/logging": "^11.0.0",
-    "@google-cloud/secret-manager": "^5.0.1",
-    "@google-cloud/storage": "^7.7.0",
+    "@google-cloud/logging": "^11.2.0",
+    "@google-cloud/secret-manager": "^5.6.0",
+    "@google-cloud/storage": "^7.17.0",
     "@types/dompurify": "^3.0.5",
     "@types/jsdom": "^28.0.1",
     "cookie-parser": "^1.4.6",
@@ -29,10 +30,11 @@
     "express-rate-limit": "^8.3.2",
     "googleapis": "^128.0.0",
     "helmet": "^7.1.0",
-    "jsdom": "^24.1.1",
+    "jsdom": "^27.4.0",
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.0",
     "@types/cookie-parser": "^1.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
@@ -40,13 +42,12 @@
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^24.0.0",
     "@types/supertest": "^7.2.0",
-    "@typescript-eslint/eslint-plugin": "^6.15.0",
-    "@typescript-eslint/parser": "^6.15.0",
-    "eslint": "^8.56.0",
-    "jest": "^30.3.0",
+    "eslint": "^9.39.0",
+    "jest": "^30.4.2",
     "supertest": "^7.2.2",
-    "ts-jest": "^29.4.9",
-    "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "ts-jest": "^29.4.11",
+    "tsx": "^4.23.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.50.0"
   }
 }
