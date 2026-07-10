@@ -1,10 +1,18 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { getAuthUrl } from '../config/google.config';
 import { authService } from '../services/auth.service';
 import { authenticateSession, AuthRequest } from '../middleware/auth.middleware';
 import { permissionsService } from '../services/permissions.service';
 import { isEmailInAllowedDomain, getAllowedDomains } from '../utils/validation';
 import { sendApiError } from '../utils/apiError';
+import {
+  SESSION_COOKIE_NAME,
+  OAUTH_STATE_COOKIE_NAME,
+  sessionCookieOptions,
+  clearCookieOptions,
+  oauthStateCookieOptions,
+} from '../utils/sessionCookie';
 
 const router = Router();
 
@@ -14,11 +22,13 @@ function frontendBase(): string {
 
 /**
  * GET /api/auth/login
- * Get OAuth2 authorization URL
+ * Start Google OAuth (identity only). Sets a short-lived oauth_state cookie for CSRF.
  */
-router.get('/login', (req: Request, res: Response) => {
+router.get('/login', (_req: Request, res: Response) => {
   try {
-    const authUrl = getAuthUrl();
+    const state = crypto.randomBytes(24).toString('hex');
+    res.cookie(OAUTH_STATE_COOKIE_NAME, state, oauthStateCookieOptions());
+    const authUrl = getAuthUrl(state);
     res.json({ authUrl });
   } catch (error) {
     console.error('Error generating auth URL:', error);
@@ -28,25 +38,31 @@ router.get('/login', (req: Request, res: Response) => {
 
 /**
  * GET /api/auth/callback
- * OAuth2 callback endpoint
+ * OAuth2 callback: exchange code, gate domain + admin, set HttpOnly session cookie.
+ * Google tokens are used only for this request and never sent to the browser.
  */
 router.get('/callback', async (req: Request, res: Response) => {
   const base = frontendBase();
   try {
-    const { code, error } = req.query;
+    const { code, error, state } = req.query;
 
     if (error) {
       return res.redirect(`${base}/auth/error?error=${encodeURIComponent(String(error))}`);
+    }
+
+    const expectedState = req.cookies?.[OAUTH_STATE_COOKIE_NAME];
+    res.clearCookie(OAUTH_STATE_COOKIE_NAME, clearCookieOptions());
+    if (!state || !expectedState || String(state) !== String(expectedState)) {
+      console.warn('OAuth callback rejected: missing or mismatched state');
+      return res.redirect(`${base}/auth/error?error=invalid_state`);
     }
 
     if (!code || typeof code !== 'string') {
       return res.redirect(`${base}/auth/error?error=no_code`);
     }
 
-    // Exchange code for tokens
+    // Exchange code for tokens (server-side only; discarded after identity check)
     const tokens = await authService.exchangeCodeForTokens(code);
-
-    // Get user info
     const userInfo = await authService.getUserInfo(tokens.accessToken);
 
     // --- Login gate -------------------------------------------------------
@@ -70,18 +86,11 @@ router.get('/callback', async (req: Request, res: Response) => {
     }
     // ---------------------------------------------------------------------
 
-    // Create session token
     const sessionToken = authService.createSessionToken(userInfo);
+    res.cookie(SESSION_COOKIE_NAME, sessionToken, sessionCookieOptions());
 
-    // Return tokens in the URL *fragment* (not query string): fragments are not
-    // sent to the server, recorded in access logs, or leaked via the Referer
-    // header, unlike query parameters.
-    const params = new URLSearchParams();
-    params.set('token', sessionToken);
-    if (tokens.refreshToken) {
-      params.set('refreshToken', tokens.refreshToken);
-    }
-    res.redirect(`${base}/auth/callback#${params.toString()}`);
+    // Clean redirect — no tokens in query or fragment
+    res.redirect(`${base}/users`);
   } catch (error) {
     console.error('Error in OAuth callback:', error);
     res.redirect(`${base}/auth/error?error=callback_failed`);
@@ -90,9 +99,9 @@ router.get('/callback', async (req: Request, res: Response) => {
 
 /**
  * GET /api/auth/me
- * Get current user info
+ * Current user from session cookie (or optional Bearer for automation).
  */
-router.get('/me', authenticateSession, async (req: any, res: Response) => {
+router.get('/me', authenticateSession, async (req: AuthRequest, res: Response) => {
   try {
     // Authoritative internal-domain list (WORKSPACE_DOMAIN + GWS_ALLOWED_DOMAINS),
     // unioned with the signed-in user's own domain as a safety net. The client
@@ -114,43 +123,25 @@ router.get('/me', authenticateSession, async (req: any, res: Response) => {
 });
 
 /**
- * POST /api/auth/refresh
- * Refresh access token
- */
-router.post('/refresh', async (req: Request, res: Response) => {
-  try {
-    const { refreshToken } = req.body;
-
-    if (!refreshToken) {
-      return res.status(400).json({ error: 'Refresh token required' });
-    }
-
-    const tokens = await authService.refreshAccessToken(refreshToken);
-    res.json(tokens);
-  } catch (error) {
-    console.error('Error refreshing token:', error);
-    res.status(401).json({ error: 'Failed to refresh token' });
-  }
-});
-
-/**
  * POST /api/auth/logout
- * Logout (client should clear tokens)
+ * Clear session cookie. Does not require a valid session (always clear client state).
  */
-router.post('/logout', authenticateSession, (req: Request, res: Response) => {
+router.post('/logout', (_req: Request, res: Response) => {
+  res.clearCookie(SESSION_COOKIE_NAME, clearCookieOptions());
+  res.clearCookie(OAUTH_STATE_COOKIE_NAME, clearCookieOptions());
   res.json({ message: 'Logged out successfully' });
 });
 
 /**
  * GET /api/auth/permissions
- * Get user's permissions based on Google Workspace admin roles
+ * Permissions from Workspace admin roles (DWD). Requires session.
  */
 router.get('/permissions', authenticateSession, async (req: AuthRequest, res: Response) => {
   try {
     const permissions = await permissionsService.getUserPermissions(req.user!.email);
     const adminRole = await permissionsService.getAdminRoles(req.user!.email);
-    
-    res.json({ 
+
+    res.json({
       permissions,
       isSuperAdmin: adminRole.isSuperAdmin,
       isDelegatedAdmin: adminRole.isDelegatedAdmin,

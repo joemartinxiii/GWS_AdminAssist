@@ -8,18 +8,16 @@ export interface User {
   allowedDomains?: string[];
 }
 
+/**
+ * Session is an HttpOnly cookie set by the backend OAuth callback.
+ * The SPA never stores JWTs or Google tokens in localStorage.
+ */
 class AuthService {
-  private sessionToken: string | null = null;
-  private refreshToken: string | null = null;
-
-  constructor() {
-    // Load tokens from localStorage on initialization
-    this.sessionToken = localStorage.getItem('sessionToken');
-    this.refreshToken = localStorage.getItem('refreshToken');
-  }
+  private cachedUser: User | null = null;
+  private sessionKnown = false;
 
   /**
-   * Get OAuth2 login URL
+   * Get OAuth2 login URL (also sets oauth_state cookie server-side).
    */
   async getAuthUrl(): Promise<string> {
     const response = await apiClient.get('/auth/login');
@@ -27,75 +25,61 @@ class AuthService {
   }
 
   /**
-   * Set session token
-   */
-  setSessionToken(token: string, refreshToken?: string): void {
-    this.sessionToken = token;
-    localStorage.setItem('sessionToken', token);
-    
-    if (refreshToken) {
-      this.refreshToken = refreshToken;
-      localStorage.setItem('refreshToken', refreshToken);
-    }
-  }
-
-  /**
-   * Get current user info
+   * Validate session via cookie and return the current user.
    */
   async getCurrentUser(): Promise<User> {
     const response = await apiClient.get('/auth/me');
+    this.cachedUser = response.data;
+    this.sessionKnown = true;
     return response.data;
   }
 
   /**
-   * Refresh access token
+   * Probe session (cookie). Returns null if not signed in.
    */
-  async refreshAccessToken(): Promise<void> {
-    if (!this.refreshToken) {
-      throw new Error('No refresh token available');
-    }
-
+  async checkSession(): Promise<User | null> {
     try {
-      const response = await apiClient.post('/auth/refresh', {
-        refreshToken: this.refreshToken,
-      });
-
-      this.setSessionToken(response.data.accessToken, response.data.refreshToken);
-    } catch (error) {
-      // Refresh failed, clear tokens and redirect to login
-      this.logout();
-      throw error;
+      return await this.getCurrentUser();
+    } catch {
+      this.cachedUser = null;
+      this.sessionKnown = true;
+      return null;
     }
   }
 
   /**
-   * Logout
+   * Logout — clears HttpOnly session cookie on the server.
    */
   async logout(): Promise<void> {
     try {
       await apiClient.post('/auth/logout');
-    } catch (error) {
+    } catch {
       // Ignore errors on logout
     } finally {
-      this.sessionToken = null;
-      this.refreshToken = null;
-      localStorage.removeItem('sessionToken');
-      localStorage.removeItem('refreshToken');
+      this.cachedUser = null;
+      this.sessionKnown = true;
+      try {
+        localStorage.removeItem('sessionToken');
+        localStorage.removeItem('refreshToken');
+      } catch {
+        /* ignore */
+      }
     }
   }
 
   /**
-   * Check if user is authenticated
+   * Last known session user (from checkSession / getCurrentUser). Not a live check.
    */
-  isAuthenticated(): boolean {
-    return !!this.sessionToken;
+  getCachedUser(): User | null {
+    return this.cachedUser;
   }
 
   /**
-   * Get session token
+   * True only after a successful checkSession/getCurrentUser in this page load.
+   * Prefer checkSession() for route guards.
    */
-  getSessionToken(): string | null {
-    return this.sessionToken;
+  hasCachedSession(): boolean {
+    return this.sessionKnown && !!this.cachedUser;
   }
 }
 

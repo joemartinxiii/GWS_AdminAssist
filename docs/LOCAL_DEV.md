@@ -33,7 +33,9 @@ Alternatively, add `VITE_USE_MSW=true` to `frontend/.env.local` and run `npm run
 npm run dev              # from repo root: backend (port 5001) + frontend (3000)
 ```
 
-The Vite dev server proxies `/api` → `http://localhost:5001`. Sign in with Google. This requires backend env vars (OAuth client, JWT secret, workspace domain). Auth is **keyless** — set `SERVICE_ACCOUNT_EMAIL` to the runtime SA and authenticate locally with `gcloud auth application-default login` (your account needs `roles/iam.serviceAccountTokenCreator` on that SA). No key file. See [SECURITY.md](../SECURITY.md#environment-variables) and [STAGING_TEST_SETUP.md](./STAGING_TEST_SETUP.md).
+The Vite dev server proxies `/api` → `http://localhost:5001`. The SPA calls **same-origin** `/api` so the **HttpOnly session cookie** works (do not point `VITE_API_URL` at `:5001` unless you know you need a cross-origin setup).
+
+Sign in with Google. This requires backend env vars (OAuth client, JWT secret, workspace domain). For local OAuth, register redirect URI **`http://localhost:3000/api/auth/callback`** (proxied to the backend) so the session cookie is set on the same host as the UI. Auth is **keyless** — set `SERVICE_ACCOUNT_EMAIL` to the runtime SA and authenticate locally with `gcloud auth application-default login` (your account needs `roles/iam.serviceAccountTokenCreator` on that SA). No key file. See [SECURITY.md](../SECURITY.md#environment-variables) and [STAGING_TEST_SETUP.md](./STAGING_TEST_SETUP.md).
 
 ## Frontend env vars (`VITE_*`)
 
@@ -42,10 +44,10 @@ Only `VITE_`-prefixed vars are exposed to the bundle. Put overrides in `frontend
 | Var | Purpose |
 |-----|---------|
 | `VITE_USE_MSW` | `true` enables MSW mocks (**development only**). Omit/`false` for the real API. |
-| `VITE_API_URL` | REST API base incl. `/api` prefix. Default when unset: `http://localhost:5001/api`. |
+| `VITE_API_URL` | REST API base incl. `/api` prefix. Default: **`/api`** (same-origin; recommended). |
 | `VITE_WORKSPACE_DOMAIN` | Used for export filenames; match backend `WORKSPACE_DOMAIN`. |
 
-> Docker Compose may map the backend to host port **5000**; if you run only the compose API, set `VITE_API_URL=http://localhost:5000/api`.
+> Prefer the Vite proxy (`/api`) so session cookies stay same-site. Only override `VITE_API_URL` if you intentionally run a split origin.
 
 ## Routes
 

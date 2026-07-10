@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { authService } from '../services/auth.service';
+import { SESSION_COOKIE_NAME } from '../utils/sessionCookie';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -11,7 +12,24 @@ export interface AuthRequest extends Request {
 }
 
 /**
- * Middleware to verify JWT session token
+ * Prefer HttpOnly session cookie; accept Authorization Bearer for automation
+ * (Playwright, live tests, curl) only — the SPA does not store tokens.
+ */
+function extractSessionToken(req: Request): string | undefined {
+  const cookieToken = req.cookies?.[SESSION_COOKIE_NAME];
+  if (cookieToken && typeof cookieToken === 'string' && cookieToken.length > 0) {
+    return cookieToken;
+  }
+  const header = req.headers.authorization;
+  if (header?.startsWith('Bearer ')) {
+    const bearer = header.slice(7).trim();
+    if (bearer) return bearer;
+  }
+  return undefined;
+}
+
+/**
+ * Middleware to verify JWT session token (cookie or Bearer).
  */
 export async function authenticateSession(
   req: AuthRequest,
@@ -19,8 +37,7 @@ export async function authenticateSession(
   next: NextFunction
 ): Promise<void> {
   try {
-    const token = req.headers.authorization?.replace('Bearer ', '') || 
-                  req.cookies?.sessionToken;
+    const token = extractSessionToken(req);
 
     if (!token) {
       res.status(401).json({ error: 'No authentication token provided' });
@@ -30,39 +47,8 @@ export async function authenticateSession(
     const user = authService.verifySessionToken(token);
     req.user = user;
     next();
-  } catch (error) {
+  } catch {
     res.status(401).json({ error: 'Invalid or expired token' });
-  }
-}
-
-/**
- * Middleware to verify OAuth2 access token and attach to request
- */
-export async function authenticateOAuth(
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    const token = req.headers.authorization?.replace('Bearer ', '') ||
-                  req.cookies?.accessToken;
-
-    if (!token) {
-      res.status(401).json({ error: 'No OAuth token provided' });
-      return;
-    }
-
-    // Verify token is valid by getting user info
-    const userInfo = await authService.getUserInfo(token);
-    req.user = {
-      email: userInfo.email,
-      name: userInfo.name,
-      picture: userInfo.picture,
-    };
-    req.accessToken = token;
-    next();
-  } catch (error) {
-    res.status(401).json({ error: 'Invalid OAuth token' });
   }
 }
 
@@ -75,16 +61,14 @@ export async function optionalAuth(
   next: NextFunction
 ): Promise<void> {
   try {
-    const token = req.headers.authorization?.replace('Bearer ', '') || 
-                  req.cookies?.sessionToken;
+    const token = extractSessionToken(req);
 
     if (token) {
       const user = authService.verifySessionToken(token);
       req.user = user;
     }
     next();
-  } catch (error) {
-    // Continue without authentication
+  } catch {
     next();
   }
 }

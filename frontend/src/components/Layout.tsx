@@ -137,15 +137,19 @@ export function Layout({ children }: LayoutProps) {
     let mounted = true;
     const loadCurrentUser = async () => {
       try {
+        // Prefer cache from ProtectedRoute checkSession; refresh if needed
+        const cached = authService.getCachedUser();
+        if (cached) {
+          if (mounted) setCurrentUser(cached);
+          return;
+        }
         const user = await authService.getCurrentUser();
         if (mounted) setCurrentUser(user);
       } catch {
         if (mounted) setCurrentUser(null);
       }
     };
-    if (authService.isAuthenticated()) {
-      void loadCurrentUser();
-    }
+    void loadCurrentUser();
     return () => {
       mounted = false;
     };

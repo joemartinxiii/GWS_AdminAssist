@@ -166,21 +166,23 @@ export function getOAuth2Client(): OAuth2Client {
   return oauth2Client;
 }
 
-export function getAuthUrl(): string {
+/**
+ * Browser OAuth is identity-only. Workspace APIs use domain-wide delegation
+ * server-side; the SPA never holds Google access/refresh tokens.
+ */
+export function getAuthUrl(state?: string): string {
   const client = getOAuth2Client();
 
   return client.generateAuthUrl({
-    access_type: 'offline',
+    // Online only — no Google refresh token for the browser or long-lived offline grant.
+    access_type: 'online',
     scope: [
+      'openid',
       'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/userinfo.profile',
-      'https://www.googleapis.com/auth/admin.directory.user.readonly',
-      'https://www.googleapis.com/auth/admin.directory.group.readonly',
-      'https://www.googleapis.com/auth/drive.readonly',
-      'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/calendar.readonly',
     ],
-    prompt: 'consent',
+    prompt: 'select_account',
+    ...(state ? { state } : {}),
   });
 }
 

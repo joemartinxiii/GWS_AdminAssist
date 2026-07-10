@@ -27,12 +27,13 @@ Completed with warnings:
 
 | Gate | What it enforces | Where |
 |------|------------------|-------|
-| OAuth sign-in | Must authenticate with a Google account | `backend/src/routes/auth.routes.ts` (`/callback`) |
+| OAuth sign-in | Must authenticate with a Google account (identity scopes only) | `backend/src/routes/auth.routes.ts` (`/callback`) |
 | Allowed-domain check | Email domain must be in `WORKSPACE_DOMAIN` / `GWS_ALLOWED_DOMAINS`; **fails closed** if none set | `backend/src/utils/validation.ts` |
 | **Workspace-admin check** | Login is **rejected** (`not_admin`) unless the Directory API reports the user as `isAdmin` or `isDelegatedAdmin` | `backend/src/services/permissions.service.ts` |
+| **HttpOnly session cookie** | After gates pass, the server sets an **HttpOnly, Secure, SameSite=Lax** app session JWT cookie. Google tokens are **not** stored in the browser or put in the URL. | `backend/src/utils/sessionCookie.ts`, `auth.routes.ts` |
 | Per-route permissions | `requireAnyAdmin` / `requireSuperAdmin` / `requirePermission(...)` re-checked on protected routes | `backend/src/middleware/permissions.middleware.ts` |
 
-**No privilege escalation:** domain-wide delegation impersonates the **signed-in user's own email** (`req.user.email`), never a fixed super-admin. Every Google API call runs with that person's real Workspace privileges, and delegated (view-only) admins are additionally blocked from mutations by the permission middleware.
+**No privilege escalation:** domain-wide delegation impersonates the **signed-in user's own email** (`req.user.email`), never a fixed super-admin. Every Google API call runs with that person's real Workspace privileges, and delegated (view-only) admins are additionally blocked from mutations by the permission middleware. **Audit logs** attribute mutations to `req.user.email` from the session cookie — the same identity DWD uses.
 
 **Net effect:** a stranger with no domain account is stopped at the domain check; a non-admin employee who signs in is stopped at the admin check; only real Workspace admins get a session, acting only as themselves.
 
@@ -48,10 +49,10 @@ The current posture is correct for a browser OAuth app. If you later want defens
 
 Use **no spaces** after commas. Some UIs accept one line; others let you add scopes one-by-one (split on commas).
 
-**Google Cloud — OAuth consent screen** (APIs & Services → OAuth consent screen → add scopes):
+**Google Cloud — OAuth consent screen** (APIs & Services → OAuth consent screen → add scopes). Browser sign-in is **identity only**; Workspace APIs use domain-wide delegation, not user OAuth tokens:
 
 ```
-https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/userinfo.profile,https://www.googleapis.com/auth/admin.directory.user.readonly,https://www.googleapis.com/auth/admin.directory.group.readonly,https://www.googleapis.com/auth/drive.readonly,https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/calendar.readonly
+openid,https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/userinfo.profile
 ```
 
 **Google Workspace Admin — domain-wide delegation** (admin.google.com → Security → API controls → Domain-wide delegation). Use the **`client_id`** from the **service account JSON** (not the OAuth web client ID). Scopes must match `backend/src/config/google.config.ts` and [`scripts/lib/scopes.sh`](scripts/lib/scopes.sh) (`getServiceAccountClient`):
@@ -185,7 +186,7 @@ The tool protects against these specific attack vectors:
 - **Domain-Wide Delegation/Impersonation**: Broad SA scopes (full Drive, Gmail send, Admin Directory). Per-request `subject = userEmail` (the signed-in user, never a fixed super-admin) + super-admin gating in [permissions.middleware.ts](backend/src/middleware/permissions.middleware.ts) and [permissions.service.ts](backend/src/services/permissions.service.ts). **Auth is keyless** — the runtime SA signs its own short-lived delegation tokens via the IAM Credentials API, so there is **no service-account key to leak or rotate**. **Mitigation**: monitor Cloud Logging for anomalous API calls; consider splitting scopes by permission level in future.
 - **Privilege Escalation**: Delegated admins limited to read-only via `isAdmin` check from Admin SDK and permission cache. Tested in security-validation.test.ts.
 - **Input/XSS**: Centralized validation in [utils/validation.ts](backend/src/utils/validation.ts) (email, domain, delegation) + sanitizeText + DOMPurify. CSV/exports now centralized in [utils/csv.ts](backend/src/utils/csv.ts). Route-specific checks added (e.g. [users.routes.ts](backend/src/routes/users.routes.ts)).
-- **Session/Auth**: JWT with short expiry, verified in [auth.service.ts](backend/src/services/auth.service.ts). A **login-time gate** in [auth.routes.ts](backend/src/routes/auth.routes.ts) rejects any account that is not a Workspace admin in an allowed domain before a session is issued. OAuth callback tokens are returned in the URL **fragment** (`#`, never sent to servers/logs) rather than the query string. The `/health` endpoint returns only `{ status, timestamp }` and discloses no configuration.
+- **Session/Auth**: App session JWT (default **8h**, configurable via `JWT_EXPIRES_IN`) in an **HttpOnly Secure SameSite=Lax cookie**, verified in [auth.service.ts](backend/src/services/auth.service.ts). A **login-time gate** in [auth.routes.ts](backend/src/routes/auth.routes.ts) rejects any account that is not a Workspace admin in an allowed domain before a session cookie is set. Google OAuth tokens are used **only on the server** during the callback and are never stored in the browser or put in the URL. The `/health` endpoint returns only `{ status, timestamp }` and discloses no configuration.
 - **Error/Info Leak**: Global [error.middleware.ts](backend/src/middleware/error.middleware.ts) sanitizes in prod. Route catches updated to avoid leaking Google SDK details.
 - **Deps/Supply Chain**: 20 vulns identified via `npm audit` (mostly dev deps like eslint/minimatch, some google-cloud). Add `npm audit fix`, Dependabot, Trivy in CI. Pin versions.
 - **Bulk Mutations**: Gated by `requireSuperAdmin` + auditLog middleware. Add JIT approval for high-risk (e.g. mass Drive changes) in future.

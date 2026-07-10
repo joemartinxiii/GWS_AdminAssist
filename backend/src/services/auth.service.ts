@@ -8,7 +8,8 @@ if (!JWT_SECRET) {
 }
 // TypeScript now knows JWT_SECRET is defined
 const jwtSecret: string = JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
+// Default 8h: privileged admin console; shorter TTL reduces stolen-session window.
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
 
 export interface AuthTokens {
   accessToken: string;
@@ -91,29 +92,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Refresh OAuth2 access token
-   */
-  async refreshAccessToken(refreshToken: string): Promise<AuthTokens> {
-    const oauth2Client = getOAuth2Client();
-    oauth2Client.setCredentials({ refresh_token: refreshToken });
-    
-    const { credentials } = await oauth2Client.refreshAccessToken();
-    
-    if (!credentials.access_token) {
-      throw new Error('Failed to refresh access token');
-    }
-
-    const expiresAt = credentials.expiry_date 
-      ? new Date(credentials.expiry_date).getTime()
-      : Date.now() + 3600000;
-
-    return {
-      accessToken: credentials.access_token,
-      refreshToken: credentials.refresh_token || refreshToken,
-      expiresAt,
-    };
-  }
 }
 
 export const authService = new AuthService();

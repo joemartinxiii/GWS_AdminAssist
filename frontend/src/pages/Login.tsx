@@ -11,41 +11,42 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   admin_check_failed: 'We could not verify your admin status. Check service-account delegation/scopes and try again.',
   callback_failed: 'Sign-in failed during the Google callback. Please try again.',
   no_code: 'Sign-in was interrupted. Please try again.',
+  invalid_state: 'Sign-in was rejected (security check failed). Please try again.',
 };
 
 export function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Tokens now arrive in the URL fragment (not the query string) to avoid
-    // leaking them via server logs / Referer. Fall back to query params for
-    // backward compatibility, and surface any auth-gate error.
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    const token = hashParams.get('token') || searchParams.get('token');
-    const refreshToken = hashParams.get('refreshToken') || searchParams.get('refreshToken');
-    const authError = searchParams.get('error');
+    // Strip any legacy token fragments from older builds (tokens must not live in the URL).
+    if (window.location.hash && /token=/i.test(window.location.hash)) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
 
+    const authError = searchParams.get('error');
     if (authError) {
       setError(AUTH_ERROR_MESSAGES[authError] || 'Sign-in failed. Please try again.');
-      // Clear the error from the URL so a refresh doesn't re-show it.
       window.history.replaceState(null, '', window.location.pathname);
+      setChecking(false);
       return;
     }
 
-    if (token) {
-      authService.setSessionToken(token, refreshToken || undefined);
-      // Strip the fragment so tokens don't linger in the address bar / history.
-      window.history.replaceState(null, '', window.location.pathname);
-      navigate('/users', { replace: true });
-      return;
-    }
-
-    if (authService.isAuthenticated()) {
-      navigate('/users', { replace: true });
-    }
+    let mounted = true;
+    authService.checkSession().then((user) => {
+      if (!mounted) return;
+      if (user) {
+        navigate('/users', { replace: true });
+      } else {
+        setChecking(false);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
   }, [searchParams, navigate]);
 
   const handleLogin = async () => {
@@ -60,6 +61,22 @@ export function Login() {
       setLoading(false);
     }
   };
+
+  if (checking) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: (theme) => (theme.palette.mode === 'dark' ? '#18181b' : T.bg),
+        }}
+      >
+        <CircularProgress size={32} />
+      </Box>
+    );
+  }
 
   return (
     <Box
