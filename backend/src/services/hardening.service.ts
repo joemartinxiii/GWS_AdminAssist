@@ -85,6 +85,9 @@ function humanEnum(v: string | undefined): string {
 /** Map raw errors to stable operator/client copy — never surface Google JSON. */
 export function humanizeApiFailure(error: unknown, context: string): string {
   const msg = error instanceof Error ? error.message : String(error ?? '');
+  if (/429|rate.?limit|RESOURCE_EXHAUSTED|quota/i.test(msg)) {
+    return `${context}: temporarily rate-limited by Google. Wait a minute and run the audit again.`;
+  }
   if (/403|PERMISSION_DENIED|forbidden/i.test(msg)) {
     return `${context}: permission denied. Run as a super admin with the required API scopes enabled.`;
   }
@@ -110,7 +113,8 @@ export function policyApiMetaFromSnapshot(snapshot: PolicySnapshot): PolicyApiMe
   }
   const raw = snapshot.error || '';
   let code = 'unavailable';
-  if (/HTTP\s*403|403/i.test(raw)) code = 'http_403';
+  if (/HTTP\s*429|429|rate.?limit|RESOURCE_EXHAUSTED/i.test(raw)) code = 'http_429';
+  else if (/HTTP\s*403|403/i.test(raw)) code = 'http_403';
   else if (/HTTP\s*401|401/i.test(raw)) code = 'http_401';
   else if (/HTTP\s*404|404/i.test(raw)) code = 'http_404';
 

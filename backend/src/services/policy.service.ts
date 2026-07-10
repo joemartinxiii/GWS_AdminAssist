@@ -17,6 +17,14 @@ import { getDelegatedAccessToken } from '../config/google.config';
 
 const POLICIES_ENDPOINT = 'https://cloudidentity.googleapis.com/v1/policies';
 
+/** Prefer fewer pages — Cloud Identity accepts up to this many per list call. */
+const PAGE_SIZE = 1000;
+/** Brief pause between pages to avoid burst rate limits on large tenants. */
+const INTER_PAGE_DELAY_MS = 150;
+/** Retries for transient 429 / 5xx (exponential backoff + Retry-After). */
+const MAX_FETCH_ATTEMPTS = 5;
+const BASE_BACKOFF_MS = 800;
+
 interface RawPolicyQuery {
   query?: string;
   orgUnit?: string;
@@ -29,6 +37,85 @@ interface RawPolicy {
   policyQuery?: RawPolicyQuery;
   setting?: { type?: string; value?: Record<string, unknown> };
   type?: string; // 'ADMIN' | 'SYSTEM'
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Fetch one policies.list page with retries on 429 / 5xx.
+ * WorkspaceService.withRetry covers googleapis clients; this path uses raw fetch.
+ */
+async function fetchPoliciesPage(
+  url: string,
+  token: string
+): Promise<{ policies: RawPolicy[]; nextPageToken?: string }> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < MAX_FETCH_ATTEMPTS; attempt++) {
+    try {
+      const resp = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (resp.ok) {
+        const data = (await resp.json()) as {
+          policies?: RawPolicy[];
+          nextPageToken?: string;
+        };
+        return {
+          policies: Array.isArray(data.policies) ? data.policies : [],
+          nextPageToken: data.nextPageToken,
+        };
+      }
+
+      const body = await resp.text().catch(() => '');
+      const retryable = resp.status === 429 || resp.status >= 500;
+
+      if (retryable && attempt < MAX_FETCH_ATTEMPTS - 1) {
+        const retryAfterHdr = resp.headers.get('retry-after');
+        let waitMs = BASE_BACKOFF_MS * Math.pow(2, attempt);
+        if (retryAfterHdr) {
+          const asInt = parseInt(retryAfterHdr, 10);
+          if (!Number.isNaN(asInt) && asInt > 0) {
+            // Header may be seconds or an HTTP-date; prefer seconds when numeric.
+            waitMs = asInt < 1000 ? asInt * 1000 : asInt;
+          }
+        }
+        // Cap single wait so Cloud Run request doesn't hang forever.
+        waitMs = Math.min(waitMs, 15_000);
+        console.warn(
+          `Cloud Identity Policy API HTTP ${resp.status} (attempt ${attempt + 1}/${MAX_FETCH_ATTEMPTS}); retrying in ${waitMs}ms`
+        );
+        await sleep(waitMs);
+        continue;
+      }
+
+      console.error(
+        `Cloud Identity Policy API HTTP ${resp.status}:`,
+        body.slice(0, 500)
+      );
+      throw new Error(`Policy API HTTP ${resp.status}`);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Policy API HTTP')) {
+        throw error;
+      }
+      // Network blip — retry
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < MAX_FETCH_ATTEMPTS - 1) {
+        const waitMs = Math.min(BASE_BACKOFF_MS * Math.pow(2, attempt), 15_000);
+        console.warn(
+          `Cloud Identity Policy API network error (attempt ${attempt + 1}/${MAX_FETCH_ATTEMPTS}): ${lastError.message}; retrying in ${waitMs}ms`
+        );
+        await sleep(waitMs);
+        continue;
+      }
+      throw lastError;
+    }
+  }
+
+  throw lastError || new Error('Policy API request failed after retries');
 }
 
 export interface PolicyLookup {
@@ -114,32 +201,21 @@ export class PolicyService {
       const token = await getDelegatedAccessToken(subject);
       const policies: RawPolicy[] = [];
       let pageToken: string | undefined;
+      let pageIndex = 0;
 
       do {
-        const url = new URL(POLICIES_ENDPOINT);
-        url.searchParams.set('pageSize', '100');
-        if (pageToken) url.searchParams.set('pageToken', pageToken);
-
-        const resp = await fetch(url.toString(), {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (!resp.ok) {
-          const body = await resp.text().catch(() => '');
-          // Log the raw body for operators; never put it in user-facing check text.
-          console.error(
-            `Cloud Identity Policy API HTTP ${resp.status}:`,
-            body.slice(0, 500)
-          );
-          throw new Error(`Policy API HTTP ${resp.status}`);
+        if (pageIndex > 0 && INTER_PAGE_DELAY_MS > 0) {
+          await sleep(INTER_PAGE_DELAY_MS);
         }
 
-        const data = (await resp.json()) as {
-          policies?: RawPolicy[];
-          nextPageToken?: string;
-        };
-        if (Array.isArray(data.policies)) policies.push(...data.policies);
-        pageToken = data.nextPageToken;
+        const url = new URL(POLICIES_ENDPOINT);
+        url.searchParams.set('pageSize', String(PAGE_SIZE));
+        if (pageToken) url.searchParams.set('pageToken', pageToken);
+
+        const page = await fetchPoliciesPage(url.toString(), token);
+        policies.push(...page.policies);
+        pageToken = page.nextPageToken;
+        pageIndex += 1;
       } while (pageToken);
 
       return new PolicySnapshot(policies, true);
