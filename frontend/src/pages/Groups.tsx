@@ -33,13 +33,14 @@ import {
   X,
   Plus,
   Check,
+  ExternalLink,
 } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { ActionTooltip } from '../components/ActionTooltip';
-import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx, dialogDangerButtonSx } from '../theme/designTokens';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx, dialogDangerButtonSx, dialogActionsSx, dialogCancelButtonSx, dialogSecondaryButtonSx, dialogPrimaryButtonSx } from '../theme/designTokens';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
@@ -48,6 +49,7 @@ import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/Di
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
 import { DotLabel } from '../components/StatusDot';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { PageHeader } from '../components/ui/PageHeader';
 import { FilterToken } from '../components/ui/FilterToken';
 import { useTheme } from '@mui/material/styles';
 import { useConfirm } from '../hooks/useConfirm';
@@ -822,14 +824,14 @@ export function Groups() {
 
   return (
     <Box sx={{ fontFamily: T.font }}>
-      <Box sx={{ mb: 3, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { md: 'center' }, justifyContent: 'space-between' }}>
-        <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (theme) => pick(theme, T.text, '#fafafa') }}>
-          Groups
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+      <PageHeader
+        title="Groups"
+        lede="Workspace groups and membership. Open a row to manage members."
+        status={`${groups.length} ${groups.length === 1 ? 'group' : 'groups'}`}
+        actions={
           <SegmentedControl value={tabValue} options={['All Groups', 'Externally Shared', 'No Members']} onChange={setTabValue} />
-        </Box>
-      </Box>
+        }
+      />
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         {tabValue === 0 && (
           <FlyoutSearch
@@ -1146,14 +1148,32 @@ export function Groups() {
       )}
 
       <Dialog open={editDialogOpen} onClose={handleCloseEditDialog} maxWidth="md" fullWidth PaperProps={{ sx: (th) => dialogPaperSx(th) }}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>{selectedGroup?.name}</Typography>
-            <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), mt: 0.25 }}>{selectedGroup?.email}</Typography>
+            <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textTertiary(t), mt: 0.5 }}>
+              {selectedGroup?.email}
+              {members.length > 0 || !loadingMembers ? ` · ${members.length} member${members.length === 1 ? '' : 's'}` : ''}
+            </Typography>
           </Box>
+          {selectedGroup?.email && (
+            <Button
+              size="small"
+              component="a"
+              href={`https://admin.google.com/ac/groups/${encodeURIComponent(selectedGroup.email)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              endIcon={<ExternalLink size={14} strokeWidth={1.75} />}
+              sx={(th) => ({ ...dialogSecondaryButtonSx(th), height: 28, fontSize: '0.75rem', px: 1.25 })}
+            >
+              Open in Admin
+            </Button>
+          )}
+          <IconButton size="small" onClick={handleCloseEditDialog} aria-label="Close" sx={{ color: (t) => textTertiary(t) }}>
+            <X size={16} strokeWidth={1.75} />
+          </IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: '20px !important' }}>
-          <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1.5 }}>Members</Typography>
           <Box display="flex" alignItems="center" gap={1} mb={1.5} flexWrap="wrap">
             <FlyoutSearch
               value={memberSearchTerm}
@@ -1161,19 +1181,16 @@ export function Groups() {
               placeholder="Search members by email…"
               tooltip="Search members by email"
             />
-            {selectedMembers.length > 0 && (
-              <Button
-                size="small"
-                variant="contained"
-                color="error"
-                onClick={handleRemoveSelectedMembers}
-                disabled={removingMembers}
-                startIcon={removingMembers ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={15} strokeWidth={1.75} />}
-                sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 30, px: 1.5 }}
-              >
-                Remove {selectedMembers.length} selected
-              </Button>
-            )}
+            <Box sx={{ flex: 1 }} />
+            <Button
+              size="small"
+              variant="contained"
+              onClick={() => setAddMemberInlineOpen(true)}
+              startIcon={<Plus size={15} strokeWidth={1.75} />}
+              sx={(th) => ({ ...dialogPrimaryButtonSx(th), height: 30, px: 1.5 })}
+            >
+              Add members
+            </Button>
           </Box>
 
           {loadingMembers ? (
@@ -1336,25 +1353,32 @@ export function Groups() {
                   </Box>
                 </Box>
               ) : (
-                <Box sx={(t) => ({ px: 2, py: 1, borderTop: members.length > 0 ? `1px solid ${pick(t, T.borderSubtle, '#27272a')}` : 'none' })}>
-                  <Button
-                    size="small"
-                    variant="text"
-                    color="primary"
-                    onClick={() => setAddMemberInlineOpen(true)}
-                    startIcon={<Plus size={15} strokeWidth={1.75} />}
-                    sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 600 }}
-                  >
-                    Add member
-                  </Button>
-                </Box>
+                <Box sx={(t) => ({ px: 2, py: 1, borderTop: members.length > 0 ? `1px solid ${pick(t, T.borderSubtle, '#27272a')}` : 'none' })} />
               )}
             </ListShell>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2, borderTop: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}`, gap: 1 }}>
-          <Button onClick={handleCloseEditDialog} sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, color: (t) => textSecondary(t), '&:hover': { bgcolor: (t) => pick(t, '#f0f0ec', '#27272a') } }}>
-            Done
+        <DialogActions sx={(th) => dialogActionsSx(th)}>
+          <Button
+            size="small"
+            onClick={handleRemoveSelectedMembers}
+            disabled={selectedMembers.length === 0 || removingMembers}
+            startIcon={removingMembers ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={15} strokeWidth={1.75} />}
+            sx={(th) => ({
+              ...dialogDangerButtonSx(th),
+              opacity: selectedMembers.length === 0 ? 0.5 : 1,
+              bgcolor: 'transparent',
+              color: '#fca5a5',
+              border: '1px solid rgba(220, 38, 38, 0.45)',
+              '&:hover': { bgcolor: 'rgba(220, 38, 38, 0.12)', boxShadow: 'none' },
+              '&.Mui-disabled': { bgcolor: 'transparent', color: textTertiary(th), borderColor: pick(th, T.border, '#3f3f46') },
+            })}
+          >
+            Remove selected
+          </Button>
+          <Box sx={{ flex: 1 }} />
+          <Button onClick={handleCloseEditDialog} sx={(th) => dialogCancelButtonSx(th)}>
+            Close
           </Button>
         </DialogActions>
       </Dialog>

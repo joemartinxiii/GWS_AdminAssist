@@ -7,7 +7,6 @@ import {
   Toolbar,
   List,
   Typography,
-  Divider,
   IconButton,
   ListItem,
   ListItemButton,
@@ -21,6 +20,7 @@ import {
   Button as MuiButton,
   useMediaQuery,
   useTheme,
+  Chip,
 } from '@mui/material';
 import { ThemeProvider as MuiThemeProviderNested } from '@mui/material/styles';
 import {
@@ -41,37 +41,79 @@ import { authService } from '../services/auth.service';
 import { usePermissions } from '../hooks/usePermissions';
 import { Permission } from '../services/permissions.service';
 import { ThemeContext } from '../App';
-import { T } from '../theme/designTokens';
+import { T, pick, textSecondary, textTertiary } from '../theme/designTokens';
 import { FontLinks } from './FontLinks';
-import { Chip } from '@mui/material';
 
 const LU = 1.75;
-const ICON_SZ = 22;
+const ICON_SZ = 20;
 
-const drawerWidthExpanded = 280;
+const drawerWidthExpanded = 240;
 const drawerWidthCollapsed = 72;
 
 interface LayoutProps {
   children: React.ReactNode;
 }
 
-function buildMenuItems(): Array<{
+type NavItem = {
   text: string;
   icon: ReactNode;
   path: string;
   permission: Permission | null;
-}> {
+};
+
+type NavSection = {
+  label: string;
+  items: NavItem[];
+};
+
+function buildNavSections(): NavSection[] {
   const sz = ICON_SZ;
   return [
-    { text: 'People', icon: <User size={sz} strokeWidth={LU} />, path: '/users', permission: 'users.view' },
-    { text: 'Groups', icon: <Users size={sz} strokeWidth={LU} />, path: '/groups', permission: 'groups.view' },
-    { text: 'Calendar', icon: <Calendar size={sz} strokeWidth={LU} />, path: '/calendar', permission: 'calendar.view' },
-    { text: 'Email Delegation', icon: <Mail size={sz} strokeWidth={LU} />, path: '/email-delegation', permission: 'gmail.view' },
-    { text: 'Drive File Explorer', icon: <Folder size={sz} strokeWidth={LU} />, path: '/drive', permission: 'drive.view' },
-    { text: 'Shared Drives', icon: <HardDrive size={sz} strokeWidth={LU} />, path: '/shared-drives', permission: 'drive.view' },
-    { text: 'Email Signatures', icon: <PenLine size={sz} strokeWidth={LU} />, path: '/email-signatures', permission: 'gmail.view' },
-    { text: 'Security Audit', icon: <Shield size={sz} strokeWidth={LU} />, path: '/audit', permission: 'audit.view' },
+    {
+      label: 'Directory',
+      items: [
+        { text: 'People', icon: <User size={sz} strokeWidth={LU} />, path: '/users', permission: 'users.view' },
+        { text: 'Groups', icon: <Users size={sz} strokeWidth={LU} />, path: '/groups', permission: 'groups.view' },
+      ],
+    },
+    {
+      label: 'Access',
+      items: [
+        { text: 'Calendar', icon: <Calendar size={sz} strokeWidth={LU} />, path: '/calendar', permission: 'calendar.view' },
+        { text: 'Delegation', icon: <Mail size={sz} strokeWidth={LU} />, path: '/email-delegation', permission: 'gmail.view' },
+        { text: 'Drive', icon: <Folder size={sz} strokeWidth={LU} />, path: '/drive', permission: 'drive.view' },
+        { text: 'Shared drives', icon: <HardDrive size={sz} strokeWidth={LU} />, path: '/shared-drives', permission: 'drive.view' },
+        { text: 'Email signatures', icon: <PenLine size={sz} strokeWidth={LU} />, path: '/email-signatures', permission: 'gmail.view' },
+      ],
+    },
+    {
+      label: 'Security',
+      items: [
+        { text: 'Audit', icon: <Shield size={sz} strokeWidth={LU} />, path: '/audit', permission: 'audit.view' },
+      ],
+    },
   ];
+}
+
+function AppMark() {
+  return (
+    <Box
+      sx={{
+        width: 32,
+        height: 32,
+        borderRadius: '9px',
+        background: 'linear-gradient(145deg, #2b8aef, #1557b0)',
+        display: 'grid',
+        placeItems: 'center',
+        flexShrink: 0,
+        boxShadow: '0 0 0 1px rgba(255,255,255,0.08), 0 4px 12px rgba(26,115,232,0.35)',
+        color: '#fff',
+      }}
+      aria-hidden
+    >
+      <Shield size={16} strokeWidth={2} />
+    </Box>
+  );
 }
 
 export function Layout({ children }: LayoutProps) {
@@ -81,32 +123,35 @@ export function Layout({ children }: LayoutProps) {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [currentUser, setCurrentUser] = useState<{ email: string; name: string; picture?: string } | null>(null);
-  // Nav tooltips are explicitly controlled (rather than left to MUI's own
-  // hover/focus tracking) so a click always closes them deterministically,
-  // instead of relying on a mouseleave/blur that may not fire for every
-  // input method.
   const [openNavTooltip, setOpenNavTooltip] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const permissions = usePermissions(); // Full hook for role display + hasPermission
+  const permissions = usePermissions();
   const { hasPermission, isSuperAdmin, isDelegatedAdmin } = permissions;
   const { mode, toggleColorMode } = useContext(ThemeContext);
 
   const muiTheme = useTheme();
   const nestedMuiTheme = useMemo(() => muiTheme, [muiTheme]);
 
-  const menuItems = useMemo(() => buildMenuItems(), []);
+  const navSections = useMemo(() => buildNavSections(), []);
 
-  const visibleMenuItems = menuItems.filter(item =>
-    !item.permission || hasPermission(item.permission)
+  const visibleSections = useMemo(
+    () =>
+      navSections
+        .map((section) => ({
+          ...section,
+          items: section.items.filter((item) => !item.permission || hasPermission(item.permission)),
+        }))
+        .filter((section) => section.items.length > 0),
+    [navSections, hasPermission]
   );
 
   const handleDrawerToggle = () => {
-    if (isMobile) setMobileOverlayOpen(prev => !prev);
-    else setSidebarExpanded(prev => !prev);
+    if (isMobile) setMobileOverlayOpen((prev) => !prev);
+    else setSidebarExpanded((prev) => !prev);
   };
 
-  const drawerWidth = isMobile ? drawerWidthExpanded : (sidebarExpanded ? drawerWidthExpanded : drawerWidthCollapsed);
+  const drawerWidth = isMobile ? drawerWidthExpanded : sidebarExpanded ? drawerWidthExpanded : drawerWidthCollapsed;
   const drawerCollapsed = isMobile ? false : !sidebarExpanded;
 
   const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
@@ -137,7 +182,6 @@ export function Layout({ children }: LayoutProps) {
     let mounted = true;
     const loadCurrentUser = async () => {
       try {
-        // Prefer cache from ProtectedRoute checkSession; refresh if needed
         const cached = authService.getCachedUser();
         if (cached) {
           if (mounted) setCurrentUser(cached);
@@ -160,114 +204,325 @@ export function Layout({ children }: LayoutProps) {
     if (!source) return isSuperAdmin ? 'S' : 'A';
     const words = source.split(/\s+/).filter(Boolean);
     if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-    return words.slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+    return words
+      .slice(0, 2)
+      .map((w) => w[0])
+      .join('')
+      .toUpperCase();
   }, [currentUser?.name, currentUser?.email, isSuperAdmin]);
 
+  const roleLabel = isSuperAdmin ? 'Super admin' : isDelegatedAdmin ? 'Delegated admin' : 'No admin';
+
   const drawer = (collapsed: boolean) => (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Toolbar
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', px: 1.25, py: 1.5 }}>
+      {/* Brand + toggle */}
+      <Box
         sx={{
-          minHeight: { xs: 56, sm: 64 },
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.25,
+          px: 0.75,
+          pb: 2,
+          minHeight: 48,
           justifyContent: collapsed ? 'center' : 'flex-start',
-          pl: 0,
-          pr: collapsed ? 0 : 2,
         }}
       >
-        <IconButton
-          color="inherit"
-          aria-label={isMobile ? (mobileOverlayOpen ? 'close menu' : 'open menu') : (sidebarExpanded ? 'collapse sidebar' : 'expand sidebar')}
-          edge={collapsed ? false : 'start'}
-          onClick={handleDrawerToggle}
-          sx={{ mr: collapsed ? 0 : 1 }}
-        >
-          <MenuHamburger size={22} strokeWidth={LU} />
-        </IconButton>
-      </Toolbar>
-      <Divider />
-      <List sx={{ flexGrow: 1, px: 1, pt: 1 }}>
-        {visibleMenuItems.map((item) => {
-          const active = location.pathname === item.path;
-          return (
-            <ListItem key={item.text} disablePadding sx={{ display: 'block', mb: 0.25 }}>
-              <Tooltip
-                title={collapsed ? item.text : ''}
-                placement="right"
-                disableHoverListener={!collapsed}
-                disableInteractive
-                open={collapsed && openNavTooltip === item.text}
-                onOpen={() => setOpenNavTooltip(item.text)}
-                onClose={() => setOpenNavTooltip(null)}
+        {!collapsed && <AppMark />}
+        {!collapsed && (
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography
+              sx={{
+                fontFamily: T.font,
+                fontWeight: 700,
+                fontSize: '0.8125rem',
+                letterSpacing: '-0.02em',
+                color: (th) => pick(th, T.text, '#fafafa'),
+                lineHeight: 1.2,
+              }}
+            >
+              AdminAssist
+            </Typography>
+            <Typography
+              sx={{
+                fontFamily: T.font,
+                fontSize: '0.6875rem',
+                color: (t) => textTertiary(t),
+                lineHeight: 1.2,
+              }}
+            >
+              Workspace ops
+            </Typography>
+          </Box>
+        )}
+        {collapsed && (
+          <Tooltip title="AdminAssist" placement="right">
+            <Box sx={{ display: 'grid', placeItems: 'center' }}>
+              <AppMark />
+            </Box>
+          </Tooltip>
+        )}
+        {!isMobile && (
+          <IconButton
+            color="inherit"
+            aria-label={sidebarExpanded ? 'collapse sidebar' : 'expand sidebar'}
+            onClick={handleDrawerToggle}
+            size="small"
+            sx={{
+              ml: collapsed ? 0 : 'auto',
+              color: (t) => textSecondary(t),
+              display: collapsed ? 'none' : 'inline-flex',
+            }}
+          >
+            <MenuHamburger size={18} strokeWidth={LU} />
+          </IconButton>
+        )}
+      </Box>
+
+      {collapsed && !isMobile && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1 }}>
+          <IconButton
+            color="inherit"
+            aria-label="expand sidebar"
+            onClick={handleDrawerToggle}
+            size="small"
+            sx={{ color: (t) => textSecondary(t) }}
+          >
+            <MenuHamburger size={18} strokeWidth={LU} />
+          </IconButton>
+        </Box>
+      )}
+
+      <List sx={{ flexGrow: 1, px: 0, pt: 0 }}>
+        {visibleSections.map((section) => (
+          <Box key={section.label} sx={{ mt: section.label === visibleSections[0]?.label ? 0 : 1 }}>
+            {!collapsed && (
+              <Typography
+                sx={{
+                  fontFamily: T.font,
+                  fontSize: '0.625rem',
+                  fontWeight: 600,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: (t) => textTertiary(t),
+                  px: 1.25,
+                  pt: 1.25,
+                  pb: 0.75,
+                }}
               >
-                <ListItemButton
-                  selected={active}
-                  onClick={(e) => {
-                    navigate(item.path);
-                    setMobileOverlayOpen(false);
-                    setOpenNavTooltip(null);
-                    e.currentTarget.blur();
-                  }}
-                  sx={(th) => ({
-                    borderRadius: '8px',
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                    px: collapsed ? 1.5 : 1.75,
-                    py: 0.875,
-                    color: active
-                      ? '#1a73e8'
-                      : th.palette.mode === 'dark' ? '#a1a1aa' : '#52525b',
-                    bgcolor: active
-                      ? th.palette.mode === 'dark' ? 'rgba(26,115,232,0.15)' : '#e8f0fe'
-                      : 'transparent',
-                    '&:hover': {
-                      bgcolor: active
-                        ? th.palette.mode === 'dark' ? 'rgba(26,115,232,0.20)' : '#dce8fd'
-                        : th.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                    },
-                    '&.Mui-selected': {
-                      bgcolor: th.palette.mode === 'dark' ? 'rgba(26,115,232,0.15)' : '#e8f0fe',
-                      '&:hover': {
-                        bgcolor: th.palette.mode === 'dark' ? 'rgba(26,115,232,0.20)' : '#dce8fd',
-                      },
-                    },
-                  })}
-                >
-                  <ListItemIcon sx={{ minWidth: collapsed ? 0 : 40, color: 'inherit' }}>
-                    {item.icon}
-                  </ListItemIcon>
-                  {!collapsed && (
-                    <ListItemText
-                      primary={item.text}
-                      primaryTypographyProps={{
-                        fontFamily: T.font,
-                        fontSize: '0.875rem',
-                        fontWeight: active ? 600 : 400,
-                        color: 'inherit',
+                {section.label}
+              </Typography>
+            )}
+            {section.items.map((item) => {
+              const active = location.pathname === item.path;
+              return (
+                <ListItem key={item.path} disablePadding sx={{ display: 'block', mb: 0.25, position: 'relative' }}>
+                  {active && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        left: -6,
+                        top: 8,
+                        bottom: 8,
+                        width: 3,
+                        borderRadius: 1,
+                        bgcolor: T.accent,
+                        zIndex: 1,
                       }}
                     />
                   )}
-                </ListItemButton>
-              </Tooltip>
-            </ListItem>
-          );
-        })}
+                  <Tooltip
+                    title={collapsed ? item.text : ''}
+                    placement="right"
+                    disableHoverListener={!collapsed}
+                    disableInteractive
+                    open={collapsed && openNavTooltip === item.path}
+                    onOpen={() => setOpenNavTooltip(item.path)}
+                    onClose={() => setOpenNavTooltip(null)}
+                  >
+                    <ListItemButton
+                      selected={active}
+                      onClick={(e) => {
+                        navigate(item.path);
+                        setMobileOverlayOpen(false);
+                        setOpenNavTooltip(null);
+                        e.currentTarget.blur();
+                      }}
+                      sx={(th) => ({
+                        borderRadius: T.radius,
+                        justifyContent: collapsed ? 'center' : 'flex-start',
+                        px: collapsed ? 1.25 : 1.25,
+                        py: 1.125,
+                        color: active
+                          ? pick(th, T.accent, '#8ab4f8')
+                          : pick(th, T.textSecondary, '#a1a1aa'),
+                        bgcolor: active
+                          ? pick(th, T.accentSoft, 'rgba(26,115,232,0.16)')
+                          : 'transparent',
+                        '&:hover': {
+                          bgcolor: active
+                            ? pick(th, T.accentSoft, 'rgba(26,115,232,0.20)')
+                            : pick(th, 'rgba(0,0,0,0.04)', '#27272a'),
+                          color: active ? pick(th, T.accent, '#8ab4f8') : pick(th, T.text, '#fafafa'),
+                        },
+                        '&.Mui-selected': {
+                          bgcolor: pick(th, T.accentSoft, 'rgba(26,115,232,0.16)'),
+                          '&:hover': {
+                            bgcolor: pick(th, T.accentSoft, 'rgba(26,115,232,0.20)'),
+                          },
+                        },
+                      })}
+                    >
+                      <ListItemIcon sx={{ minWidth: collapsed ? 0 : 36, color: 'inherit' }}>{item.icon}</ListItemIcon>
+                      {!collapsed && (
+                        <ListItemText
+                          primary={item.text}
+                          primaryTypographyProps={{
+                            fontFamily: T.font,
+                            fontSize: '0.8125rem',
+                            fontWeight: 500,
+                            color: 'inherit',
+                          }}
+                        />
+                      )}
+                    </ListItemButton>
+                  </Tooltip>
+                </ListItem>
+              );
+            })}
+          </Box>
+        ))}
       </List>
+
+      {/* Rail foot — user chip */}
+      <Box
+        sx={{
+          mt: 'auto',
+          pt: 1.5,
+          borderTop: (th) => `1px solid ${pick(th, T.border, '#2e2e33')}`,
+        }}
+      >
+        <Box
+          onClick={handleMenuClick}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleMenuClick(e as unknown as React.MouseEvent<HTMLElement>);
+            }
+          }}
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.25,
+            px: 0.75,
+            py: 1,
+            borderRadius: T.radius,
+            cursor: 'pointer',
+            justifyContent: collapsed ? 'center' : 'flex-start',
+            '&:hover': { bgcolor: (th) => pick(th, 'rgba(0,0,0,0.04)', '#27272a') },
+          }}
+        >
+          <Avatar
+            src={currentUser?.picture}
+            alt={currentUser?.name || currentUser?.email || 'User'}
+            sx={{
+              width: 28,
+              height: 28,
+              fontSize: '0.6875rem',
+              fontWeight: 600,
+              bgcolor: (th) => pick(th, '#e4e4e7', '#3f3f46'),
+              color: (t) => textSecondary(t),
+            }}
+          >
+            {avatarLabel}
+          </Avatar>
+          {!collapsed && (
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography
+                noWrap
+                sx={{
+                  fontFamily: T.font,
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: (th) => pick(th, T.text, '#fafafa'),
+                  lineHeight: 1.3,
+                }}
+              >
+                {currentUser?.name || currentUser?.email || 'Admin'}
+              </Typography>
+              <Typography
+                noWrap
+                sx={{
+                  fontFamily: T.font,
+                  fontSize: '0.6875rem',
+                  color: (t) => textTertiary(t),
+                  lineHeight: 1.3,
+                }}
+              >
+                {roleLabel}
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      </Box>
     </Box>
+  );
+
+  const userMenu = (
+    <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
+      <MenuItem disabled sx={{ opacity: 1, cursor: 'default' }}>
+        <Chip
+          label={
+            isSuperAdmin
+              ? 'Super Admin (Full Access)'
+              : isDelegatedAdmin
+                ? 'Delegated Admin (View Only)'
+                : 'No Admin Privileges'
+          }
+          color={isSuperAdmin ? 'success' : isDelegatedAdmin ? 'warning' : 'default'}
+          size="small"
+          sx={{ fontFamily: T.font }}
+        />
+      </MenuItem>
+      <MenuItem
+        onClick={() => {
+          toggleColorMode();
+          handleMenuClose();
+        }}
+      >
+        <ListItemIcon>{mode === 'dark' ? <Sun size={18} strokeWidth={LU} /> : <Moon size={18} strokeWidth={LU} />}</ListItemIcon>
+        {mode === 'dark' ? 'Light mode' : 'Dark mode'}
+      </MenuItem>
+      <MenuItem onClick={handleLogout}>
+        <ListItemIcon>
+          <LogOut size={18} strokeWidth={LU} />
+        </ListItemIcon>
+        Logout
+      </MenuItem>
+    </Menu>
   );
 
   const layoutTree = (
     <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <FontLinks />
+      {/* Compact top bar — theme toggle + mobile menu; brand lives in the rail */}
       <AppBar
         position="fixed"
         elevation={0}
         sx={{
           width: { xs: '100%', sm: `calc(100% - ${drawerWidth}px)` },
           ml: { sm: `${drawerWidth}px` },
-          transition: (th) => th.transitions.create(['width', 'margin'], { duration: th.transitions.duration.enteringScreen, easing: th.transitions.easing.sharp }),
-          borderBottom: '1px solid rgba(255,255,255,0.10)',
+          transition: (th) =>
+            th.transitions.create(['width', 'margin'], {
+              duration: th.transitions.duration.enteringScreen,
+              easing: th.transitions.easing.sharp,
+            }),
+          borderBottom: (th) => `1px solid ${pick(th, 'rgba(0,0,0,0.08)', 'rgba(255,255,255,0.10)')}`,
           backdropFilter: 'blur(8px)',
         }}
       >
-        <Toolbar>
+        <Toolbar sx={{ minHeight: { xs: 48, sm: 52 } }}>
           {isMobile && (
             <IconButton
               color="inherit"
@@ -279,9 +534,7 @@ export function Layout({ children }: LayoutProps) {
               <MenuHamburger size={22} strokeWidth={LU} />
             </IconButton>
           )}
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 700, fontFamily: T.font, letterSpacing: '-0.01em' }}>
-            GWS Admin Assist
-          </Typography>
+          <Box sx={{ flexGrow: 1 }} />
           <Box
             onClick={toggleColorMode}
             role="switch"
@@ -294,14 +547,16 @@ export function Layout({ children }: LayoutProps) {
               p: '3px',
               gap: '2px',
               cursor: 'pointer',
-              mr: 1.5,
+              mr: { xs: 1.5, sm: 0 },
               flexShrink: 0,
             }}
           >
-            {([
-              { label: 'light', icon: <Sun size={15} strokeWidth={1.75} /> },
-              { label: 'dark',  icon: <Moon size={15} strokeWidth={1.75} /> },
-            ] as const).map(({ label, icon }) => {
+            {(
+              [
+                { label: 'light', icon: <Sun size={15} strokeWidth={1.75} /> },
+                { label: 'dark', icon: <Moon size={15} strokeWidth={1.75} /> },
+              ] as const
+            ).map(({ label, icon }) => {
               const active = mode === label;
               return (
                 <Box
@@ -325,53 +580,43 @@ export function Layout({ children }: LayoutProps) {
               );
             })}
           </Box>
-          <IconButton onClick={handleMenuClick} sx={{ p: 0 }}>
-            <Avatar
-              src={currentUser?.picture}
-              alt={currentUser?.name || currentUser?.email || 'User'}
-              sx={{ width: 32, height: 32, bgcolor: isSuperAdmin ? '#2e7d32' : '#ed6c02' }}
-            >
-              {avatarLabel}
-            </Avatar>
-          </IconButton>
-          <Menu
-            anchorEl={anchorEl}
-            open={Boolean(anchorEl)}
-            onClose={handleMenuClose}
-          >
-            <MenuItem disabled sx={{ opacity: 1, cursor: 'default' }}>
-              <Chip
-                label={isSuperAdmin 
-                  ? 'Super Admin (Full Access)' 
-                  : isDelegatedAdmin 
-                    ? 'Delegated Admin (View Only)' 
-                    : 'No Admin Privileges'
-                }
-                color={isSuperAdmin ? 'success' : isDelegatedAdmin ? 'warning' : 'default'}
-                size="small"
-                sx={{ fontFamily: T.font }}
-              />
-            </MenuItem>
-            <MenuItem onClick={handleLogout}>
-              <ListItemIcon>
-                <LogOut size={18} strokeWidth={LU} />
-              </ListItemIcon>
-              Logout
-            </MenuItem>
-          </Menu>
+          {isMobile && (
+            <IconButton onClick={handleMenuClick} sx={{ p: 0 }}>
+              <Avatar
+                src={currentUser?.picture}
+                alt={currentUser?.name || currentUser?.email || 'User'}
+                sx={{
+                  width: 28,
+                  height: 28,
+                  fontSize: '0.6875rem',
+                  bgcolor: (th) => pick(th, '#e4e4e7', '#3f3f46'),
+                  color: (t) => textSecondary(t),
+                }}
+              >
+                {avatarLabel}
+              </Avatar>
+            </IconButton>
+          )}
         </Toolbar>
       </AppBar>
+      {userMenu}
       <Box
         component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 }, transition: (th) => th.transitions.create('width', { duration: th.transitions.duration.enteringScreen, easing: th.transitions.easing.sharp }) }}
+        sx={{
+          width: { sm: drawerWidth },
+          flexShrink: { sm: 0 },
+          transition: (th) =>
+            th.transitions.create('width', {
+              duration: th.transitions.duration.enteringScreen,
+              easing: th.transitions.easing.sharp,
+            }),
+        }}
       >
         <Drawer
           variant="temporary"
           open={mobileOverlayOpen}
           onClose={handleDrawerToggle}
-          ModalProps={{
-            keepMounted: true,
-          }}
+          ModalProps={{ keepMounted: true }}
           sx={{
             display: { xs: 'block', sm: 'none' },
             '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidthExpanded },
@@ -387,7 +632,11 @@ export function Layout({ children }: LayoutProps) {
               boxSizing: 'border-box',
               width: drawerWidth,
               overflowX: 'hidden',
-              transition: (th) => th.transitions.create('width', { duration: th.transitions.duration.enteringScreen, easing: th.transitions.easing.sharp }),
+              transition: (th) =>
+                th.transitions.create('width', {
+                  duration: th.transitions.duration.enteringScreen,
+                  easing: th.transitions.easing.sharp,
+                }),
             },
           }}
           open
@@ -410,12 +659,7 @@ export function Layout({ children }: LayoutProps) {
             }),
         }}
       >
-        {/* Offset fixed AppBar only — page air lives on the content frame below. */}
-        <Toolbar />
-        {/*
-          Notion-style content frame: equal side + top padding (laptop-first).
-          maxWidth keeps ultra-wide monitors from edge-to-edge tables.
-        */}
+        <Toolbar sx={{ minHeight: { xs: 48, sm: 52 } }} />
         <Box
           sx={{
             width: '100%',
@@ -423,7 +667,7 @@ export function Layout({ children }: LayoutProps) {
             mx: 'auto',
             boxSizing: 'border-box',
             px: { xs: 4, sm: 5, md: 6, lg: 8 },
-            pt: { xs: 4, sm: 5, md: 6, lg: 8 },
+            pt: { xs: 3.5, sm: 4, md: 4.5 },
             pb: { xs: 5, sm: 6, md: 8, lg: 10 },
           }}
         >

@@ -39,7 +39,7 @@ import {
   Plus,
   Check,
   Play,
-
+  Folder,
 } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -58,6 +58,8 @@ import { DotLabel, ExternalChip } from '../components/StatusDot';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
 import { FlyoutSearch, type FlyoutSearchHandle } from '../components/ui/FlyoutSearch';
+import { PageHeader } from '../components/ui/PageHeader';
+import { EmptyState } from '../components/ui/EmptyState';
 import { useTheme } from '@mui/material/styles';
 
 const DRIVE_STATIC_SORT = { key: '_', direction: 'asc' as const };
@@ -1167,75 +1169,96 @@ export function Drive() {
 
   return (
     <Box sx={{ width: '100%', overflowY: 'auto', overflowX: 'hidden', fontFamily: T.font }}>
-      {/* PAGE HEADER */}
-      <Box sx={{ mb: 3, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { md: 'flex-start' }, justifyContent: 'space-between' }}>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (th) => pick(th, T.text, '#fafafa') }}>
-            Drive
-          </Typography>
-          {isAuditTab && (
-            <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.5, maxWidth: 420 }}>
-              <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), lineHeight: 1.4 }}>
-                {scanRunning ? (
-                  <>
-                    <Box component="span" sx={{ color: T.accent, fontWeight: 600 }}>
-                      Scanning now
-                      {scanProgress != null ? ` · ${scanProgress}%` : '…'}
-                    </Box>
-                    {scanStatus?.coverage?.usersTotal
-                      ? ` · ${scanStatus.coverage.usersDone}/${scanStatus.coverage.usersTotal} users`
-                      : null}
-                    {lastScanAtLabel ? (
-                      <Box component="span" sx={{ color: (t) => textTertiary(t) }}>
-                        {` · Previous: ${lastScanAtLabel}`}
-                      </Box>
-                    ) : null}
-                  </>
-                ) : lastScanAtLabel ? (
-                  <>Last scan: {lastScanAtLabel}</>
-                ) : (
-                  'Never scanned'
+      <PageHeader
+        title="Drive"
+        status={
+          isAuditTab ? (
+            scanRunning ? (
+              <>
+                <Box component="span" className="page-status-live">
+                  Scanning now
+                  {scanProgress != null ? ` · ${scanProgress}%` : '…'}
+                </Box>
+                {scanStatus?.coverage?.usersTotal
+                  ? ` · ${scanStatus.coverage.usersDone}/${scanStatus.coverage.usersTotal} users`
+                  : null}
+                {lastScanAtLabel ? (
+                  <Box component="span" className="page-status-faint">
+                    {` · Previous: ${lastScanAtLabel}`}
+                  </Box>
+                ) : null}
+                {scanRunning && (
+                  <LinearProgress
+                    variant={scanProgress == null ? 'indeterminate' : 'determinate'}
+                    value={scanProgress ?? undefined}
+                    sx={(th) => ({
+                      mt: 1.25,
+                      height: 3,
+                      borderRadius: 2,
+                      maxWidth: 280,
+                      bgcolor: pick(th, '#e8e8e4', '#27272a'),
+                      '& .MuiLinearProgress-bar': { borderRadius: 2, bgcolor: T.accent },
+                    })}
+                  />
                 )}
-              </Typography>
-              {typeof reportCounts.total === 'number' && !scanRunning && scanStatus?.status !== 'never-scanned' && (
-                <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
-                  {reportCounts.external} external · {reportCounts.public} public
-                </Typography>
-              )}
-              {scanRunning && (
-                <LinearProgress
-                  variant={scanProgress == null ? 'indeterminate' : 'determinate'}
-                  value={scanProgress ?? undefined}
-                  sx={(th) => ({
-                    mt: 0.25,
-                    height: 3,
-                    borderRadius: 2,
-                    maxWidth: 280,
-                    bgcolor: pick(th, '#e8e8e4', '#27272a'),
-                    '& .MuiLinearProgress-bar': { borderRadius: 2, bgcolor: T.accent },
-                  })}
-                />
-              )}
-            </Box>
-          )}
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-          <SegmentedControl value={tabValue} options={['External Shares', 'Public Links', 'Drive Search']} onChange={(v) => { setTabValue(v); setSelectedFiles(new Set()); setPage(0); }} />
-          {isAuditTab && (
+              </>
+            ) : lastScanAtLabel ? (
+              <>
+                Last scan: {lastScanAtLabel}
+                {typeof reportCounts.total === 'number' && scanStatus?.status !== 'never-scanned' ? (
+                  <Box component="span" className="page-status-faint">
+                    {` · ${reportCounts.external} external · ${reportCounts.public} public`}
+                  </Box>
+                ) : null}
+              </>
+            ) : (
+              <Box component="span" className="page-status-faint">
+                Never scanned — external and public shares won&apos;t appear until you run a scan
+              </Box>
+            )
+          ) : undefined
+        }
+        actions={
+          <>
+            <SegmentedControl value={tabValue} options={['External Shares', 'Public Links', 'Drive Search']} onChange={(v) => { setTabValue(v); setSelectedFiles(new Set()); setPage(0); }} />
+            {isAuditTab && (
+              <Button
+                size="small"
+                variant="contained"
+                onClick={handleTriggerScan}
+                disabled={scanTriggering || scanRunning}
+                startIcon={scanTriggering || scanRunning ? <CircularProgress size={14} color="inherit" /> : <Play size={15} strokeWidth={1.75} />}
+                sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 32, px: 2, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
+              >
+                {scanRunning ? 'Scanning…' : 'Run scan'}
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      {isAuditTab && scanStatus?.status === 'never-scanned' && !scanRunning && !reportLoading && reportRecords.length === 0 ? (
+        <EmptyState
+          icon={<Folder size={22} strokeWidth={1.75} />}
+          title="Scan Drive for exposure"
+          description="Find files shared outside the org or with anyone-with-the-link access. One scan builds the report; re-run anytime after policy changes."
+          actions={
             <Button
               size="small"
               variant="contained"
               onClick={handleTriggerScan}
-              disabled={scanTriggering || scanRunning}
-              startIcon={scanTriggering || scanRunning ? <CircularProgress size={14} color="inherit" /> : <Play size={15} strokeWidth={1.75} />}
+              disabled={scanTriggering}
+              startIcon={scanTriggering ? <CircularProgress size={14} color="inherit" /> : <Play size={15} strokeWidth={1.75} />}
               sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 32, px: 2, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
             >
-              {scanRunning ? 'Scanning…' : 'Run scan'}
+              Run first scan
             </Button>
-          )}
-        </Box>
-      </Box>
-
+          }
+          hint="Org-wide · progress shows under the title while it runs"
+          maxWidth={540}
+        />
+      ) : (
+      <>
       {/* Toolbar: search + filters + export */}
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <FlyoutSearch
@@ -1692,8 +1715,8 @@ export function Drive() {
                   <Typography sx={{ fontFamily: T.font, fontSize: '0.9375rem', color: (t) => textSecondary(t) }}>
                     {reportLoading
                       ? 'Loading…'
-                      : scanStatus?.status === 'never-scanned'
-                        ? 'No scan yet — click "Run scan" to audit external sharing.'
+                      : scanRunning
+                        ? 'Updating report from previous scan… new findings appear when this run finishes.'
                         : auditCategory === 'public'
                           ? 'No public (Anyone with link) files found.'
                           : 'No externally shared files found.'}
@@ -1786,6 +1809,9 @@ export function Drive() {
             />
           )}
         </Box>
+      )}
+
+      </>
       )}
 
       {/* Permission Management Dialog */}

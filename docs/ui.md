@@ -84,6 +84,41 @@ Data views use bordered flex lists (not legacy `Table`/`Paper` grids) for consis
 
 **Reference:** `Users.tsx` (toolbar).
 
+### 4b. Page header recipe (`PageHeader`)
+
+Use shared **`PageHeader`** (`frontend/src/components/ui/PageHeader.tsx`) on main feature pages:
+
+```
+[ Title                          ]  [ Segmented tabs ] [ Primary CTA ] [ Secondary ]
+[ Lede (optional, one line)      ]
+[ Status: counts / last run / live ]
+```
+
+- **Title:** 1.5rem / weight 700 / tight tracking.
+- **Lede:** 0.8125rem secondary, max ~520px — product one-liner.
+- **Status:** 0.8125rem; live state uses `.page-status-live` (accent + semibold); previous/meta uses `.page-status-faint`.
+- **Actions:** tabs + primary CTA top-right — no full-width bordered control bars.
+
+**Reference:** `Users.tsx`, `Drive.tsx`, `SecurityAudit.tsx`, `Groups.tsx`.
+
+### 4c. Empty / first-run (`EmptyState`)
+
+Use shared **`EmptyState`** (`frontend/src/components/ui/EmptyState.tsx`) for never-run surfaces (Drive scan, Security audit):
+
+- Content-width card (not full-bleed empty table only).
+- Soft accent icon tile + headline + 1–2 sentence value prop + primary CTA + hint line.
+- Wire CTAs to existing run handlers (`handleTriggerScan`, `runAudit`).
+
+**Reference:** `Drive.tsx` (never-scanned), `SecurityAudit.tsx` (no snapshot).
+
+### 4d. Nav shell (`Layout`)
+
+- App mark (gradient rounded square + shield) + **AdminAssist** / **Workspace ops** when expanded.
+- Nav **sections** with uppercase labels: **Directory** (People, Groups) / **Access** (Calendar, Delegation, Drive, Shared drives, Email signatures) / **Security** (Audit).
+- Shorter item names; active item soft blue wash + left accent bar.
+- User chip at rail foot (opens account menu). Collapsed: icons only; section labels hide; mark remains.
+- Permission gating via `hasPermission` unchanged.
+
 ---
 
 ## 5. Search (flyout)

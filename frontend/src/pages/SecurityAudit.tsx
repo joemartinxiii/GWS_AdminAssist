@@ -16,7 +16,7 @@ import {
   DialogActions,
   TextField,
 } from '@mui/material';
-import { Download, CloudUpload, FileText, ChevronDown, ChevronRight, Play, EyeOff, RotateCcw, Pencil, ExternalLink } from 'lucide-react';
+import { Download, CloudUpload, FileText, ChevronDown, ChevronRight, Play, EyeOff, RotateCcw, Pencil, ExternalLink, Shield, X } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
@@ -42,6 +42,8 @@ import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShel
 import { DotLabel } from '../components/StatusDot';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { ScoreRing } from '../components/ui/ScoreRing';
+import { PageHeader } from '../components/ui/PageHeader';
+import { EmptyState } from '../components/ui/EmptyState';
 import { usePermissions } from '../hooks/usePermissions';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 
@@ -934,119 +936,101 @@ export function SecurityAudit() {
   return (
     <>
       <Box sx={{ fontFamily: T.font }}>
-        <Box
-          sx={{
-            mb: 3,
-            display: 'flex',
-            flexDirection: { xs: 'column', md: 'row' },
-            gap: 2,
-            alignItems: { md: 'flex-start' },
-            justifyContent: 'space-between',
-          }}
-        >
-          <Box sx={{ minWidth: 0, maxWidth: 560 }}>
-            <Typography
-              sx={{
-                fontFamily: T.font,
-                fontWeight: 700,
-                fontSize: '1.5rem',
-                letterSpacing: '-0.02em',
-                color: (th) => pick(th, T.text, '#fafafa'),
-              }}
-            >
-              Security audit
-            </Typography>
-            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mt: 0.5 }}>
-              Workspace hardening baseline — on-demand snapshot for client reviews. Score excludes waived, info, and
-              manual items.
-            </Typography>
-            <Typography
-              sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mt: 0.75, lineHeight: 1.4 }}
-            >
-              {running ? (
-                <>
-                  <Box component="span" sx={{ color: T.accent, fontWeight: 600 }}>
-                    Running now
-                  </Box>
-                  <Box component="span" sx={{ color: (t) => textTertiary(t) }}>
-                    {' '}
-                    · Checking Google connectivity, then evaluating checks
-                  </Box>
-                  {lastRunAtLabel ? (
-                    <Box component="span" sx={{ color: (t) => textTertiary(t) }}>
-                      {` · Previous: ${lastRunAtLabel}`}
-                      {triggeredBy ? ` · ${triggeredBy}` : ''}
-                    </Box>
-                  ) : null}
-                </>
-              ) : lastRunAtLabel ? (
-                <>
-                  Last run: {lastRunAtLabel}
-                  {triggeredBy ? (
-                    <Box component="span" sx={{ color: (t) => textTertiary(t) }}>
-                      {` · ${triggeredBy}`}
-                    </Box>
-                  ) : null}
-                </>
-              ) : (
-                'Not run yet — results save to the organization after each run'
-              )}
-            </Typography>
-          </Box>
-          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-            <SegmentedControl value={auditTab} options={[...AUDIT_TABS]} onChange={setAuditTab} />
-            <ActionTooltip title={canTakeAction ? 'Re-evaluate all checks and save for the organization' : 'Super admin only'}>
-              <span>
-                <Button
-                  size="small"
-                  variant="contained"
-                  onClick={runAudit}
-                  disabled={running || bootLoading || !canTakeAction}
-                  startIcon={
-                    running ? <CircularProgress size={14} color="inherit" /> : <Play size={15} strokeWidth={1.75} />
-                  }
-                  sx={{
-                    fontFamily: T.font,
-                    textTransform: 'none',
-                    borderRadius: T.radius,
-                    fontSize: '0.8125rem',
-                    fontWeight: 500,
-                    height: 32,
-                    px: 2,
-                    bgcolor: T.accent,
-                    '&:hover': { bgcolor: T.accentHover },
-                  }}
-                >
-                  {running ? 'Running…' : 'Run audit'}
-                </Button>
-              </span>
-            </ActionTooltip>
-            {!running && hardeningData && (
+        <PageHeader
+          title="Security audit"
+          lede={
+            hardeningData
+              ? 'Workspace hardening baseline for client reviews. Compliance score uses graded checks only (info, manual, and waived excluded).'
+              : 'Workspace hardening baseline for client reviews. Run once to capture a snapshot you can export and discuss.'
+          }
+          status={
+            running ? (
               <>
-                <ActionTooltip title="Export last saved audit (CSV, PDF, or Drive)">
-                  <span>
-                    {isMdUp ? (
-                      <Button
-                        variant="outlined"
-                        endIcon={<ChevronDown size={20} strokeWidth={LU} />}
-                        onClick={(e) => setExportAnchorEl(e.currentTarget)}
-                        sx={exportToolbarButtonSx()}
-                      >
-                        Export
-                      </Button>
-                    ) : (
-                      <IconButton
-                        onClick={(e) => setExportAnchorEl(e.currentTarget)}
-                        aria-label="Export"
-                        sx={exportToolbarButtonSx()}
-                      >
-                        <ChevronDown size={20} strokeWidth={LU} />
-                      </IconButton>
-                    )}
-                  </span>
-                </ActionTooltip>
-                <Menu
-                  anchorEl={exportAnchorEl}
+                <Box component="span" className="page-status-live">
+                  Running now
+                </Box>
+                <Box component="span" className="page-status-faint">
+                  {' '}
+                  · Checking Google connectivity, then evaluating checks
+                  {lastRunAtLabel ? ` · Previous: ${lastRunAtLabel}${triggeredBy ? ` · ${triggeredBy}` : ''}` : ''}
+                </Box>
+              </>
+            ) : lastRunAtLabel ? (
+              <>
+                Last run: {lastRunAtLabel}
+                {triggeredBy ? (
+                  <Box component="span" className="page-status-faint">
+                    {` · ${triggeredBy}`}
+                  </Box>
+                ) : null}
+              </>
+            ) : (
+              <Box component="span" className="page-status-faint">
+                Not run yet — results save to the organization after each run
+              </Box>
+            )
+          }
+          actions={
+            <>
+              <SegmentedControl value={auditTab} options={[...AUDIT_TABS]} onChange={setAuditTab} />
+              <ActionTooltip title={canTakeAction ? 'Re-evaluate all checks and save for the organization' : 'Super admin only'}>
+                <span>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={runAudit}
+                    disabled={running || bootLoading || !canTakeAction}
+                    startIcon={
+                      running ? <CircularProgress size={14} color="inherit" /> : <Play size={15} strokeWidth={1.75} />
+                    }
+                    sx={{
+                      fontFamily: T.font,
+                      textTransform: 'none',
+                      borderRadius: T.radius,
+                      fontSize: '0.8125rem',
+                      fontWeight: 500,
+                      height: 32,
+                      px: 2,
+                      bgcolor: T.accent,
+                      '&:hover': { bgcolor: T.accentHover },
+                    }}
+                  >
+                    {running ? 'Running…' : 'Run audit'}
+                  </Button>
+                </span>
+              </ActionTooltip>
+              {!running && hardeningData && (
+                <>
+                  <ActionTooltip title="Export last saved audit (CSV, PDF, or Drive)">
+                    <span>
+                      {isMdUp ? (
+                        <Button
+                          variant="outlined"
+                          endIcon={<ChevronDown size={20} strokeWidth={LU} />}
+                          onClick={(e) => setExportAnchorEl(e.currentTarget)}
+                          sx={exportToolbarButtonSx()}
+                        >
+                          Export
+                        </Button>
+                      ) : (
+                        <IconButton
+                          onClick={(e) => setExportAnchorEl(e.currentTarget)}
+                          aria-label="Export"
+                          sx={exportToolbarButtonSx()}
+                        >
+                          <ChevronDown size={20} strokeWidth={LU} />
+                        </IconButton>
+                      )}
+                    </span>
+                  </ActionTooltip>
+                </>
+              )}
+            </>
+          }
+        />
+        {!running && hardeningData && (
+          <Menu
+            anchorEl={exportAnchorEl}
                   open={Boolean(exportAnchorEl)}
                   onClose={() => setExportAnchorEl(null)}
                   anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
@@ -1077,10 +1061,7 @@ export function SecurityAudit() {
                     onClick={handleExportPDF}
                   />
                 </Menu>
-              </>
-            )}
-          </Box>
-        </Box>
+        )}
 
         {policyBanner && !running && (
           <Alert severity="warning" sx={{ mb: 2 }}>
@@ -1473,23 +1454,38 @@ export function SecurityAudit() {
             )}
           </>
         ) : (
-          <Box sx={{ py: 8, textAlign: 'center', maxWidth: 480, mx: 'auto' }}>
-            <Typography
-              sx={{
-                fontFamily: T.font,
-                fontWeight: 600,
-                fontSize: '1.0625rem',
-                color: (th) => pick(th, T.text, '#fafafa'),
-                mb: 1,
-              }}
-            >
-              No security audit on file
-            </Typography>
-            <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
-              Click <Box component="span" sx={{ fontWeight: 600 }}>Run audit</Box> to evaluate this Workspace against the
-              hardening baseline. The snapshot and waivers are stored for the organization (not just this browser).
-            </Typography>
-          </Box>
+          <EmptyState
+            icon={<Shield size={22} strokeWidth={1.75} />}
+            title="No audit snapshot yet"
+            description="Evaluate the hardening baseline against this Workspace. You’ll get a compliance score, exportable findings, and a record of when it last ran."
+            actions={
+              <ActionTooltip title={canTakeAction ? 'Run first audit' : 'Super admin only'}>
+                <span>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    onClick={runAudit}
+                    disabled={running || !canTakeAction}
+                    startIcon={<Play size={15} strokeWidth={1.75} />}
+                    sx={{
+                      fontFamily: T.font,
+                      textTransform: 'none',
+                      borderRadius: T.radius,
+                      fontSize: '0.8125rem',
+                      fontWeight: 500,
+                      height: 32,
+                      px: 2,
+                      bgcolor: T.accent,
+                      '&:hover': { bgcolor: T.accentHover },
+                    }}
+                  >
+                    Run first audit
+                  </Button>
+                </span>
+              </ActionTooltip>
+            }
+            hint="Usually finishes in under a minute · Super admin only"
+          />
         )}
       </Box>
 
@@ -1502,47 +1498,60 @@ export function SecurityAudit() {
       >
         {detailCheck && (
           <>
-            <DialogTitle sx={(th) => dialogTitleSx(th)}>
-              <Box sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em' }}>
-                {detailCheck.name}
-              </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1, flexWrap: 'wrap' }}>
-                <DotLabel
-                  dotColor={detailStatusColor(detailCheck.status)}
-                  dotTooltip={detailCheck.status.toUpperCase()}
-                >
-                  {detailCheck.status.toUpperCase()}
-                </DotLabel>
-                <DotLabel
-                  dotColor={severityColor(detailCheck.severity)}
-                  dotTooltip={`Severity: ${detailCheck.severity || 'medium'}`}
-                >
-                  {(detailCheck.severity || 'medium').toUpperCase()}
-                </DotLabel>
-                <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
-                  {detailCheck.category}
-                </Typography>
-                {detailCheck.source === 'manual' && (
-                  <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
-                    · Manual review
-                  </Typography>
-                )}
-                {detailWaived && (
-                  <DotLabel dotColor={textTertiary(theme)} dotTooltip="Excluded from compliance score">
-                    Waived
+            <DialogTitle sx={(th) => ({ ...dialogTitleSx(th), display: 'flex', alignItems: 'flex-start', gap: 1.5, pr: 1 })}>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Box sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em' }}>
+                  {detailCheck.name}
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1, flexWrap: 'wrap' }}>
+                  <DotLabel
+                    dotColor={severityColor(detailCheck.severity)}
+                    dotTooltip={`Severity: ${detailCheck.severity || 'medium'}`}
+                  >
+                    {(detailCheck.severity || 'medium').toUpperCase()}
                   </DotLabel>
-                )}
+                  <DotLabel
+                    dotColor={detailStatusColor(detailCheck.status)}
+                    dotTooltip={detailCheck.status.toUpperCase()}
+                  >
+                    {detailCheck.status.toUpperCase()}
+                  </DotLabel>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
+                    {detailCheck.category}
+                  </Typography>
+                  {detailCheck.source === 'manual' && (
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
+                      · Manual review
+                    </Typography>
+                  )}
+                  {detailWaived && (
+                    <DotLabel dotColor={textTertiary(theme)} dotTooltip="Excluded from compliance score">
+                      Waived
+                    </DotLabel>
+                  )}
+                </Box>
               </Box>
+              <IconButton size="small" onClick={closeDetail} aria-label="Close" sx={{ color: (t) => textTertiary(t), mt: -0.5 }}>
+                <X size={16} strokeWidth={1.75} />
+              </IconButton>
             </DialogTitle>
             <DialogContent sx={{ pt: '20px !important' }}>
-              {detailCheck.description && (
-                <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t), mb: 2.5 }}>
-                  {detailCheck.description}
-                </Typography>
-              )}
-
-              <Box sx={{ display: 'flex', gap: 4, flexWrap: 'wrap', mb: 2.5 }}>
-                <Box sx={{ minWidth: 120 }}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                  gap: 1.75,
+                  mb: 2.25,
+                }}
+              >
+                <Box
+                  sx={(th) => ({
+                    p: 1.5,
+                    borderRadius: T.radius,
+                    bgcolor: pick(th, T.bg, '#111114'),
+                    border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
+                  })}
+                >
                   <Typography
                     sx={{
                       fontFamily: T.font,
@@ -1550,7 +1559,7 @@ export function SecurityAudit() {
                       textTransform: 'uppercase',
                       letterSpacing: '0.06em',
                       color: (t) => textTertiary(t),
-                      mb: 0.5,
+                      mb: 0.75,
                     }}
                   >
                     Current value
@@ -1566,7 +1575,14 @@ export function SecurityAudit() {
                     {String(detailCheck.currentValue ?? 'N/A')}
                   </Typography>
                 </Box>
-                <Box sx={{ minWidth: 120 }}>
+                <Box
+                  sx={(th) => ({
+                    p: 1.5,
+                    borderRadius: T.radius,
+                    bgcolor: pick(th, T.bg, '#111114'),
+                    border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
+                  })}
+                >
                   <Typography
                     sx={{
                       fontFamily: T.font,
@@ -1574,7 +1590,7 @@ export function SecurityAudit() {
                       textTransform: 'uppercase',
                       letterSpacing: '0.06em',
                       color: (t) => textTertiary(t),
-                      mb: 0.5,
+                      mb: 0.75,
                     }}
                   >
                     Recommended
@@ -1593,6 +1609,12 @@ export function SecurityAudit() {
                   </Typography>
                 </Box>
               </Box>
+
+              {detailCheck.description && (
+                <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t), mb: 2.5 }}>
+                  {detailCheck.description}
+                </Typography>
+              )}
 
               {detailCheck.rationale && (
                 <Box sx={{ mb: 2.5 }}>
@@ -1776,26 +1798,41 @@ export function SecurityAudit() {
                     >
                       Waive
                     </Button>
-                    {detailCheck.adminConsoleUrl && (
-                      <Button
-                        size="small"
-                        startIcon={<ExternalLink size={15} strokeWidth={1.75} />}
-                        href={detailCheck.adminConsoleUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        sx={(th) => dialogSecondaryButtonSx(th)}
-                      >
-                        Open Admin console
-                      </Button>
-                    )}
                   </Box>
                 )}
               </Box>
             </DialogContent>
             <DialogActions sx={(th) => dialogActionsSx(th)}>
+              {detailCheck.adminConsoleUrl && (
+                <Button
+                  size="small"
+                  startIcon={<ExternalLink size={15} strokeWidth={1.75} />}
+                  href={detailCheck.adminConsoleUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  sx={(th) => dialogSecondaryButtonSx(th)}
+                >
+                  Open Admin guide
+                </Button>
+              )}
+              <Box sx={{ flex: 1 }} />
               <Button onClick={closeDetail} sx={(th) => dialogCancelButtonSx(th)}>
                 Close
               </Button>
+              {reasonEditing && (
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={waiveBusy || !canTakeAction}
+                  onClick={async () => {
+                    await applyWaive(detailCheck.id, reasonDraft);
+                    setReasonEditing(false);
+                  }}
+                  sx={(th) => dialogPrimaryButtonSx(th)}
+                >
+                  Save waiver
+                </Button>
+              )}
             </DialogActions>
           </>
         )}

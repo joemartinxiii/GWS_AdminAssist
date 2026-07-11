@@ -10,27 +10,37 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Divider,
   Checkbox,
   Tooltip,
 } from '@mui/material';
 import type { AlertColor } from '@mui/material';
-import { Trash2 } from 'lucide-react';
+import { Trash2, ExternalLink, X } from 'lucide-react';
 import { useTheme } from '@mui/material/styles';
 import { apiClient } from '../services/api.client';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ActionTooltip } from './ActionTooltip';
-import { T, pick, selectMenuProps, textSecondary, textTertiary, dialogPaperSx } from '../theme/designTokens';
+import {
+  T,
+  pick,
+  selectMenuProps,
+  textSecondary,
+  textTertiary,
+  dialogPaperSx,
+  dialogActionsSx,
+  dialogCancelButtonSx,
+  dialogPrimaryButtonSx,
+  dialogSecondaryButtonSx,
+} from '../theme/designTokens';
 import { ColumnHeader } from './ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from './ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from './ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from './ui/dialogListSort';
 import { DotLabel } from './StatusDot';
+import { SegmentedControl } from './ui/SegmentedControl';
 
 export interface User {
   id: string;
@@ -106,10 +116,12 @@ export function EditUserDialog({
   const [appsListPage, setAppsListPage] = useState(0);
   const [groupsRowsPerPage, setGroupsRowsPerPage] = useState(DIALOG_LIST_PAGE_SIZE);
   const [appsRowsPerPage, setAppsRowsPerPage] = useState(DIALOG_LIST_PAGE_SIZE);
+  const [dialogTab, setDialogTab] = useState(0);
 
   const theme = useTheme();
   useEffect(() => {
     if (!open || !user) return;
+    setDialogTab(0);
     setEditingUser({
       name: { ...user.name },
       primaryEmail: user.primaryEmail,
@@ -302,10 +314,6 @@ export function EditUserDialog({
     return next;
   };
 
-  const initials = user
-    ? user.name.fullName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
-    : '';
-
   const sectionHeadingSx = {
     fontFamily: T.font,
     fontWeight: 600,
@@ -340,41 +348,16 @@ export function EditUserDialog({
         fullWidth
         PaperProps={{ sx: (th) => dialogPaperSx(th) }}
       >
-        {/* ---- Title bar with avatar ---- */}
+        {/* ---- Title bar ---- */}
         <DialogTitle
           sx={{
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             gap: 1.5,
             pb: 1.5,
             borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}`,
           }}
         >
-          {user && (
-            <Box
-              sx={(t) => ({
-                width: 40,
-                height: 40,
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 600,
-                fontSize: '0.8125rem',
-                letterSpacing: '0.02em',
-                fontFamily: T.font,
-                flexShrink: 0,
-                bgcolor: user.suspended
-                  ? pick(t, T.dangerSoft, '#3f1a1a')
-                  : pick(t, T.accentSoft, 'rgba(26, 115, 232, 0.2)'),
-                color: user.suspended
-                  ? pick(t, T.danger, '#fca5a5')
-                  : pick(t, T.accent, '#8ab4f8'),
-              })}
-            >
-              {initials}
-            </Box>
-          )}
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography
               sx={{
@@ -392,66 +375,70 @@ export function EditUserDialog({
                 sx={{
                   fontFamily: T.mono,
                   fontSize: '0.75rem',
-                  color: (t) => textSecondary(t),
-                  mt: 0.25,
+                  color: (t) => textTertiary(t),
+                  mt: 0.5,
                 }}
               >
                 {user.primaryEmail}
+                {user.orgUnitPath ? ` · ${user.orgUnitPath}` : ''}
               </Typography>
             )}
           </Box>
+          {user && (
+            <Button
+              size="small"
+              component="a"
+              href={`https://admin.google.com/ac/users/${encodeURIComponent(user.primaryEmail)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              endIcon={<ExternalLink size={14} strokeWidth={1.75} />}
+              sx={(th) => ({ ...dialogSecondaryButtonSx(th), height: 28, fontSize: '0.75rem', px: 1.25 })}
+            >
+              Open in Admin
+            </Button>
+          )}
+          <IconButton size="small" onClick={handleClose} aria-label="Close" sx={{ color: (t) => textTertiary(t) }}>
+            <X size={16} strokeWidth={1.75} />
+          </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ pt: '20px !important' }}>
+        <DialogContent sx={{ pt: '16px !important' }}>
           {user && (
             <Box>
-              {/* ---- Profile ---- */}
-              <Typography sx={{ ...sectionHeadingSx, mb: 2 }}>Profile</Typography>
+              <Box sx={{ mb: 2 }}>
+                <SegmentedControl value={dialogTab} options={['Profile', 'Groups', 'Apps']} onChange={setDialogTab} />
+              </Box>
 
-              <Grid container spacing={2} sx={{ mb: 3 }}>
+              {dialogTab === 0 && (
+              <>
+              <Grid container spacing={2} sx={{ mb: 1 }}>
                 <Grid item xs={12} sm={6}>
+                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>First name</Typography>
                   <TextField
-                    fullWidth size="small" label="First Name"
+                    fullWidth size="small" hiddenLabel
                     value={editingUser.name?.givenName || ''}
                     onChange={(e) => setEditingUser({ ...editingUser, name: { ...editingUser.name, givenName: e.target.value } as any })}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
+                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Last name</Typography>
                   <TextField
-                    fullWidth size="small" label="Last Name"
+                    fullWidth size="small" hiddenLabel
                     value={editingUser.name?.familyName || ''}
                     onChange={(e) => setEditingUser({ ...editingUser, name: { ...editingUser.name, familyName: e.target.value } as any })}
                   />
                 </Grid>
 
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth size="small" label="Department"
-                    value={editingUser.department || ''}
-                    onChange={(e) => setEditingUser({ ...editingUser, department: e.target.value })}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth size="small" label="Location"
-                    value={editingUser.location || ''}
-                    onChange={(e) => setEditingUser({ ...editingUser, location: e.target.value })}
-                  />
+                <Grid item xs={12}>
+                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Primary email</Typography>
+                  <TextField fullWidth size="small" hiddenLabel value={user.primaryEmail} InputProps={{ readOnly: true }} />
                 </Grid>
 
                 <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth size="small" label="Phone"
-                    value={editingUser.phone || ''}
-                    onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
+                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Org unit</Typography>
                   <FormControl fullWidth size="small">
-                    <InputLabel>Org Unit</InputLabel>
                     <Select
                       value={editingUser.orgUnitPath || '/'}
-                      label="Org Unit"
                       onChange={(e) => setEditingUser({ ...editingUser, orgUnitPath: e.target.value })}
                       disabled={loadingOrgUnits}
                       MenuProps={selectMenuProps}
@@ -466,35 +453,67 @@ export function EditUserDialog({
                 </Grid>
 
                 <Grid item xs={12} sm={6}>
+                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Status</Typography>
                   <FormControl fullWidth size="small">
-                    <InputLabel>Status</InputLabel>
                     <Select
                       value={editingUser.suspended ? 'suspended' : 'active'}
-                      label="Status"
                       onChange={(e) => setEditingUser({ ...editingUser, suspended: e.target.value === 'suspended' })}
                       MenuProps={selectMenuProps}
                     >
                       <MenuItem value="active">Active</MenuItem>
                       <MenuItem value="suspended">Suspended</MenuItem>
                     </Select>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t), mt: 0.75, display: 'block' }}>
-                      Suspend blocks access. Permanent delete of non-admins is bulk-only on People. Admins cannot be deleted in this app.
-                    </Typography>
                   </FormControl>
                 </Grid>
 
-                <Grid item xs={12}>
+                <Grid item xs={12} sm={6}>
+                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Department</Typography>
                   <TextField
-                    fullWidth size="small" label="Notes"
+                    fullWidth size="small" hiddenLabel
+                    value={editingUser.department || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, department: e.target.value })}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Location</Typography>
+                  <TextField
+                    fullWidth size="small" hiddenLabel
+                    value={editingUser.location || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, location: e.target.value })}
+                  />
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>2FA</Typography>
+                  <DotLabel
+                    dotColor={user.isEnrolledIn2Sv ? T.success : T.warning}
+                    dotTooltip={user.isEnrolledIn2Sv ? 'Enrolled' : 'Not enrolled'}
+                  >
+                    {user.isEnrolledIn2Sv ? 'Enrolled' : 'Not enrolled'}
+                  </DotLabel>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Last login</Typography>
+                  <Typography sx={{ fontFamily: T.mono, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                    {user.lastLoginTime ? new Date(user.lastLoginTime).toLocaleString() : '—'}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12}>
+                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Notes</Typography>
+                  <TextField
+                    fullWidth size="small" hiddenLabel
                     value={editingUser.notes || ''}
                     onChange={(e) => setEditingUser({ ...editingUser, notes: e.target.value })}
                     multiline minRows={2}
                   />
                 </Grid>
               </Grid>
+              </>
+              )}
 
-              <Divider sx={{ my: 3, borderColor: (t) => pick(t, T.borderSubtle, '#27272a') }} />
-
+              {dialogTab === 1 && (
+              <>
               {/* ---- Groups ---- */}
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5} mt={0.5}>
                 <Box display="flex" alignItems="center">
@@ -566,9 +585,11 @@ export function EditUserDialog({
                   />
                 </ListShell>
               )}
+              </>
+              )}
 
-              <Divider sx={{ my: 3, borderColor: (t) => pick(t, T.borderSubtle, '#27272a') }} />
-
+              {dialogTab === 2 && (
+              <>
               {/* ---- Third-Party Apps ---- */}
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5} mt={0.5}>
                 <Box display="flex" alignItems="center">
@@ -657,41 +678,50 @@ export function EditUserDialog({
                   />
                 </ListShell>
               )}
+              </>
+              )}
             </Box>
           )}
         </DialogContent>
 
         {/* ---- Footer buttons ---- */}
-        <DialogActions
-          sx={{
-            px: 3,
-            py: 2,
-            borderTop: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}`,
-            gap: 1,
-          }}
-        >
-          <Button
-            onClick={handleClose}
-            sx={{
-              ...actionBtnSx,
-              color: (t) => textSecondary(t),
-              '&:hover': { bgcolor: (t) => pick(t, '#f0f0ec', '#27272a') },
-            }}
-          >
+        <DialogActions sx={(th) => dialogActionsSx(th)}>
+          {user && !user.suspended && (
+            <Button
+              onClick={() => setEditingUser({ ...editingUser, suspended: true })}
+              sx={{
+                fontFamily: T.font,
+                textTransform: 'none',
+                borderRadius: T.radius,
+                fontSize: '0.8125rem',
+                fontWeight: 500,
+                color: '#fca5a5',
+                border: '1px solid rgba(220,38,38,0.4)',
+                '&:hover': { bgcolor: 'rgba(220,38,38,0.12)' },
+              }}
+            >
+              Suspend
+            </Button>
+          )}
+          {user && user.suspended && (
+            <Button
+              onClick={() => setEditingUser({ ...editingUser, suspended: false })}
+              sx={(th) => dialogSecondaryButtonSx(th)}
+            >
+              Unsuspend
+            </Button>
+          )}
+          <Box sx={{ flex: 1 }} />
+          <Button onClick={handleClose} sx={(th) => dialogCancelButtonSx(th)}>
             Cancel
           </Button>
           <Button
             variant="contained"
             onClick={handleSave}
             data-testid="save-changes"
-            sx={{
-              ...actionBtnSx,
-              bgcolor: T.accent,
-              '&:hover': { bgcolor: T.accentHover },
-              px: 2.5,
-            }}
+            sx={(th) => dialogPrimaryButtonSx(th)}
           >
-            Save Changes
+            Save
           </Button>
         </DialogActions>
       </Dialog>

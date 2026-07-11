@@ -1,12 +1,15 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ConfirmDialog, type ConfirmEntity } from '../components/ConfirmDialog';
 
 export interface ConfirmOptions {
   title: string;
   message?: ReactNode;
+  /** Optional list of affected entities shown in the confirm body. */
+  entities?: ConfirmEntity[];
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  tone?: 'danger' | 'warning';
 }
 
 /**
@@ -43,6 +46,8 @@ export function useConfirm() {
       confirmLabel={options.confirmLabel}
       cancelLabel={options.cancelLabel}
       danger={options.danger}
+      tone={options.tone}
+      entities={options.entities}
       onConfirm={() => settle(true)}
       onClose={() => settle(false)}
     >

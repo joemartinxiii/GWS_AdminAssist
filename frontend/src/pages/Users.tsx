@@ -16,7 +16,6 @@ import {
   Snackbar,
   Fade,
   useMediaQuery,
-  LinearProgress,
   TablePagination,
 } from '@mui/material';
 import type { AlertColor } from '@mui/material';
@@ -27,6 +26,7 @@ import {
   ListFilter,
   Trash2,
   Ban,
+  ExternalLink,
 } from 'lucide-react';
 import type { AxiosError } from 'axios';
 import { apiClient } from '../services/api.client';
@@ -35,7 +35,7 @@ import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { ActionTooltip } from '../components/ActionTooltip';
 import { useTheme } from '@mui/material/styles';
-import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ConfirmDialog, type ConfirmEntity } from '../components/ConfirmDialog';
 import { EditUserDialog } from '../components/EditUserDialog';
 import { StatusDot, DotLabel } from '../components/StatusDot';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
@@ -47,6 +47,8 @@ import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
 import { FlyoutSearch, type FlyoutSearchHandle } from '../components/ui/FlyoutSearch';
+import { PageHeader } from '../components/ui/PageHeader';
+import { ScoreRing } from '../components/ui/ScoreRing';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 import { dialogDangerButtonSx, dialogSecondaryButtonSx } from '../theme/designTokens';
 // ---------------------------------------------------------------------------
@@ -283,7 +285,15 @@ export function Users() {
   }, []);
   const closeSnackbar = useCallback(() => setSnackbar((s) => ({ ...s, open: false })), []);
 
-  type ConfirmConfig = { title: string; description?: React.ReactNode; confirmLabel: string; cancelLabel?: string; danger?: boolean; onConfirm: () => Promise<void> };
+  type ConfirmConfig = {
+    title: string;
+    description?: React.ReactNode;
+    entities?: ConfirmEntity[];
+    confirmLabel: string;
+    cancelLabel?: string;
+    danger?: boolean;
+    onConfirm: () => Promise<void>;
+  };
   const [confirmConfig, setConfirmConfig] = useState<ConfirmConfig | null>(null);
 
   // Stagger animation trigger
@@ -676,20 +686,26 @@ export function Users() {
       return;
     }
     setConfirmConfig({
-      title: `Delete ${targets.length} user${targets.length === 1 ? '' : 's'} permanently?`,
+      title: `Delete ${targets.length} ${targets.length === 1 ? 'person' : 'people'}?`,
       description: (
         <Box>
-          <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', mb: 1 }}>
-            This permanently deletes Google Workspace accounts and cannot be undone. Prefer <strong>Suspend</strong> to only block access.
+          <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
+            This permanently removes the accounts from Workspace. There is no trash — this cannot be undone from AdminAssist.
           </Typography>
           {blocked.length > 0 && (
-            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
-              Skipping {blocked.length} admin or protected account{blocked.length === 1 ? '' : 's'}.
+            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t), mt: 1.5 }}>
+              Skipping {blocked.length} admin or protected account{blocked.length === 1 ? '' : 's'}. Admins are never deleted from this app.
+            </Typography>
+          )}
+          {blocked.length === 0 && (
+            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t), mt: 1.5 }}>
+              Admins and protected accounts are never deleted from this app.
             </Typography>
           )}
         </Box>
       ),
-      confirmLabel: 'Delete permanently',
+      entities: targets.map((u) => ({ name: u.name.fullName, detail: u.primaryEmail })),
+      confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       danger: true,
       onConfirm: async () => {
@@ -780,6 +796,31 @@ export function Users() {
   const stats2FA = usersWithout2FAData?.statistics;
   const enrolled2FA = stats2FA ? stats2FA.total - stats2FA.without2FA : 0;
   const pct2FA = stats2FA?.total ? Math.round((enrolled2FA / stats2FA.total) * 100) : 0;
+  const adminCount = useMemo(() => users.filter(isWorkspaceAdmin).length, [users]);
+  const without2FACount = stats2FA?.without2FA ?? users.filter((u) => !u.isEnrolledIn2Sv).length;
+
+  const peopleLede =
+    tab === 2
+      ? 'Users without 2-Step Verification. Nudge them or open Admin to enforce enrollment.'
+      : 'Directory users across the Workspace. Open a row to edit profile, groups, and apps.';
+
+  const peopleStatus =
+    tab === 2 && stats2FA ? (
+      <>
+        {stats2FA.without2FA} need 2FA
+        <Box component="span" className="page-status-faint">
+          {` · of ${stats2FA.total} people · ${pct2FA}% enrolled`}
+        </Box>
+      </>
+    ) : (
+      <>
+        {users.length} {users.length === 1 ? 'person' : 'people'}
+        <Box component="span" className="page-status-faint">
+          {` · ${adminCount} ${adminCount === 1 ? 'admin' : 'admins'} · ${without2FACount} without 2FA`}
+          {hasActiveFilters() ? ' · filters applied' : ''}
+        </Box>
+      </>
+    );
 
   // -------------------------------------------------------------------------
   // Loading state
@@ -801,17 +842,12 @@ export function Users() {
   return (
     <Box sx={{ fontFamily: T.font }}>
 
-      {/* ================================================================= */}
-      {/* PAGE HEADER                                                        */}
-      {/* ================================================================= */}
-      <Box sx={{ mb: 3, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { md: 'center' }, justifyContent: 'space-between' }}>
-        <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (theme) => pick(theme, T.text, '#fafafa') }}>
-          People
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-          <SegmentedControl value={tab} options={['All', 'Admins', 'Needs 2FA']} onChange={setTab} />
-        </Box>
-      </Box>
+      <PageHeader
+        title="People"
+        lede={peopleLede}
+        status={peopleStatus}
+        actions={<SegmentedControl value={tab} options={['All', 'Admins', 'Needs 2FA']} onChange={setTab} />}
+      />
 
       {/* ================================================================= */}
       {/* ALL USERS TAB                                                      */}
@@ -1092,6 +1128,16 @@ export function Users() {
                 )}
                 <ColumnHeader
                   label=""
+                  columnId="__admin"
+                  sortConfig={{ key: effectiveSortKey, direction: sortDir }}
+                  onSort={() => {}}
+                  width={36}
+                  align="center"
+                  sortable={false}
+                  pinEnd
+                />
+                <ColumnHeader
+                  label=""
                   columnId="__open"
                   sortConfig={{ key: effectiveSortKey, direction: sortDir }}
                   onSort={() => {}}
@@ -1203,6 +1249,24 @@ export function Users() {
                           </Typography>
                         </Box>
                       )}
+                      <Box
+                        sx={{ width: 36, flex: '0 0 36px', display: 'flex', justifyContent: 'center', opacity: 0.7 }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ActionTooltip title="Open in Admin">
+                          <IconButton
+                            size="small"
+                            component="a"
+                            href={`https://admin.google.com/ac/users/${encodeURIComponent(user.primaryEmail)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            sx={{ color: (t) => textTertiary(t), p: 0.5 }}
+                            aria-label="Open in Admin"
+                          >
+                            <ExternalLink size={14} strokeWidth={1.75} />
+                          </IconButton>
+                        </ActionTooltip>
+                      </Box>
                       <Box sx={listActionsSx}>
                         <ListChevron />
                       </Box>
@@ -1243,104 +1307,98 @@ export function Users() {
               </Box>
             ) : usersWithout2FAData ? (
               <>
-                {/* 2FA progress visualization */}
-                <Box sx={(theme) => ({
-                  border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
-                  borderRadius: T.radiusLg,
-                  p: 2.5,
-                  mb: 3,
-                  bgcolor: pick(theme, T.surface, '#18181b'),
-                })}>
-                  <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 2 }}>
-                    <Box>
-                      <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '2rem', letterSpacing: '-0.03em', color: pct2FA === 100 ? T.success : T.accent, lineHeight: 1 }}>
-                        {pct2FA}%
-                      </Typography>
-                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mt: 0.5 }}>
-                        of your organization has 2FA enabled
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 3, alignItems: 'baseline' }}>
-                      <Box sx={{ textAlign: 'right' }}>
-                        <Typography sx={{ fontFamily: T.font, fontSize: '1.25rem', fontWeight: 600, color: T.success }}>{enrolled2FA}</Typography>
-                        <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', color: (t) => textTertiary(t), textTransform: 'uppercase', letterSpacing: '0.06em' }}>Enrolled</Typography>
-                      </Box>
-                      <Box sx={{ textAlign: 'right' }}>
-                        <Typography sx={{ fontFamily: T.font, fontSize: '1.25rem', fontWeight: 600, color: T.warning }}>{stats2FA?.enforcedButNotEnrolled || 0}</Typography>
-                        <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', color: (t) => textTertiary(t), textTransform: 'uppercase', letterSpacing: '0.06em' }}>Enforced</Typography>
-                      </Box>
-                      <Box sx={{ textAlign: 'right' }}>
-                        <Typography sx={{ fontFamily: T.font, fontSize: '1.25rem', fontWeight: 600, color: T.danger }}>{stats2FA?.without2FA || 0}</Typography>
-                        <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', color: (t) => textTertiary(t), textTransform: 'uppercase', letterSpacing: '0.06em' }}>Unprotected</Typography>
-                      </Box>
-                    </Box>
-                  </Box>
-                  <LinearProgress
-                    variant="determinate"
+                {/* Compact 2FA enrollment metric */}
+                <Box
+                  sx={(theme) => ({
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
+                    borderRadius: T.radiusLg,
+                    bgcolor: pick(theme, T.surface, '#18181b'),
+                    px: 2.25,
+                    py: 1.75,
+                    mb: 2,
+                  })}
+                >
+                  <ScoreRing
                     value={pct2FA}
-                    sx={(theme) => ({
-                      height: 6,
-                      borderRadius: 3,
-                      bgcolor: pick(theme, '#e8e8e4', '#27272a'),
-                      '& .MuiLinearProgress-bar': {
-                        borderRadius: 3,
-                        bgcolor: pct2FA === 100 ? T.success : T.accent,
-                        transition: 'transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
-                      },
-                    })}
+                    size={56}
+                    thickness={4}
+                    color={pct2FA === 100 ? T.success : pct2FA >= 90 ? T.success : T.warning}
+                    sizeVariant="sm"
                   />
+                  <Box>
+                    <Typography
+                      sx={{
+                        fontFamily: T.font,
+                        fontSize: '0.8125rem',
+                        fontWeight: 600,
+                        color: (th) => pick(th, T.text, '#fafafa'),
+                      }}
+                    >
+                      2FA enrollment
+                    </Typography>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mt: 0.25 }}>
+                      {enrolled2FA} enrolled ·{' '}
+                      <Box component="span" sx={{ color: T.warning }}>
+                        {stats2FA?.without2FA || 0} remaining
+                      </Box>
+                    </Typography>
+                  </Box>
                 </Box>
 
-                {/* Action bar */}
+                {/* Toolbar */}
                 {usersWithout2FAData.usersWithout2FA?.length > 0 && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
-                      {usersWithout2FAData.usersWithout2FA.length} people need to enroll
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <ActionTooltip title="Refresh">
-                        <IconButton size="small" onClick={fetchUsersWithout2FA} sx={{ color: (t) => textSecondary(t) }}>
-                          <RefreshCw size={18} strokeWidth={1.75} />
-                        </IconButton>
-                      </ActionTooltip>
-                      <ExportButton
-                        iconOnly={!isMdUp}
-                        tooltipTitle="Export 2FA report"
-                        totalItems={usersWithout2FAData.usersWithout2FA?.length || 0}
-                        selectedCount={selectedUsersWithout2FA.size}
-                        hasFilters={false}
-                        onExportAllCSV={async () => {
-                          const all: User[] = [...usersWithout2FAData.usersWithout2FA, ...(usersWithout2FAData.usersEnforcedButNotEnrolled || [])];
-                          const filename = generateExportFilename('2fa-report');
-                          exportToCSV(all, filename);
-                          showSnackbar('CSV ready.', 'success');
-                        }}
-                        onExportAllDrive={async () => {
-                          try {
-                            const r = await apiClient.post('/audit/users-without-2fa/export/drive');
-                            const link = r.data.webViewLink;
-                            if (link) window.open(link, '_blank');
-                            showSnackbar('Saved to Drive.', 'success');
-                          } catch { showSnackbar('Export failed.', 'error'); }
-                        }}
-                        triggerSx={exportToolbarButtonSx()}
-                      />
-                      <ActionTooltip title={selectedUsersWithout2FA.size > 0 ? `Send to ${selectedUsersWithout2FA.size} selected` : 'Send reminders to all'}>
-                        <span>
-                          <Button
-                            size="small"
-                            variant="contained"
-                            disableElevation
-                            disabled={sending2FAEmails}
-                            onClick={openBulk2FAConfirm}
-                            startIcon={sending2FAEmails ? <CircularProgress size={14} color="inherit" /> : <Mail size={16} strokeWidth={1.75} />}
-                            sx={{ fontFamily: T.font, fontSize: '0.8125rem', textTransform: 'none', borderRadius: T.radius, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
-                          >
-                            Send reminders
-                          </Button>
-                        </span>
-                      </ActionTooltip>
-                    </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.75, flexWrap: 'wrap' }}>
+                    <ActionTooltip title="Refresh">
+                      <IconButton size="small" onClick={fetchUsersWithout2FA} sx={{ color: (t) => textSecondary(t) }}>
+                        <RefreshCw size={18} strokeWidth={1.75} />
+                      </IconButton>
+                    </ActionTooltip>
+                    <Box sx={{ flex: 1 }} />
+                    {selectedUsersWithout2FA.size > 0 && (
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: T.accent }}>
+                        {selectedUsersWithout2FA.size} selected
+                      </Typography>
+                    )}
+                    <ActionTooltip title={selectedUsersWithout2FA.size > 0 ? `Send to ${selectedUsersWithout2FA.size} selected` : 'Send reminders to all'}>
+                      <span>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          disableElevation
+                          disabled={sending2FAEmails}
+                          onClick={openBulk2FAConfirm}
+                          startIcon={sending2FAEmails ? <CircularProgress size={14} color="inherit" /> : <Mail size={16} strokeWidth={1.75} />}
+                          sx={{ fontFamily: T.font, fontSize: '0.8125rem', textTransform: 'none', borderRadius: T.radius, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
+                        >
+                          Send 2FA reminder
+                        </Button>
+                      </span>
+                    </ActionTooltip>
+                    <ExportButton
+                      iconOnly={!isMdUp}
+                      tooltipTitle="Export 2FA report"
+                      totalItems={usersWithout2FAData.usersWithout2FA?.length || 0}
+                      selectedCount={selectedUsersWithout2FA.size}
+                      hasFilters={false}
+                      onExportAllCSV={async () => {
+                        const all: User[] = [...usersWithout2FAData.usersWithout2FA, ...(usersWithout2FAData.usersEnforcedButNotEnrolled || [])];
+                        const filename = generateExportFilename('2fa-report');
+                        exportToCSV(all, filename);
+                        showSnackbar('CSV ready.', 'success');
+                      }}
+                      onExportAllDrive={async () => {
+                        try {
+                          const r = await apiClient.post('/audit/users-without-2fa/export/drive');
+                          const link = r.data.webViewLink;
+                          if (link) window.open(link, '_blank');
+                          showSnackbar('Saved to Drive.', 'success');
+                        } catch { showSnackbar('Export failed.', 'error'); }
+                      }}
+                      triggerSx={exportToolbarButtonSx()}
+                    />
                   </Box>
                 )}
 
@@ -1467,6 +1525,7 @@ export function Users() {
         confirmLabel={confirmConfig?.confirmLabel}
         cancelLabel={confirmConfig?.cancelLabel}
         danger={confirmConfig?.danger}
+        entities={confirmConfig?.entities}
         onClose={() => setConfirmConfig(null)}
         onConfirm={async () => { if (confirmConfig) await confirmConfig.onConfirm(); }}
       >
