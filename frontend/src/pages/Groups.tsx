@@ -51,8 +51,25 @@ import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogLis
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { PageHeader } from '../components/ui/PageHeader';
 import { FilterToken } from '../components/ui/FilterToken';
+import { ExternalChip } from '../components/StatusDot';
 import { useTheme } from '@mui/material/styles';
 import { useConfirm } from '../hooks/useConfirm';
+
+/** Member is external if API says so, or email domain is outside org allowlist. */
+function isGroupMemberExternal(
+  member: { type?: string; status?: string; email?: string },
+  allowedDomains: string[]
+): boolean {
+  if (member.type === 'CUSTOMER' || member.type === 'EXTERNAL') return true;
+  if (/external/i.test(String(member.status || ''))) return true;
+  const email = (member.email || '').trim().toLowerCase();
+  if (!email.includes('@')) return false;
+  const domain = email.split('@')[1];
+  if (!domain) return false;
+  const allowed = allowedDomains.map((d) => d.toLowerCase()).filter(Boolean);
+  if (allowed.length === 0) return false;
+  return !allowed.includes(domain);
+}
 import { useResizableColumns } from '../hooks/useResizableColumns';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -305,6 +322,7 @@ export function Groups() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
   const [autocompleteOpen, setAutocompleteOpen] = useState(false);
   const [selectedGroupsForUser, setSelectedGroupsForUser] = useState<string[]>([]);
   const [userRole, setUserRole] = useState<'OWNER' | 'MANAGER' | 'MEMBER'>('MEMBER');
@@ -317,6 +335,10 @@ export function Groups() {
 
   useEffect(() => {
     fetchGroups();
+    apiClient
+      .get('/auth/me')
+      .then((r) => setAllowedDomains(Array.isArray(r.data?.allowedDomains) ? r.data.allowedDomains : []))
+      .catch(() => setAllowedDomains([]));
   }, []);
 
   const handleExportAllCSV = () => {
@@ -1249,26 +1271,24 @@ export function Groups() {
               )}
               {pagedMembersForDialog.map((member, midx) => {
                 const globalMidx = membersPageSafe * membersRowsPerPage + midx;
-                const external = member.type === 'EXTERNAL' || /external/i.test(String(member.status || ''));
+                const external = isGroupMemberExternal(member, allowedDomains);
                 const roleLabel =
                   member.role === 'OWNER' ? 'Owner' : member.role === 'MANAGER' ? 'Manager' : 'Member';
                 const directoryUser = users.find(
                   (u) => u.primaryEmail.toLowerCase() === member.email.toLowerCase()
                 );
+                const hasName = Boolean(directoryUser?.name?.fullName);
                 const displayName = directoryUser?.name?.fullName || member.email;
-                const secondaryLine = directoryUser?.name?.fullName
-                  ? member.email
-                  : external
-                    ? 'External'
-                    : null;
+                // Mock: name + email under; external email-only gets “External” under the address.
+                const secondaryLine = hasName ? member.email : external ? 'External' : null;
                 return (
                 <ListDataRow key={member.id} last={globalMidx === filteredMembersForDialog.length - 1 && !addMemberInlineOpen}>
                   <Checkbox size="small" checked={selectedMembers.includes(member.email)} onChange={() => handleSelectMember(member.email)} sx={{ p: 0.25, mr: 0.5 }} />
                   <Box sx={memberCols.cellSx('member')}>
                     <Typography
                       sx={{
-                        fontFamily: directoryUser?.name?.fullName ? T.font : T.mono,
-                        fontSize: directoryUser?.name?.fullName ? '0.8125rem' : '0.75rem',
+                        fontFamily: hasName ? T.font : T.mono,
+                        fontSize: hasName ? '0.8125rem' : '0.75rem',
                         fontWeight: 500,
                         color: (t) => pick(t, T.text, '#fafafa'),
                         whiteSpace: 'nowrap',
@@ -1284,7 +1304,7 @@ export function Groups() {
                         sx={{
                           fontFamily: T.mono,
                           fontSize: '0.75rem',
-                          color: external && !directoryUser ? T.warning : (t) => textTertiary(t),
+                          color: !hasName && external ? T.warning : (t) => textTertiary(t),
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -1303,23 +1323,7 @@ export function Groups() {
                   </Box>
                   <Box sx={memberCols.cellSx('type')}>
                     {external ? (
-                      <Box
-                        component="span"
-                        sx={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          fontSize: '0.75rem',
-                          fontWeight: 500,
-                          px: 1,
-                          py: 0.25,
-                          borderRadius: 999,
-                          bgcolor: 'rgba(217, 119, 6, 0.15)',
-                          color: '#fbbf24',
-                          fontFamily: T.font,
-                        }}
-                      >
-                        External
-                      </Box>
+                      <ExternalChip />
                     ) : (
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t) }}>
                         {member.type === 'GROUP' ? 'Group' : member.type === 'CUSTOMER' ? 'Customer' : 'User'}

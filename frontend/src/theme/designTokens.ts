@@ -36,6 +36,9 @@ export const T = {
 /** Shared Lucide size/stroke for toolbar search, filter, refresh icons. */
 export const TOOLBAR_ICON = { size: 17, strokeWidth: 2 } as const;
 
+/** Main content column max width (Layout page frame). */
+export const PAGE_MAX_WIDTH = 1120;
+
 /** Brighter secondary/tertiary copy for dark surfaces (e.g. #18181b); use via textSecondary / textTertiary helpers */
 export const TDark = {
   textSecondary: '#d4d4d8',

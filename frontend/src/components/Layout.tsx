@@ -41,7 +41,7 @@ import { authService } from '../services/auth.service';
 import { usePermissions } from '../hooks/usePermissions';
 import { Permission } from '../services/permissions.service';
 import { ThemeContext } from '../App';
-import { T, pick, textSecondary, textTertiary } from '../theme/designTokens';
+import { T, pick, textSecondary, textTertiary, PAGE_MAX_WIDTH } from '../theme/designTokens';
 import { FontLinks } from './FontLinks';
 
 const LU = 1.75;
@@ -663,13 +663,13 @@ export function Layout({ children }: LayoutProps) {
         <Box
           sx={{
             width: '100%',
-            maxWidth: 1440,
+            // Narrower than full HD so lists read denser and side margins grow.
+            // Top padding matches horizontal scale for premium frame balance.
+            maxWidth: PAGE_MAX_WIDTH,
             mx: 'auto',
             boxSizing: 'border-box',
-            // Matching top + side padding (Notion-style frame). Top was reduced
-            // during shell work and lost the premium air under the app bar.
-            px: { xs: 4, sm: 5, md: 6, lg: 8 },
-            pt: { xs: 4, sm: 5, md: 6, lg: 8 },
+            px: { xs: 3, sm: 4, md: 5, lg: 6 },
+            pt: { xs: 3, sm: 4, md: 5, lg: 6 },
             pb: { xs: 5, sm: 6, md: 8, lg: 10 },
           }}
         >
