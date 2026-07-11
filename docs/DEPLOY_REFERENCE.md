@@ -16,8 +16,10 @@ scripts/deploy-from-image.sh  →  scripts/lib/deploy-cloud-run.sh
 |-------|--------|------|
 | `scripts/bootstrap-tenant.sh` | Cloud Build (via deploy-cloudshell) | deploy-from-image |
 | `scripts/deploy-cloudshell.sh` | Cloud Build | deploy-from-image |
-| `.github/workflows/deploy.yml` | Docker on the runner | deploy-from-image |
+| `.github/workflows/deploy.yml` | Docker Buildx on the runner (+ GHA layer cache, npm cache) | deploy-from-image |
 | `./deploy.sh` | Local Docker (`linux/amd64`) | deploy-from-image |
+
+**CI caching:** GitHub Actions caches npm (keyed on `package-lock.json`) and Docker BuildKit layers (`type=gha`, `mode=max`). Typecheck/security tests always run on a fresh install of the current lockfile. First run or lockfile/`Dockerfile` changes are cold; later source-only deploys should be faster. Cloud Run roll + health is not cached (~1 min floor).
 
 Post-image steps (in order):
 

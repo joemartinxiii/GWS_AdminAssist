@@ -20,10 +20,19 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      # Write GHA cache for Docker BuildKit layers (type=gha).
+      actions: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci --no-fund --no-audit
@@ -67,7 +76,7 @@ jobs:
           gcloud services enable "${GCP_APIS[@]}" --project="${{ env.PROJECT_ID }}" --quiet 2>/dev/null \
             || echo "NOTE: could not enable APIs from CI (deploy SA lacks serviceusage.serviceUsageAdmin?). Run scripts/setup-github-ci.sh to grant it. Continuing."
 
-      - name: Configure project and Docker
+      - name: Configure project and Docker auth
         run: |
           gcloud config set project "${{ env.PROJECT_ID }}" --quiet
           gcloud artifacts repositories create "${{ env.REPO }}" \
@@ -76,18 +85,26 @@ jobs:
             --quiet 2>/dev/null || true
           gcloud auth configure-docker "${{ env.REGION }}-docker.pkg.dev" --quiet
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # BuildKit GHA layer cache: warm runs reuse dependency layers; source-only
+      # changes rebuild the app stage. Tests above always run uncached.
       - name: Build and push Docker image
-        run: |
-          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}"
-          docker build --platform linux/amd64 -t "${IMAGE}:${GITHUB_SHA}" -t "${IMAGE}:latest" .
-          docker push "${IMAGE}:${GITHUB_SHA}"
-          docker push "${IMAGE}:latest"
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:latest
+          cache-from: type=gha,scope=workspace-admin
+          cache-to: type=gha,mode=max,scope=workspace-admin
 
       # Shared post-image deploy (service, redirect pin, CORS, scan job, health, DWD hint).
-      # Same code path as deploy-cloudshell.sh / deploy.sh after the image exists.
       - name: Deploy Cloud Run service + scan job
         env:
-          # Optional: set repo variable SIGNATURE_TEMPLATE_BUCKET for durable signature templates.
           SIGNATURE_TEMPLATE_BUCKET: ${{ vars.SIGNATURE_TEMPLATE_BUCKET }}
           GWS_PROTECTED_USERS: ${{ vars.GWS_PROTECTED_USERS }}
           DWD_ADMIN_EMAIL: ${{ vars.DWD_ADMIN_EMAIL }}
