@@ -34,7 +34,7 @@ import {
   ExternalLink,
   X,
   Check,
-  Users,
+
 } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { useTable, TableColumn } from '../hooks/useTable.tsx';
@@ -46,6 +46,7 @@ import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
+import { ListChevron } from '../components/ui/ListChevron';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
@@ -868,7 +869,8 @@ export function SharedDrives() {
               <ColumnHeader label="Created" columnId="createdTime" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('createdTime')} />
               <ColumnHeader label="Sharing" columnId="sharing" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('sharing')} />
               <ColumnHeader label="Members" columnId="members" sortConfig={sortConfig} onSort={handleSort} align="right" {...cols.headerProps('members')} />
-              <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={80} align="right" pinEnd />
+              <ColumnHeader label="" columnId="op" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={40} align="center" pinEnd />
+              <ColumnHeader label="" columnId="__open" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={36} align="right" />
             </ListHeaderRow>
             {tableData.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -920,7 +922,7 @@ export function SharedDrives() {
                       </Typography>
                     </Box>
                     <Box
-                      sx={listActionsSx}
+                      sx={{ ...listActionsSx, width: 'auto', minWidth: 0, flex: '0 0 auto', gap: 0.25 }}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <ActionTooltip title="Open in Google Drive">
@@ -933,11 +935,9 @@ export function SharedDrives() {
                           <ExternalLink size={16} strokeWidth={1.75} />
                         </IconButton>
                       </ActionTooltip>
-                      <ActionTooltip title="Members & permissions">
-                        <IconButton size="small" onClick={() => handleViewPermissions(drive)} sx={{ p: 0.5, color: T.accent }} aria-label="Members">
-                          <Users size={16} strokeWidth={1.75} />
-                        </IconButton>
-                      </ActionTooltip>
+                    </Box>
+                    <Box sx={{ width: 36, flex: '0 0 36px', display: 'flex', justifyContent: 'flex-end' }}>
+                      <ListChevron />
                     </Box>
                   </ListDataRow>
                 );

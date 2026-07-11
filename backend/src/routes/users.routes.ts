@@ -549,6 +549,16 @@ router.delete(
       if (email.toLowerCase() === req.user!.email.toLowerCase()) {
         return res.status(400).json({ error: 'You cannot delete your own account.' });
       }
+      // Never delete Workspace admins from this app — use Google Admin Console.
+      const target = await userService.getUser(req.user!.email, email);
+      if (!target) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (target.isAdmin || target.isDelegatedAdmin) {
+        return res.status(403).json({
+          error: `Refusing to delete admin account ${email}. Manage admin accounts in Google Admin Console, or suspend instead.`,
+        });
+      }
       await userService.deleteUser(req.user!.email, email);
       res.json({ message: 'User deleted successfully', email });
     } catch (error: unknown) {

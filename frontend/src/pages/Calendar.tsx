@@ -25,7 +25,6 @@ import {
 import { useTheme } from '@mui/material/styles';
 import {
   Pencil,
-  Trash2,
   UserPlus,
   Calendar as CalendarIcon,
   ListFilter,
@@ -51,6 +50,7 @@ import { T, pick, textSecondary, textTertiary, dialogPaperSx } from '../theme/de
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx } from '../components/ui/ListShell';
+import { ListChevron } from '../components/ui/ListChevron';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 
@@ -531,24 +531,6 @@ export function Calendar() {
     }
   };
 
-  const handleDeleteEvent = async (event: CalendarEvent) => {
-    if (!confirm(`Are you sure you want to delete "${event.summary}"?`)) return;
-
-    try {
-      await apiClient.delete(
-        `/calendar/${encodeURIComponent(normalizedUserEmail)}/events/${event.id}?calendarId=${selectedCalendarId}`
-      );
-      setSnackbar({ open: true, message: 'Event deleted successfully', severity: 'success' });
-      fetchEvents();
-    } catch (error: any) {
-      console.error('Error deleting event:', error);
-      setSnackbar({
-        open: true,
-        message: getApiErrorMessage(error, 'Failed to delete event'),
-        severity: 'error',
-      });
-    }
-  };
 
   const handleEventSelect = (event: CalendarEventType) => {
     const calendarEvent = (event as any).resource as CalendarEvent;
@@ -1221,10 +1203,14 @@ export function Calendar() {
                 <ColumnHeader label="End" columnId="en" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} {...cols.headerProps('end')} />
                 <ColumnHeader label="Location" columnId="loc" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} {...cols.headerProps('location')} />
                 <ColumnHeader label="Attendees" columnId="att" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} {...cols.headerProps('attendees')} />
-                <ColumnHeader label="Actions" columnId="act" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width={100} align="right" pinEnd />
+                <ColumnHeader label="" columnId="__open" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width={36} align="right" pinEnd />
               </ListHeaderRow>
               {pagedTableEvents.map((event, idx) => (
-                <ListDataRow key={event.id} last={idx === pagedTableEvents.length - 1}>
+                <ListDataRow
+                  key={event.id}
+                  last={idx === pagedTableEvents.length - 1}
+                  onClick={() => handleOpenEventDialog(event, 'view')}
+                >
                   <Box sx={cols.cellSx('event')}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (th) => pick(th, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {event.summary || 'No Title'}
@@ -1257,17 +1243,8 @@ export function Calendar() {
                         : '—'}
                     </Typography>
                   </Box>
-                  <Box sx={{ ...listActionsSx, width: 100, flex: '0 0 100px' }}>
-                    <ActionTooltip title="View / Edit">
-                      <IconButton size="small" color="primary" onClick={() => handleOpenEventDialog(event, 'view')} aria-label="View or edit" sx={{ p: 0.5 }}>
-                        <Pencil size={16} strokeWidth={1.75} />
-                      </IconButton>
-                    </ActionTooltip>
-                    <ActionTooltip title="Delete">
-                      <IconButton size="small" color="error" onClick={() => handleDeleteEvent(event)} aria-label="Delete" sx={{ p: 0.5 }}>
-                        <Trash2 size={16} strokeWidth={1.75} />
-                      </IconButton>
-                    </ActionTooltip>
+                  <Box sx={listActionsSx}>
+                    <ListChevron />
                   </Box>
                 </ListDataRow>
               ))}

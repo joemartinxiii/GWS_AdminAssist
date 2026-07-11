@@ -27,7 +27,6 @@ import {
 } from '@mui/material';
 import {
   Trash2,
-  Pencil,
   UserPlus,
   Search,
   ListFilter,
@@ -42,9 +41,10 @@ import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { ActionTooltip } from '../components/ActionTooltip';
-import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx } from '../theme/designTokens';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx, dialogDangerButtonSx } from '../theme/designTokens';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
+import { ListChevron } from '../components/ui/ListChevron';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
 import { DotLabel } from '../components/StatusDot';
@@ -496,18 +496,6 @@ export function Groups() {
     }
   };
 
-  const handleDeleteGroup = async (groupEmail: string) => {
-    if (!(await confirm({ title: 'Delete group?', message: 'This cannot be undone.', danger: true, confirmLabel: 'Delete' }))) return;
-    try {
-      await apiClient.delete(`/groups/${encodeURIComponent(groupEmail)}`);
-      setGroups(prev => prev.filter(g => g.email !== groupEmail));
-      setSelectedGroups(prev => prev.filter(e => e !== groupEmail));
-      setSnackbar({ open: true, message: 'Group deleted successfully', severity: 'success' });
-    } catch (error: any) {
-      console.error('Error deleting group:', error);
-      setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to delete group'), severity: 'error' });
-    }
-  };
 
   const handleBulkDeleteGroups = async () => {
     if (selectedGroups.length === 0) return;
@@ -939,18 +927,20 @@ export function Groups() {
         </ActionTooltip>
         <Box sx={{ flex: 1 }} />
         {selectedGroups.length > 0 && (
-          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t: any) => textSecondary(t) }}>
-            {selectedGroups.length} selected
-          </Typography>
-        )}
-        {tabValue === 2 && selectedGroups.length > 0 && (
-          <ActionTooltip title="Delete selected groups">
-            <span>
-              <IconButton size="small" onClick={handleBulkDeleteGroups} disabled={deletingGroups} aria-label="Delete selected groups">
-                <Trash2 size={18} strokeWidth={1.75} />
-              </IconButton>
-            </span>
-          </ActionTooltip>
+          <>
+            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t: any) => textSecondary(t) }}>
+              {selectedGroups.length} selected
+            </Typography>
+            <Button
+              size="small"
+              startIcon={<Trash2 size={15} strokeWidth={1.75} />}
+              onClick={handleBulkDeleteGroups}
+              disabled={deletingGroups}
+              sx={(th) => ({ ...dialogDangerButtonSx(th), minHeight: 32, px: 1.5 })}
+            >
+              Delete
+            </Button>
+          </>
         )}
         <Button
           size="small"
@@ -1097,11 +1087,11 @@ export function Groups() {
             />
           ))}
           <ColumnHeader
-            label="Actions"
-            columnId="__actions"
+            label=""
+            columnId="__open"
             sortConfig={sortConfig}
             onSort={() => {}}
-            width={96}
+            width={36}
             align="right"
             sortable={false}
             pinEnd
@@ -1122,8 +1112,9 @@ export function Groups() {
                 key={group.id}
                 last={idx === pageRows.length - 1}
                 selected={selected}
+                onClick={() => handleOpenEditDialog(group)}
               >
-                <Box sx={listCheckboxSx}>
+                <Box sx={listCheckboxSx} onClick={(e) => e.stopPropagation()}>
                   <Checkbox
                     size="small"
                     checked={selected}
@@ -1156,19 +1147,8 @@ export function Groups() {
                     {formatDate(group.creationTime)}
                   </Typography>
                 </Box>
-                <Box sx={{ ...listActionsSx, width: 96, flex: '0 0 96px', '& .MuiIconButton-root': { color: T.accent } }}>
-                  <ActionTooltip title="Edit Group">
-                    <IconButton size="small" onClick={() => handleOpenEditDialog(group)} sx={{ p: 0.5 }} className="edit-action">
-                      <Pencil size={16} strokeWidth={1.75} />
-                    </IconButton>
-                  </ActionTooltip>
-                  {tabValue === 2 && (
-                    <ActionTooltip title="Delete Group">
-                      <IconButton size="small" color="error" onClick={() => handleDeleteGroup(group.email)}>
-                        <Trash2 size={18} strokeWidth={1.75} />
-                      </IconButton>
-                    </ActionTooltip>
-                  )}
+                <Box sx={listActionsSx}>
+                  <ListChevron />
                 </Box>
               </ListDataRow>
             );

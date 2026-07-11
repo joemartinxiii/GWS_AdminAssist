@@ -40,7 +40,7 @@ import {
   Plus,
   Check,
   Play,
-  Users,
+
 } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -51,6 +51,7 @@ import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarBut
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx, listPinEndSx } from '../components/ui/ListShell';
+import { ListChevron } from '../components/ui/ListChevron';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
@@ -1524,7 +1525,7 @@ export function Drive() {
                     <ColumnHeader label="Location" columnId="loc" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...searchCols.headerProps('location')} />
                   </Box>
                   <ColumnHeader label="Open" columnId="op" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={48} align="center" pinEnd />
-                  <ColumnHeader label="Perm" columnId="pm" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={52} align="center" />
+                  <ColumnHeader label="" columnId="__open" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={36} align="right" />
                 </ListHeaderRow>
               {files.length === 0 ? (
                 <Box sx={{ py: 6, textAlign: 'center', px: 2 }}>
@@ -1545,8 +1546,19 @@ export function Drive() {
                 files.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((file, fIdx, arr) => {
                   const isSelected = selectedFiles.has(file.id);
                   return (
-                    <ListDataRow key={file.id} last={fIdx === arr.length - 1} selected={isSelected}>
-                      <Checkbox size="small" checked={isSelected} onChange={() => handleSelectFile(file.id)} sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }} />
+                    <ListDataRow
+                      key={file.id}
+                      last={fIdx === arr.length - 1}
+                      selected={isSelected}
+                      onClick={() => handleOpenPermissionDialog(file)}
+                    >
+                      <Checkbox
+                        size="small"
+                        checked={isSelected}
+                        onChange={() => handleSelectFile(file.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }}
+                      />
                       <Box sx={searchCols.cellSx('name')}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (th) => pick(th, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</Typography>
                       </Box>
@@ -1569,19 +1581,18 @@ export function Drive() {
                       <Box sx={{ ...searchCols.cellSx('location'), display: { xs: 'none', sm: 'block' } }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getFileLocationLabel(file)}</Typography>
                       </Box>
-                      <Box sx={{ ...listPinEndSx, width: 48, flex: '0 0 48px', display: 'flex', justifyContent: 'center' }}>
+                      <Box
+                        sx={{ ...listPinEndSx, width: 48, flex: '0 0 48px', display: 'flex', justifyContent: 'center' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <ActionTooltip title="Open in Google Drive">
                           <Link href={file.webViewLink} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
                             <ExternalLink size={16} strokeWidth={1.75} />
                           </Link>
                         </ActionTooltip>
                       </Box>
-                      <Box sx={{ width: 52, flex: '0 0 52px', display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
-                        <ActionTooltip title="Manage permissions">
-                          <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); handleOpenPermissionDialog(file); }} aria-label="Manage permissions" sx={{ p: 0.5 }}>
-                            <Users size={16} strokeWidth={1.75} />
-                          </IconButton>
-                        </ActionTooltip>
+                      <Box sx={{ width: 36, flex: '0 0 36px', display: 'flex', justifyContent: 'flex-end' }}>
+                        <ListChevron />
                       </Box>
                     </ListDataRow>
                   );
@@ -1662,7 +1673,7 @@ export function Drive() {
                   <ColumnHeader label="Location" columnId="eloc" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...auditCols.headerProps('location')} />
                 </Box>
                 <ColumnHeader label="Open" columnId="eop" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={48} align="center" pinEnd />
-                <ColumnHeader label="Perm" columnId="epm" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={52} align="center" />
+                <ColumnHeader label="" columnId="__open" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={36} align="right" />
               </ListHeaderRow>
               {reportRecords.length === 0 ? (
                 <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -1682,8 +1693,19 @@ export function Drive() {
                   const id = f.id;
                   const isSelected = Boolean(id && selectedFiles.has(id));
                   return (
-                    <ListDataRow key={id || f.name} last={idx === reportRecords.length - 1} selected={isSelected}>
-                      <Checkbox size="small" checked={isSelected} onChange={() => handleSelectFile(id)} sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }} />
+                    <ListDataRow
+                      key={id || f.name}
+                      last={idx === reportRecords.length - 1}
+                      selected={isSelected}
+                      onClick={() => handleOpenPermissionDialogForRecord(record)}
+                    >
+                      <Checkbox
+                        size="small"
+                        checked={isSelected}
+                        onChange={() => handleSelectFile(id)}
+                        onClick={(e) => e.stopPropagation()}
+                        sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }}
+                      />
                       <Box sx={auditCols.cellSx('name')}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (th) => pick(th, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name ?? '—'}</Typography>
                       </Box>
@@ -1713,7 +1735,10 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ ...listPinEndSx, width: 48, flex: '0 0 48px', display: 'flex', justifyContent: 'center' }}>
+                      <Box
+                        sx={{ ...listPinEndSx, width: 48, flex: '0 0 48px', display: 'flex', justifyContent: 'center' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {f.webViewLink ? (
                           <ActionTooltip title="Open in Google Drive">
                             <Link href={f.webViewLink} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
@@ -1724,12 +1749,8 @@ export function Drive() {
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t) }}>—</Typography>
                         )}
                       </Box>
-                      <Box sx={{ width: 52, flex: '0 0 52px', display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
-                        <ActionTooltip title="Manage permissions">
-                          <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); handleOpenPermissionDialogForRecord(record); }} aria-label="Manage permissions" sx={{ p: 0.5 }}>
-                            <Users size={16} strokeWidth={1.75} />
-                          </IconButton>
-                        </ActionTooltip>
+                      <Box sx={{ width: 36, flex: '0 0 36px', display: 'flex', justifyContent: 'flex-end' }}>
+                        <ListChevron />
                       </Box>
                     </ListDataRow>
                   );

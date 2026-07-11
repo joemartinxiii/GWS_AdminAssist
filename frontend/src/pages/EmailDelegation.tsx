@@ -32,6 +32,7 @@ import { T, pick, textSecondary, textTertiary, exportToolbarButtonSx, selectMenu
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
+import { ListChevron } from '../components/ui/ListChevron';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 import { useTheme } from '@mui/material/styles';
 import { DotLabel } from '../components/StatusDot';
@@ -286,26 +287,6 @@ export function EmailDelegation() {
       showSnackbar(getApiErrorMessage(err, 'Failed to remove one or more delegations.'), 'error');
     } finally {
       setRemoving(false);
-    }
-  };
-  const handleRemoveOne = async (d: AllDelegation) => {
-    if (!(await confirm({
-      title: 'Remove delegation?',
-      message: `Remove delegation for ${d.delegateEmail} from ${d.userEmail}? This cannot be undone.`,
-      danger: true,
-      confirmLabel: 'Remove',
-    }))) return;
-    try {
-      await apiClient.delete(`/gmail/${encodeURIComponent(d.userEmail)}/delegations/${encodeURIComponent(d.delegateEmail)}`);
-      fetchAllDelegations();
-      setSelectedDelegations((prev) => {
-        const next = new Set(prev);
-        next.delete(delegationKey(d));
-        return next;
-      });
-    } catch (err: any) {
-      console.error(err);
-      showSnackbar(getApiErrorMessage(err, 'Failed to remove delegation.'), 'error');
     }
   };
 
@@ -625,7 +606,7 @@ export function EmailDelegation() {
               <ColumnHeader label="Mailbox owner" columnId="userEmail" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('userEmail')} />
               <ColumnHeader label="Delegate" columnId="delegateEmail" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('delegateEmail')} />
               <ColumnHeader label="Status" columnId="verificationStatus" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('verificationStatus')} />
-              <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={80} align="right" pinEnd />
+              <ColumnHeader label="" columnId="__open" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={36} align="right" pinEnd />
             </ListHeaderRow>
             {data.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -653,11 +634,7 @@ export function EmailDelegation() {
                     </DotLabel>
                   </Box>
                   <Box sx={listActionsSx}>
-                    <ActionTooltip title="Remove delegation">
-                      <IconButton size="small" onClick={() => handleRemoveOne(delegation)} sx={{ p: 0.5, color: T.danger }}>
-                        <Trash2 size={16} strokeWidth={1.75} />
-                      </IconButton>
-                    </ActionTooltip>
+                    <ListChevron />
                   </Box>
                 </ListDataRow>
               ))

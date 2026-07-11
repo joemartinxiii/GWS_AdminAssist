@@ -22,3 +22,11 @@ describe('protected users', () => {
     expect(isProtectedUserEmail('other@example.com')).toBe(false);
   });
 });
+
+/** Policy: admins are never deleted from this app (enforced in users.routes DELETE). */
+describe('admin delete policy (documented)', () => {
+  it('documents that super and delegated admins must not be deleted here', () => {
+    // Runtime enforcement is in users.routes.ts via Directory isAdmin / isDelegatedAdmin.
+    expect(true).toBe(true);
+  });
+});

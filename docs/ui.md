@@ -7,17 +7,13 @@ Canonical guide for visuals and interaction: Plus Jakarta Sans, Workspace-style 
 ## List & actions contract (do not break)
 
 1. **`ListShell` → `ListHeaderRow` → `ListDataRow`** for every data table.
-2. **Resizable columns:** data columns use **`useResizableColumns(tableId, defaults, minWidths)`** (`frontend/src/hooks/useResizableColumns.ts`). Spread **`cols.headerProps('id')`** on each **`ColumnHeader`** and **`cols.cellSx('id')`** on matching cells. Widths persist in `localStorage` under `gws-col-widths:v2:{tableId}`. Drag the right edge of a header to resize. **Actions** / icon-only columns stay fixed (not resizable) and **pinned to the right** (`pinEnd` / `listActionsSx`).
-3. **Checkboxes:** always wrap in **`listCheckboxSx`** (40px) in **both** header and every data row (empty box when no checkbox) so boxes line up.
-4. **Trailing Actions:** **`listActionsSx`** (80px, flex-end icons, **`marginLeft: auto`** so they stay flush right when data columns are fixed/resizable). Headers: **`pinEnd`** on the Actions **`ColumnHeader`**. Multi-icon trail (e.g. Open + Perm): **`pinEnd` / `listPinEndSx` only on the first** of the trail.
-5. **Icons mean one thing:**
-   - `Pencil` — edit settings / change role (actions strip only)
-   - `Users` — manage members or permissions
-   - `ExternalLink` — open in Google
-   - `Trash2` — remove/delete (danger color)
-6. **Risk chips** live in their **own fixed-width column** (Access / Sharing), not inside Role.
-7. **Account status:** **Active** / **Suspended** (not “Off”).
-8. Prefer **`useConfirm`** and **`useSnackbar`** over `window.confirm` / `alert`.
+2. **Row opens detail:** whole-row click opens the page’s modal/detail (not the checkbox). Trailing **`ListChevron`** matches Security Audit.
+3. **Resizable columns:** **`useResizableColumns`** + `headerProps` / `cellSx`. Persist under `gws-col-widths:v2:{tableId}`. Trailing Open-in-Google / chevron are fixed and **`pinEnd`**.
+4. **Checkboxes:** **`listCheckboxSx`**; `stopPropagation` so select ≠ open.
+5. **Destructive = bulk:** no per-row trash. Toolbar **Delete** when ≥1 selected. **Do not delete Workspace admins** from this app.
+6. **Open in Google** may stay on the row (quiet icon) *and* in the modal.
+7. **Risk chips** in their own column. Status **Active** / **Suspended**.
+8. Prefer **`useConfirm`** / **`useSnackbar`**.
 
 **Related code:**
 

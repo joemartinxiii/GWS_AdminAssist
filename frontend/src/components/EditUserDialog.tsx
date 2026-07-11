@@ -477,6 +477,9 @@ export function EditUserDialog({
                       <MenuItem value="active">Active</MenuItem>
                       <MenuItem value="suspended">Suspended</MenuItem>
                     </Select>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t), mt: 0.75, display: 'block' }}>
+                      Suspend blocks access. Permanent delete of non-admins is bulk-only on People. Admins cannot be deleted in this app.
+                    </Typography>
                   </FormControl>
                 </Grid>
 

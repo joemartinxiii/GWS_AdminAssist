@@ -23,7 +23,6 @@ import {
 } from '@mui/material';
 import type { AlertColor } from '@mui/material';
 import {
-  Pencil,
   X,
   Mail,
   RefreshCw,
@@ -31,6 +30,7 @@ import {
   Calendar,
   ListFilter,
   Trash2,
+  Ban,
 } from 'lucide-react';
 import type { AxiosError } from 'axios';
 import { apiClient } from '../services/api.client';
@@ -49,8 +49,9 @@ import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
-import { getApiErrorMessage } from '../utils/apiError';
+import { ListChevron } from '../components/ui/ListChevron';
 import { useResizableColumns } from '../hooks/useResizableColumns';
+import { dialogDangerButtonSx, dialogSecondaryButtonSx } from '../theme/designTokens';
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -123,6 +124,11 @@ function describeAdminType(u: User): string {
 
 function isWorkspaceAdmin(u: User): boolean {
   return u.isAdmin === true || u.isDelegatedAdmin === true;
+}
+
+/** Never delete admins or protected accounts from this app. */
+function cannotDeleteUser(u: User, protectedSet: Set<string>): boolean {
+  return isWorkspaceAdmin(u) || isProtectedUser(u.primaryEmail, protectedSet);
 }
 
 /** Directory API sometimes omits name parts; avoid runtime errors on People. */
@@ -618,41 +624,94 @@ export function Users() {
   };
   const handleCloseEdit = () => { setEditDialogOpen(false); setSelectedUser(null); };
 
-  const handleDeleteUser = (user: User) => {
-    if (isProtectedUser(user.primaryEmail, protectedUserEmails)) {
-      showSnackbar(`${user.primaryEmail} is protected and cannot be deleted. Suspend instead if needed.`, 'warning');
+  const selectedUserObjects = useMemo(
+    () => users.filter((u) => selectedUsers.has(u.primaryEmail)),
+    [users, selectedUsers]
+  );
+
+  const openBulkSuspend = () => {
+    const targets = selectedUserObjects.filter((u) => !u.suspended);
+    if (!targets.length) {
+      showSnackbar('Selected accounts are already suspended.', 'info');
       return;
     }
     setConfirmConfig({
-      title: `Delete ${user.primaryEmail}?`,
+      title: `Suspend ${targets.length} user${targets.length === 1 ? '' : 's'}?`,
+      description: (
+        <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem' }}>
+          They will lose access to Google Workspace until reactivated. Admins can still be suspended; permanent delete is blocked for admin accounts.
+        </Typography>
+      ),
+      confirmLabel: 'Suspend',
+      cancelLabel: 'Cancel',
+      danger: true,
+      onConfirm: async () => {
+        let ok = 0;
+        let fail = 0;
+        for (const u of targets) {
+          try {
+            await apiClient.patch(`/users/${encodeURIComponent(u.primaryEmail)}`, { suspended: true });
+            ok += 1;
+          } catch {
+            fail += 1;
+          }
+        }
+        setSelectedUsers(new Set());
+        await fetchUsers();
+        showSnackbar(
+          fail ? `Suspended ${ok}, ${fail} failed.` : `Suspended ${ok} account${ok === 1 ? '' : 's'}.`,
+          fail ? 'warning' : 'success'
+        );
+      },
+    });
+  };
+
+  const openBulkDelete = () => {
+    const blocked = selectedUserObjects.filter((u) => cannotDeleteUser(u, protectedUserEmails));
+    const targets = selectedUserObjects.filter((u) => !cannotDeleteUser(u, protectedUserEmails));
+    if (!targets.length) {
+      showSnackbar(
+        blocked.length
+          ? 'Selected accounts are admins or protected and cannot be deleted here. Use Google Admin Console, or suspend instead.'
+          : 'Nothing to delete.',
+        'warning'
+      );
+      return;
+    }
+    setConfirmConfig({
+      title: `Delete ${targets.length} user${targets.length === 1 ? '' : 's'} permanently?`,
       description: (
         <Box>
           <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', mb: 1 }}>
-            This permanently deletes the Google Workspace account and cannot be undone. Prefer <strong>Suspend</strong> when you only need to block access.
+            This permanently deletes Google Workspace accounts and cannot be undone. Prefer <strong>Suspend</strong> to only block access.
           </Typography>
-          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
-            {user.name.fullName} · {user.orgUnitPath || '/'}
-          </Typography>
+          {blocked.length > 0 && (
+            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+              Skipping {blocked.length} admin or protected account{blocked.length === 1 ? '' : 's'}.
+            </Typography>
+          )}
         </Box>
       ),
       confirmLabel: 'Delete permanently',
       cancelLabel: 'Cancel',
       danger: true,
       onConfirm: async () => {
-        try {
-          await apiClient.delete(`/users/${encodeURIComponent(user.primaryEmail)}`);
-          setUsers((prev) => prev.filter((u) => u.primaryEmail !== user.primaryEmail));
-          setSelectedUsers((prev) => {
-            const n = new Set(prev);
-            n.delete(user.primaryEmail);
-            return n;
-          });
-          showSnackbar(`${user.primaryEmail} deleted.`, 'success');
-          await fetchUsers();
-        } catch (e) {
-          showSnackbar(getApiErrorMessage(e, 'Failed to delete user.'), 'error');
-          throw e;
+        let ok = 0;
+        let fail = 0;
+        for (const u of targets) {
+          try {
+            await apiClient.delete(`/users/${encodeURIComponent(u.primaryEmail)}`);
+            ok += 1;
+          } catch {
+            fail += 1;
+          }
         }
+        setSelectedUsers(new Set());
+        await fetchUsers();
+        showSnackbar(
+          fail ? `Deleted ${ok}, ${fail} failed.` : `Deleted ${ok} account${ok === 1 ? '' : 's'}.`,
+          fail ? 'warning' : 'success'
+        );
       },
     });
   };
@@ -822,9 +881,31 @@ export function Users() {
               <Box sx={{ flex: 1 }} />
 
               {selectedUsers.size > 0 && (
-                <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: T.accent }}>
-                  {selectedUsers.size} selected
-                </Typography>
+                <>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: T.accent }}>
+                    {selectedUsers.size} selected
+                  </Typography>
+                  {canTakeAction && hasPermission('users.update') && (
+                    <Button
+                      size="small"
+                      startIcon={<Ban size={15} strokeWidth={1.75} />}
+                      onClick={openBulkSuspend}
+                      sx={(th) => ({ ...dialogSecondaryButtonSx(th), minHeight: 32 })}
+                    >
+                      Suspend
+                    </Button>
+                  )}
+                  {canTakeAction && hasPermission('users.delete') && (
+                    <Button
+                      size="small"
+                      startIcon={<Trash2 size={15} strokeWidth={1.75} />}
+                      onClick={openBulkDelete}
+                      sx={(th) => ({ ...dialogDangerButtonSx(th), minHeight: 32, px: 1.5 })}
+                    >
+                      Delete
+                    </Button>
+                  )}
+                </>
               )}
 
               <ExportButton
@@ -1038,11 +1119,11 @@ export function Users() {
                   />
                 )}
                 <ColumnHeader
-                  label="Actions"
-                  columnId="__actions"
+                  label=""
+                  columnId="__open"
                   sortConfig={{ key: effectiveSortKey, direction: sortDir }}
                   onSort={() => {}}
-                  width={80}
+                  width={36}
                   align="right"
                   sortable={false}
                   pinEnd
@@ -1074,13 +1155,12 @@ export function Users() {
               ) : (
                 paged.map((user, idx) => {
                   const isSelected = selectedUsers.has(user.primaryEmail);
-                  const protectedAcct = isProtectedUser(user.primaryEmail, protectedUserEmails);
                   return (
                     <ListDataRow
                       key={user.id}
                       last={idx === paged.length - 1}
                       selected={isSelected}
-                      onClick={() => toggleUser(user.primaryEmail)}
+                      onClick={() => handleOpenEdit(user)}
                     >
                       <Box sx={listCheckboxSx} onClick={(e) => e.stopPropagation()}>
                         <Checkbox size="small" checked={isSelected} sx={{ p: 0.25 }} onChange={() => toggleUser(user.primaryEmail)} />
@@ -1151,28 +1231,8 @@ export function Users() {
                           </Typography>
                         </Box>
                       )}
-                      <Box
-                        sx={listActionsSx}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {canTakeAction && hasPermission('users.update') && (
-                          <ActionTooltip title="Edit">
-                            <IconButton size="small" data-testid="edit-user" onClick={() => handleOpenEdit(user)} sx={{ p: 0.5, color: T.accent, '&:hover': { color: T.accentHover } }}>
-                              <Pencil size={16} strokeWidth={1.75} />
-                            </IconButton>
-                          </ActionTooltip>
-                        )}
-                        {canTakeAction && hasPermission('users.delete') && !protectedAcct && (
-                          <ActionTooltip title="Delete user">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleDeleteUser(user)}
-                              sx={{ p: 0.5, color: T.danger }}
-                            >
-                              <Trash2 size={16} strokeWidth={1.75} />
-                            </IconButton>
-                          </ActionTooltip>
-                        )}
+                      <Box sx={listActionsSx}>
+                        <ListChevron />
                       </Box>
                     </ListDataRow>
                   );
