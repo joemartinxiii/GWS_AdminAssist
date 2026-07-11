@@ -86,14 +86,17 @@ Data views use bordered flex lists (not legacy `Table`/`Paper` grids) for consis
 
 ---
 
-## 5. Search
+## 5. Search (flyout)
 
-- Single **Search** icon in the toolbar; field often hidden until toggled.
-- **Click** toggles a slide-out: `overflow: 'hidden'`, `width: searchOpen ? 240 : 0`, `transition: 'width 0.2s ease'`.
-- **`TextField`** `size="small"`, `minWidth: 240`, optional start adornment.
-- Wrap the icon in **`Tooltip`** and set **`aria-label="Search"`**.
+Use shared **`FlyoutSearch`** (`frontend/src/components/ui/FlyoutSearch.tsx`) on list toolbars:
 
-**Reference:** `Users.tsx`.
+- Search **icon** toggles a **280px** width-animated field (Groups member-search pattern).
+- Clear (X) when value is non-empty; Escape / click-outside collapses when empty.
+- Optional `ref.focus()` for shortcuts (e.g. ⌘K on People).
+
+**Exception:** Drive’s primary org-wide **Drive Search** field stays always-visible (Enter to run). Do not replace with flyout.
+
+**Reference:** `Users.tsx`, `Groups.tsx`, `Calendar.tsx` table search.
 
 ---
 

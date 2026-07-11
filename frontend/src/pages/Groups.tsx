@@ -21,14 +21,12 @@ import {
   MenuItem,
   Autocomplete,
   TablePagination,
-  InputAdornment,
   Popover,
   useMediaQuery,
 } from '@mui/material';
 import {
   Trash2,
   UserPlus,
-  Search,
   ListFilter,
   RefreshCw,
   Calendar,
@@ -45,6 +43,7 @@ import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarBut
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
+import { FlyoutSearch, type FlyoutSearchHandle } from '../components/ui/FlyoutSearch';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
 import { DotLabel } from '../components/StatusDot';
@@ -155,7 +154,7 @@ export function Groups() {
     membership: '',
   });
   const [filtersVisible, setFiltersVisible] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchFlyoutRef = useRef<FlyoutSearchHandle>(null);
   const exportAllCSVRef = useRef<() => void>(() => {});
   const exportSelectedCSVRef = useRef<() => void>(() => {});
   const [createdDateAnchor, setCreatedDateAnchor] = useState<HTMLElement | null>(null);
@@ -453,7 +452,7 @@ export function Groups() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        if (tabValue === 0) searchInputRef.current?.focus();
+        if (tabValue === 0) searchFlyoutRef.current?.focus();
       }
       if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault();
@@ -522,13 +521,10 @@ export function Groups() {
   };
 
   const [memberSearchTerm, setMemberSearchTerm] = useState('');
-  const [memberSearchOpen, setMemberSearchOpen] = useState(false);
   const [addMemberInlineOpen, setAddMemberInlineOpen] = useState(false);
   const [addMemberEmail, setAddMemberEmail] = useState('');
   const [addMemberRole, setAddMemberRole] = useState<'MEMBER' | 'MANAGER' | 'OWNER'>('MEMBER');
   const [addingMember, setAddingMember] = useState(false);
-  const editDialogSearchInputRef = useRef<HTMLInputElement>(null);
-  const editDialogSearchContainerRef = useRef<HTMLDivElement>(null);
   const directorySuggestions = useMemo(
     () =>
       users.map((user) =>
@@ -543,29 +539,12 @@ export function Groups() {
     setMembers([]);
     setSelectedMembers([]);
     setMemberSearchTerm('');
-    setMemberSearchOpen(false);
     setAddMemberInlineOpen(false);
     setAddMemberEmail('');
     setAddMemberRole('MEMBER');
   };
 
-  useEffect(() => {
-    if (editDialogOpen && memberSearchOpen) editDialogSearchInputRef.current?.focus();
-  }, [editDialogOpen, memberSearchOpen]);
 
-  useEffect(() => {
-    if (!memberSearchOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') setMemberSearchOpen(false); };
-    const handleClickOutside = (e: MouseEvent) => {
-      if (editDialogSearchContainerRef.current && !editDialogSearchContainerRef.current.contains(e.target as Node)) setMemberSearchOpen(false);
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [memberSearchOpen]);
 
   const filteredMembersForDialog = useMemo(() => {
     if (!memberSearchTerm.trim()) return members;
@@ -853,40 +832,12 @@ export function Groups() {
       </Box>
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         {tabValue === 0 && (
-          <TextField
-            size="small"
-            placeholder="Search groups..."
+          <FlyoutSearch
+            ref={searchFlyoutRef}
             value={filters.search}
-            onChange={(e) => handleFilterChange('search', e.target.value)}
-            inputRef={searchInputRef}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Box component="span" sx={{ display: 'flex', color: (t: any) => textTertiary(t) }}>
-                    <Search size={18} strokeWidth={1.75} />
-                  </Box>
-                </InputAdornment>
-              ),
-              ...(filters.search ? { endAdornment: (
-                <InputAdornment position="end">
-                  <Box component="span" onClick={() => handleFilterChange('search', '')} sx={{ display: 'flex', cursor: 'pointer', color: (t: any) => textTertiary(t) }}>
-                    <X size={16} strokeWidth={2} />
-                  </Box>
-                </InputAdornment>
-              ) } : {}),
-            }}
-            sx={(theme: any) => ({
-              flex: '1 1 240px',
-              maxWidth: 360,
-              '& .MuiOutlinedInput-root': {
-                fontFamily: T.font,
-                fontSize: '0.8125rem',
-                borderRadius: T.radius,
-                bgcolor: pick(theme, T.surface, '#27272a'),
-                '& fieldset': { borderColor: pick(theme, T.border, '#3f3f46') },
-                '&:hover fieldset': { borderColor: pick(theme, T.textTertiary, '#52525b') },
-              },
-            })}
+            onChange={(v) => handleFilterChange('search', v)}
+            placeholder="Search groups…"
+            tooltip="Search groups"
           />
         )}
         {tabValue === 0 && (
@@ -1203,12 +1154,13 @@ export function Groups() {
         </DialogTitle>
         <DialogContent sx={{ pt: '20px !important' }}>
           <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1.5 }}>Members</Typography>
-          <Box ref={editDialogSearchContainerRef} display="flex" alignItems="center" gap={0.5} mb={1.5}>
-            <ActionTooltip title="Search members by email">
-              <IconButton size="small" onClick={() => setMemberSearchOpen((o) => !o)} aria-label="Search members" sx={{ p: 0.5 }}>
-                <Search size={18} strokeWidth={1.75} />
-              </IconButton>
-            </ActionTooltip>
+          <Box display="flex" alignItems="center" gap={1} mb={1.5} flexWrap="wrap">
+            <FlyoutSearch
+              value={memberSearchTerm}
+              onChange={setMemberSearchTerm}
+              placeholder="Search members by email…"
+              tooltip="Search members by email"
+            />
             {selectedMembers.length > 0 && (
               <Button
                 size="small"
@@ -1222,16 +1174,6 @@ export function Groups() {
                 Remove {selectedMembers.length} selected
               </Button>
             )}
-            <Box sx={{ overflow: 'hidden', width: memberSearchOpen ? 280 : 0, transition: 'width 0.2s ease', display: 'flex', alignItems: 'center' }}>
-              <TextField
-                size="small"
-                placeholder="Search members by email..."
-                value={memberSearchTerm}
-                onChange={(e) => setMemberSearchTerm(e.target.value)}
-                sx={{ minWidth: 280 }}
-                inputRef={editDialogSearchInputRef}
-              />
-            </Box>
           </Box>
 
           {loadingMembers ? (

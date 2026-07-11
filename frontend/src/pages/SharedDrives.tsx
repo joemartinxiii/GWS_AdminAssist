@@ -21,13 +21,11 @@ import {
   Popover,
   Grid,
   Divider,
-  InputAdornment,
   useMediaQuery,
 } from '@mui/material';
 import {
   Trash2,
   Plus,
-  Search,
   RefreshCw,
   ListFilter,
   Calendar,
@@ -47,6 +45,7 @@ import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
+import { FlyoutSearch } from '../components/ui/FlyoutSearch';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
@@ -673,39 +672,11 @@ export function SharedDrives() {
 
       {/* Toolbar — always visible */}
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <TextField
-          size="small"
-          placeholder="Search shared drives..."
+        <FlyoutSearch
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Box component="span" sx={{ display: 'flex', color: (t: any) => textTertiary(t) }}>
-                  <Search size={18} strokeWidth={1.75} />
-                </Box>
-              </InputAdornment>
-            ),
-            ...(searchTerm ? { endAdornment: (
-              <InputAdornment position="end">
-                <Box component="span" onClick={() => setSearchTerm('')} sx={{ display: 'flex', cursor: 'pointer', color: (t: any) => textTertiary(t) }}>
-                  <X size={16} strokeWidth={2} />
-                </Box>
-              </InputAdornment>
-            ) } : {}),
-          }}
-          sx={(theme: any) => ({
-            flex: '1 1 240px',
-            maxWidth: 360,
-            '& .MuiOutlinedInput-root': {
-              fontFamily: T.font,
-              fontSize: '0.8125rem',
-              borderRadius: T.radius,
-              bgcolor: pick(theme, T.surface, '#27272a'),
-              '& fieldset': { borderColor: pick(theme, T.border, '#3f3f46') },
-              '&:hover fieldset': { borderColor: pick(theme, T.textTertiary, '#52525b') },
-            },
-          })}
+          onChange={setSearchTerm}
+          placeholder="Search shared drives…"
+          tooltip="Search shared drives"
         />
 
         <ActionTooltip title="Filters">

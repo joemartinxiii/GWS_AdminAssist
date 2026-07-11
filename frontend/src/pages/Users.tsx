@@ -3,7 +3,6 @@ import { generateExportFilename } from '../utils/filename';
 import {
   Box,
   Typography,
-  TextField,
   Button,
   CircularProgress,
   IconButton,
@@ -17,16 +16,13 @@ import {
   Snackbar,
   Fade,
   useMediaQuery,
-  InputAdornment,
   LinearProgress,
   TablePagination,
 } from '@mui/material';
 import type { AlertColor } from '@mui/material';
 import {
-  X,
   Mail,
   RefreshCw,
-  Search,
   Calendar,
   ListFilter,
   Trash2,
@@ -50,6 +46,7 @@ import { FilterToken } from '../components/ui/FilterToken';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
+import { FlyoutSearch, type FlyoutSearchHandle } from '../components/ui/FlyoutSearch';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 import { dialogDangerButtonSx, dialogSecondaryButtonSx } from '../theme/designTokens';
 // ---------------------------------------------------------------------------
@@ -240,7 +237,7 @@ export function Users() {
     search: '', status: '', role: '', twoFA: '',
     createdFrom: '', createdTo: '', lastLoginFrom: '', lastLoginTo: '',
   });
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchFlyoutRef = useRef<FlyoutSearchHandle>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
@@ -767,7 +764,10 @@ export function Users() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); searchInputRef.current?.focus(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        searchFlyoutRef.current?.focus();
+      }
     };
     document.addEventListener('keydown', handler, true);
     return () => document.removeEventListener('keydown', handler, true);
@@ -821,40 +821,12 @@ export function Users() {
           <Box>
             {/* Toolbar: search + filters + export */}
             <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-              <TextField
-                inputRef={searchInputRef}
-                size="small"
-                placeholder={`Search people\u2026  ${shortcut(['K'])}`}
+              <FlyoutSearch
+                ref={searchFlyoutRef}
                 value={filters.search}
-                onChange={(e) => handleFilterChange('search', e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Box component="span" sx={{ display: 'flex', color: (t) => textTertiary(t) }}>
-                        <Search size={18} strokeWidth={1.75} />
-                      </Box>
-                    </InputAdornment>
-                  ),
-                  ...(filters.search ? { endAdornment: (
-                    <InputAdornment position="end">
-                      <Box component="span" onClick={() => handleFilterChange('search', '')} sx={{ display: 'flex', cursor: 'pointer', color: (t) => textTertiary(t) }}>
-                        <X size={16} strokeWidth={2} />
-                      </Box>
-                    </InputAdornment>
-                  ) } : {}),
-                }}
-                sx={(theme) => ({
-                  flex: '1 1 240px',
-                  maxWidth: 360,
-                  '& .MuiOutlinedInput-root': {
-                    fontFamily: T.font,
-                    fontSize: '0.8125rem',
-                    borderRadius: T.radius,
-                    bgcolor: pick(theme, T.surface, '#27272a'),
-                    '& fieldset': { borderColor: pick(theme, T.border, '#3f3f46') },
-                    '&:hover fieldset': { borderColor: pick(theme, T.textTertiary, '#52525b') },
-                  },
-                })}
+                onChange={(v) => handleFilterChange('search', v)}
+                placeholder={`Search people…  ${shortcut(['K'])}`}
+                tooltip="Search people"
               />
 
               <ActionTooltip title="Filters">

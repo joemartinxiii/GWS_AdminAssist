@@ -17,12 +17,11 @@ import {
   Select,
   MenuItem,
   useMediaQuery,
-  InputAdornment,
   Snackbar,
   Alert,
 } from '@mui/material';
 import type { AlertColor } from '@mui/material';
-import { Plus, Search, Trash2, RefreshCw, ListFilter, X } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, ListFilter } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
@@ -33,6 +32,7 @@ import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
+import { FlyoutSearch } from '../components/ui/FlyoutSearch';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 import { useTheme } from '@mui/material/styles';
 import { DotLabel } from '../components/StatusDot';
@@ -415,39 +415,11 @@ export function EmailDelegation() {
 
       {/* Toolbar */}
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <TextField
-          size="small"
-          placeholder="Search delegations…"
+        <FlyoutSearch
           value={allDelegationsTable.searchTerm}
-          onChange={(e) => allDelegationsTable.setSearchTerm(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Box component="span" sx={{ display: 'flex', color: (t: any) => textTertiary(t) }}>
-                  <Search size={18} strokeWidth={1.75} />
-                </Box>
-              </InputAdornment>
-            ),
-            ...(allDelegationsTable.searchTerm ? { endAdornment: (
-              <InputAdornment position="end">
-                <Box component="span" onClick={() => allDelegationsTable.setSearchTerm('')} sx={{ display: 'flex', cursor: 'pointer', color: (t: any) => textTertiary(t) }}>
-                  <X size={16} strokeWidth={2} />
-                </Box>
-              </InputAdornment>
-            ) } : {}),
-          }}
-          sx={(theme: any) => ({
-            flex: '1 1 240px',
-            maxWidth: 360,
-            '& .MuiOutlinedInput-root': {
-              fontFamily: T.font,
-              fontSize: '0.8125rem',
-              borderRadius: T.radius,
-              bgcolor: pick(theme, T.surface, '#27272a'),
-              '& fieldset': { borderColor: pick(theme, T.border, '#3f3f46') },
-              '&:hover fieldset': { borderColor: pick(theme, T.textTertiary, '#52525b') },
-            },
-          })}
+          onChange={(v) => allDelegationsTable.setSearchTerm(v)}
+          placeholder="Search delegations…"
+          tooltip="Search delegations"
         />
 
         <ActionTooltip title="Filters">
