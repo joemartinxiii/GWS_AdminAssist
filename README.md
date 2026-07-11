@@ -43,7 +43,7 @@ See **[docs/LOCAL_DEV.md](docs/LOCAL_DEV.md)** (mock UI with MSW, or full stack 
 ### Before you go live
 
 1. Read **[SECURITY.md](SECURITY.md)** (OAuth, domain-wide delegation, scopes).
-2. Follow the **go-live checklist** in **[docs/DEPLOY.md](docs/DEPLOY.md#go-live-checklist-hand-to-a-coworker)**.
+2. Follow the **go-live checklist** in **[docs/DEPLOY.md](docs/DEPLOY.md#go-live-checklist)**.
 3. Run `npm install && npm run test:security && npm run type-check:all`.
 4. Set optional production env: `GWS_PROTECTED_USERS`, `SIGNATURE_TEMPLATE_BUCKET` (see deploy guide).
 
@@ -56,7 +56,8 @@ Start here when you need something specific:
 | Doc | For |
 |-----|-----|
 | **[docs/README.md](docs/README.md)** | Full documentation map |
-| **[docs/DEPLOY.md](docs/DEPLOY.md)** | Production deploy, CI, teardown |
+| **[docs/DEPLOY.md](docs/DEPLOY.md)** | Production deploy and go-live checklist |
+| **[docs/DEPLOY_REFERENCE.md](docs/DEPLOY_REFERENCE.md)** | Deploy flags, secrets, troubleshooting |
 | **[SECURITY.md](SECURITY.md)** | Auth, DWD, hardening of the app itself |
 | **[docs/LOCAL_DEV.md](docs/LOCAL_DEV.md)** | Develop on your machine |
 | **[docs/STAGING_TEST_SETUP.md](docs/STAGING_TEST_SETUP.md)** | Live/API and Playwright tests |

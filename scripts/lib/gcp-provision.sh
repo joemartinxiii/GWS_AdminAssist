@@ -137,7 +137,7 @@ create_sa_key() {
       sleep 20
     fi
   done
-  die "Could not create SA key after retries (org policy iam.disableServiceAccountKeyCreation may still be enforced or propagating). Re-run in a few minutes, or see docs/DEPLOY.md for Workload Identity Federation."
+  die "Could not create SA key after retries (org policy may block keys). Prefer Workload Identity Federation: bash scripts/setup-github-ci.sh — see docs/DEPLOY.md."
 }
 
 # If iam.disableServiceAccountKeyCreation is enforced (secure-by-default on new

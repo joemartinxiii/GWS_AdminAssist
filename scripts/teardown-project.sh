@@ -4,7 +4,7 @@
 # Usage:
 #   bash scripts/teardown-project.sh --project PROJECT_ID [--region us-central1] [--delete-project]
 #
-# Does NOT touch Google Workspace (DWD) or OAuth clients — see docs/DEPLOY.md "Teardown / rebuild".
+# Does NOT touch Google Workspace (DWD) or OAuth clients — see docs/DEPLOY.md and DEPLOY_REFERENCE.md.
 
 set -euo pipefail
 
@@ -39,7 +39,7 @@ Removes:
   - Service accounts (${RUNTIME_SA}, ${DEPLOY_SA}) and their keys
   - Artifact Registry repo (${ARTIFACT_REPO})
 
-Manual steps still required (documented in docs/DEPLOY.md):
+Manual steps still required (documented in docs/DEPLOY.md / DEPLOY_REFERENCE.md):
   - Remove DWD entry in admin.google.com
   - Remove or reset OAuth Web client in GCP Console
   - Clear GitHub Actions secrets (GCP_PROJECT_ID, GCP_WIF_PROVIDER, GCP_DEPLOY_SA;

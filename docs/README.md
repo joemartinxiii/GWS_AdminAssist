@@ -6,7 +6,8 @@ Human-oriented guides for **GWS Admin Assist**. Start with the row that matches 
 
 | Guide | When to use it |
 |-------|----------------|
-| **[DEPLOY.md](DEPLOY.md)** | First deploy, GitHub Actions, updates, teardown |
+| **[DEPLOY.md](DEPLOY.md)** | First deploy, updates, go-live checklist |
+| **[DEPLOY_REFERENCE.md](DEPLOY_REFERENCE.md)** | Flags, secrets map, scan/audit infra, troubleshooting |
 | **[../SECURITY.md](../SECURITY.md)** | OAuth client, domain-wide delegation, scopes, app security model |
 | **[../GWS_HARDENING.md](../GWS_HARDENING.md)** | What the Security Audit page checks |
 
