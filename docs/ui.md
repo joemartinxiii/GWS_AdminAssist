@@ -139,7 +139,7 @@ Use shared **`FlyoutSearch`** (`frontend/src/components/ui/FlyoutSearch.tsx`) on
 - Put **Run scan** / **Run audit** in the **page header** next to tabs/export — not a full-width slab.
 - Keep **run context** under the title: current state (`Running now` / `Scanning now · N%`) and **date/time of last (or previous) run**, plus who triggered when available.
 - Progress while running: short determinate bar under the meta (Drive) or full-page spinner during audit evaluation — not a page-wide empty control strip.
-- Security score summary uses **`ScoreRing`** (`frontend/src/components/ui/ScoreRing.tsx`) — primary compliance ring + status mini-rings (pass / warning / fail). Full-width panel under a filter row (tabs sit with the list, not top-right beside the title), rings left-packed with info/manual counts on the right — not a content-width island that leaves dead space.
+- Security score summary uses **`ScoreRing`** (`frontend/src/components/ui/ScoreRing.tsx`) — primary compliance ring + status mini-rings (pass / warning / fail). Content-width card, not a stretched hero bar.
 
 **Reference:** `Drive.tsx` (audit tabs), `SecurityAudit.tsx`.
 
@@ -160,8 +160,7 @@ Use shared **`FlyoutSearch`** (`frontend/src/components/ui/FlyoutSearch.tsx`) on
 
 Full-page data views use **ListShell** rows (not MUI `Table`). Pagination is usually **`TablePagination`** under the list. Sorting goes through **`ColumnHeader`** + page-level sort state (or `useTable` for data only).
 
-- Prefer **`useResizableColumns`** for column widths (see contract above). Columns flex to fit the frame (no horizontal scroll); `resizableIds` only adjusts share (Drive file name).
-- Keep checkbox + actions columns fixed width.
+- Prefer dialogs with an explicit **content-fit** `maxWidth` (px) via `maxWidth={false}` + `PaperProps.sx.maxWidth` when MUI `sm`/`md` leave empty space or clip columns. Match the product mock (~720 for detail/permission modals) — never force horizontal scroll; columns flex/ellipsis inside the frame.
 
 **Reference:** `Users.tsx`, `Groups.tsx`, `EmailDelegation.tsx`, `frontend/src/hooks/useTable.tsx` (data helpers).
 
@@ -181,6 +180,7 @@ One surface for every modal — match **Edit user / Groups / Email** chrome, not
 | **`dialogCancelButtonSx`** | Quiet Cancel / Close |
 | **`dialogDangerButtonSx`** | Delete / Remove |
 
+- **Width:** Prefer **content-fit** custom widths (`maxWidth={false}` + `PaperProps.sx.maxWidth`, typically **~720** for detail/permission modals — matches the product mock `.modal.md`). Avoid default MUI `md` (~900) empty space and over-tight `sm` that clips columns. Lists inside must still flex/ellipsis — **no horizontal scroll**.
 - **Content**: `DialogContent` with `pt: '20px !important'` (avoid bare MUI `dividers` unless needed).
 - **Sections**: small caps / tracked labels for field groups.
 

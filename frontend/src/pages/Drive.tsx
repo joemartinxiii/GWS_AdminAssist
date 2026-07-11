@@ -298,6 +298,8 @@ export function Drive() {
   const [newPermissionEmail, setNewPermissionEmail] = useState('');
   const [newPermissionDomain, setNewPermissionDomain] = useState('');
   const [directorySuggestions, setDirectorySuggestions] = useState<string[]>([]);
+  const [directoryNameByEmail, setDirectoryNameByEmail] = useState<Record<string, string>>({});
+  const [directoryLoaded, setDirectoryLoaded] = useState(false);
   const [loadingDirectoryUsers, setLoadingDirectoryUsers] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({
     open: false,
@@ -333,31 +335,36 @@ export function Drive() {
     setFilePermissionsPage((p) => Math.min(p, max));
   }, [selectedFile?.permissions?.length, selectedFile?.id, filePermissionsRowsPerPage]);
 
+  // Drive permissions.list often omits displayName — hydrate from Directory when the modal opens.
   useEffect(() => {
-    if (!addPermissionDialogOpen || newPermissionType !== 'user' || loadingDirectoryUsers || directorySuggestions.length > 0) return;
+    if (!permissionDialogOpen || loadingDirectoryUsers || directoryLoaded) return;
     const fetchDirectoryUsers = async () => {
       try {
         setLoadingDirectoryUsers(true);
         const response = await apiClient.get('/users?maxResults=500');
         const uniqueByEmail = new Map<string, string>();
+        const names: Record<string, string> = {};
         if (Array.isArray(response.data)) {
           for (const user of response.data) {
             const email = String(user?.primaryEmail || '').trim();
             if (!EMAIL_RE.test(email)) continue;
             const fullName = String(user?.name?.fullName || '').trim();
             uniqueByEmail.set(email, fullName ? `${fullName} (${email})` : email);
+            if (fullName) names[email.toLowerCase()] = fullName;
           }
         }
         setDirectorySuggestions(Array.from(uniqueByEmail.values()).sort((a, b) => a.localeCompare(b)));
+        setDirectoryNameByEmail(names);
       } catch (error) {
         console.error('Error fetching users for Drive permission suggestions:', error);
         setDirectorySuggestions([]);
       } finally {
+        setDirectoryLoaded(true);
         setLoadingDirectoryUsers(false);
       }
     };
     void fetchDirectoryUsers();
-  }, [addPermissionDialogOpen, newPermissionType, loadingDirectoryUsers, directorySuggestions.length]);
+  }, [permissionDialogOpen, loadingDirectoryUsers, directoryLoaded]);
 
   const fetchScanStatus = useCallback(async () => {
     try {
@@ -1757,9 +1764,16 @@ export function Drive() {
           setPermissionDialogOpen(false);
           setSelectedPermissionIds(new Set());
         }}
-        maxWidth="sm"
+        maxWidth={false}
         fullWidth
-        PaperProps={{ sx: (th) => ({ ...dialogPaperSx(th), maxWidth: 680 }) }}
+        PaperProps={{
+          sx: (th) => ({
+            ...dialogPaperSx(th),
+            width: '100%',
+            maxWidth: 720,
+            overflowX: 'hidden',
+          }),
+        }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -1882,11 +1896,27 @@ export function Drive() {
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{permission.type}</Typography>
                       </Box>
                       <Box sx={permCols.cellSx('name')}>
-                        <Tooltip title={permission.type === 'anyone' ? '' : (permission.displayName || '')} placement="top">
+                        <Tooltip
+                          title={
+                            permission.type === 'anyone'
+                              ? ''
+                              : permission.displayName
+                                || (permission.emailAddress
+                                  ? directoryNameByEmail[permission.emailAddress.toLowerCase()] || ''
+                                  : '')
+                          }
+                          placement="top"
+                        >
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
                               ? 'Anyone with link'
-                              : permission.displayName || '—'}
+                              : permission.type === 'domain'
+                                ? (permission.domain || permission.displayName || 'Domain')
+                                : permission.displayName
+                                  || (permission.emailAddress
+                                    ? directoryNameByEmail[permission.emailAddress.toLowerCase()]
+                                    : undefined)
+                                  || '—'}
                           </Typography>
                         </Tooltip>
                       </Box>

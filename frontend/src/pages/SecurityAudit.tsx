@@ -984,6 +984,7 @@ export function SecurityAudit() {
           }
           actions={
             <>
+              <SegmentedControl value={auditTab} options={[...AUDIT_TABS]} onChange={setAuditTab} />
               <ActionTooltip title={canTakeAction ? 'Re-evaluate all checks and save for the organization' : 'Super admin only'}>
                 <span>
                   <Button
@@ -1039,20 +1040,6 @@ export function SecurityAudit() {
             </>
           }
         />
-        {!bootLoading && hardeningData && (
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 1.5,
-              flexWrap: 'wrap',
-              mb: 2,
-            }}
-          >
-            <SegmentedControl value={auditTab} options={[...AUDIT_TABS]} onChange={setAuditTab} />
-          </Box>
-        )}
         {!running && hardeningData && (
           <Menu
             anchorEl={exportAnchorEl}
@@ -1116,79 +1103,68 @@ export function SecurityAudit() {
                 return (
                   <Box
                     sx={(th) => ({
-                      display: 'flex',
+                      display: 'inline-flex',
                       flexDirection: 'column',
                       gap: 2,
-                      width: '100%',
                       border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
                       borderRadius: T.radiusLg,
-                      p: { xs: 2, sm: 2.5 },
+                      p: 2.25,
                       mb: 2.5,
                       bgcolor: pick(th, T.surface, '#18181b'),
-                      boxSizing: 'border-box',
+                      maxWidth: '100%',
                     })}
                   >
                     <Box
                       sx={{
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
                         flexWrap: 'wrap',
-                        gap: { xs: 2.5, sm: 4 },
+                        gap: { xs: 2.5, sm: 3.5 },
                       }}
                     >
+                      <ScoreRing
+                        value={pctPass}
+                        color={headlineColor}
+                        caption="Compliance"
+                        sizeVariant="lg"
+                      />
                       <Box
                         sx={{
                           display: 'flex',
-                          alignItems: 'center',
+                          alignItems: 'flex-start',
                           flexWrap: 'wrap',
-                          gap: { xs: 2.5, sm: 3.5 },
+                          gap: { xs: 2, sm: 2.5 },
                         }}
                       >
                         <ScoreRing
-                          value={pctPass}
-                          color={headlineColor}
-                          caption="Compliance"
-                          sizeVariant="lg"
+                          value={pctOfGraded(s.pass)}
+                          centerLabel={String(s.pass)}
+                          color={T.success}
+                          caption="Pass"
+                          sizeVariant="sm"
                         />
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            flexWrap: 'wrap',
-                            gap: { xs: 2, sm: 2.5 },
-                          }}
-                        >
-                          <ScoreRing
-                            value={pctOfGraded(s.pass)}
-                            centerLabel={String(s.pass)}
-                            color={T.success}
-                            caption="Pass"
-                            sizeVariant="sm"
-                          />
-                          <ScoreRing
-                            value={pctOfGraded(s.warning)}
-                            centerLabel={String(s.warning)}
-                            color={T.warning}
-                            caption="Warning"
-                            sizeVariant="sm"
-                          />
-                          <ScoreRing
-                            value={pctOfGraded(s.fail)}
-                            centerLabel={String(s.fail)}
-                            color={T.danger}
-                            caption="Fail"
-                            sizeVariant="sm"
-                          />
-                        </Box>
+                        <ScoreRing
+                          value={pctOfGraded(s.warning)}
+                          centerLabel={String(s.warning)}
+                          color={T.warning}
+                          caption="Warning"
+                          sizeVariant="sm"
+                        />
+                        <ScoreRing
+                          value={pctOfGraded(s.fail)}
+                          centerLabel={String(s.fail)}
+                          color={T.danger}
+                          caption="Fail"
+                          sizeVariant="sm"
+                        />
                       </Box>
                       <Box
                         sx={{
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: 1.25,
-                          minWidth: 120,
-                          pl: { sm: 1 },
+                          gap: 1,
+                          pl: { sm: 0.5 },
+                          minWidth: 100,
                         }}
                       >
                         {(
@@ -1198,7 +1174,7 @@ export function SecurityAudit() {
                           ] as const
                         ).map(([label, n, color]) => (
                           <Box key={label} sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '1.25rem', fontWeight: 600, color, minWidth: 28 }}>
+                            <Typography sx={{ fontFamily: T.font, fontSize: '1.125rem', fontWeight: 600, color, minWidth: 28 }}>
                               {n}
                             </Typography>
                             <Typography
@@ -1216,44 +1192,33 @@ export function SecurityAudit() {
                         ))}
                       </Box>
                     </Box>
-                    <Box
-                      sx={(th) => ({
-                        display: 'flex',
-                        alignItems: 'baseline',
-                        justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: 1,
-                        pt: 1.5,
-                        borderTop: `1px solid ${pick(th, T.borderSubtle, '#27272a')}`,
-                      })}
-                    >
+                    <Box>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
                         Graded checks only — info and manual excluded from the compliance score.
-                        {ignoredCount > 0 ? (
-                          <Box component="span" sx={{ color: (t) => textTertiary(t) }}>
-                            {` ${ignoredCount} waived — client-accepted risk.`}
-                          </Box>
-                        ) : null}
                       </Typography>
                       {ignoredCount > 0 && (
-                        <Box
-                          component="button"
-                          type="button"
-                          onClick={() => setAuditTab(3)}
-                          sx={{
-                            p: 0,
-                            border: 'none',
-                            background: 'none',
-                            cursor: 'pointer',
-                            fontFamily: T.font,
-                            fontSize: '0.8125rem',
-                            fontWeight: 500,
-                            color: T.accent,
-                            '&:hover': { opacity: 0.9 },
-                          }}
+                        <Typography
+                          sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t), mt: 0.5 }}
                         >
-                          View waived
-                        </Box>
+                          {ignoredCount} waived — client-accepted risk, excluded from this score.{' '}
+                          <Box
+                            component="button"
+                            type="button"
+                            onClick={() => setAuditTab(3)}
+                            sx={{
+                              p: 0,
+                              border: 'none',
+                              background: 'none',
+                              cursor: 'pointer',
+                              font: 'inherit',
+                              color: T.accent,
+                              textDecoration: 'underline',
+                              '&:hover': { opacity: 0.9 },
+                            }}
+                          >
+                            View waived
+                          </Box>
+                        </Typography>
                       )}
                     </Box>
                   </Box>

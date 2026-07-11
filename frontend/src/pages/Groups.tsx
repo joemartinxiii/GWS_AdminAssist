@@ -1158,9 +1158,16 @@ export function Groups() {
       <Dialog
         open={editDialogOpen}
         onClose={handleCloseEditDialog}
-        maxWidth="sm"
+        maxWidth={false}
         fullWidth
-        PaperProps={{ sx: (th) => ({ ...dialogPaperSx(th), maxWidth: 640, overflowX: 'hidden' }) }}
+        PaperProps={{
+          sx: (th) => ({
+            ...dialogPaperSx(th),
+            width: '100%',
+            maxWidth: 720,
+            overflowX: 'hidden',
+          }),
+        }}
       >
         <DialogTitle
           sx={(th) => ({

@@ -130,6 +130,8 @@ export function SharedDrives() {
   const [newPermissionEmail, setNewPermissionEmail] = useState('');
   const [newPermissionDomain, setNewPermissionDomain] = useState('');
   const [directorySuggestions, setDirectorySuggestions] = useState<string[]>([]);
+  const [directoryNameByEmail, setDirectoryNameByEmail] = useState<Record<string, string>>({});
+  const [directoryLoaded, setDirectoryLoaded] = useState(false);
   const [loadingDirectoryUsers, setLoadingDirectoryUsers] = useState(false);
   const [selectedDriveIds, setSelectedDriveIds] = useState<Set<string>>(new Set());
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<Set<string>>(new Set());
@@ -255,11 +257,11 @@ export function SharedDrives() {
     { name: 260, hidden: 100, createdTime: 120, sharing: 100, members: 88 },
     { name: 140, hidden: 80, createdTime: 88, sharing: 80, members: 64 }
   );
-  // Compact member stack (name + email) so the 560px dialog stays dense — no H-scroll.
+  // Permission columns flex inside a 720px content-fit dialog (no H-scroll).
   const permCols = useResizableColumns(
-    'shared-drives-perms-v4',
-    { type: 120, member: 300, access: 90, role: 130 },
-    { type: 0, member: 0, access: 0, role: 0 }
+    'shared-drives-perms-v2',
+    { type: 88, name: 140, email: 200, access: 96, role: 120 },
+    { type: 0, name: 0, email: 0, access: 0, role: 0 }
   );
 
   useEffect(() => {
@@ -428,31 +430,36 @@ export function SharedDrives() {
     setSdPermissionsPage((p) => Math.min(p, max));
   }, [permissions.length, sdPermissionsRowsPerPage]);
 
+  // permissions.list often omits displayName — hydrate from Directory when the modal opens.
   useEffect(() => {
-    if (!addPermissionDialogOpen || newPermissionType === 'domain' || loadingDirectoryUsers || directorySuggestions.length > 0) return;
+    if (!permissionsDialogOpen || loadingDirectoryUsers || directoryLoaded) return;
     const fetchDirectoryUsers = async () => {
       try {
         setLoadingDirectoryUsers(true);
         const response = await apiClient.get('/users?maxResults=500');
         const uniqueByEmail = new Map<string, string>();
+        const names: Record<string, string> = {};
         if (Array.isArray(response.data)) {
           for (const user of response.data) {
             const email = String(user?.primaryEmail || '').trim();
             if (!EMAIL_RE.test(email)) continue;
             const fullName = String(user?.name?.fullName || '').trim();
             uniqueByEmail.set(email, fullName ? `${fullName} (${email})` : email);
+            if (fullName) names[email.toLowerCase()] = fullName;
           }
         }
         setDirectorySuggestions(Array.from(uniqueByEmail.values()).sort((a, b) => a.localeCompare(b)));
+        setDirectoryNameByEmail(names);
       } catch (error) {
         console.error('Error fetching users for shared drive permission suggestions:', error);
         setDirectorySuggestions([]);
       } finally {
+        setDirectoryLoaded(true);
         setLoadingDirectoryUsers(false);
       }
     };
     void fetchDirectoryUsers();
-  }, [addPermissionDialogOpen, newPermissionType, loadingDirectoryUsers, directorySuggestions.length]);
+  }, [permissionsDialogOpen, loadingDirectoryUsers, directoryLoaded]);
 
   const fetchSharedDrives = async () => {
     try {
@@ -906,7 +913,7 @@ export function SharedDrives() {
           sx: (th) => ({
             ...dialogPaperSx(th),
             width: '100%',
-            maxWidth: 560,
+            maxWidth: 720,
             overflowX: 'hidden',
           }),
         }}
@@ -1025,7 +1032,8 @@ export function SharedDrives() {
                     ) : null}
                   </Box>
                   <ColumnHeader label="Type" columnId="pt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('type')} />
-                  <ColumnHeader label="Member" columnId="pm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('member')} />
+                  <ColumnHeader label="Name" columnId="pn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('name')} />
+                  <ColumnHeader label="Email" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('email')} />
                   <ColumnHeader label="Access" columnId="px" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('access')} />
                   <ColumnHeader label="Role" columnId="pr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('role')} />
                 </ListHeaderRow>
@@ -1036,16 +1044,6 @@ export function SharedDrives() {
                 )}
                 {pagedSharedDrivePermissions.map((permission, pidx) => {
                   const globalPidx = sdPermPageSafe * sdPermissionsRowsPerPage + pidx;
-                  const memberPrimary =
-                    permission.type === 'anyone'
-                      ? 'Anyone with link'
-                      : permission.displayName || permission.emailAddress || permission.domain || permission.id || '—';
-                  const memberSecondary =
-                    permission.type === 'anyone'
-                      ? null
-                      : permission.displayName
-                        ? permission.emailAddress || permission.domain || null
-                        : null;
                   return (
                   <ListDataRow key={permission.id} last={globalPidx === permissions.length - 1 && addPermissionDialogOpen} selected={selectedPermissionIds.has(permission.id)}>
                     <Box sx={listCheckboxSx}>
@@ -1061,37 +1059,25 @@ export function SharedDrives() {
                         {getTypeLabel(permission.type)}
                       </Typography>
                     </Box>
-                    <Box sx={permCols.cellSx('member')}>
-                      <Typography
-                        sx={{
-                          fontFamily: T.font,
-                          fontSize: '0.8125rem',
-                          fontWeight: 500,
-                          color: (t) => pick(t, T.text, '#fafafa'),
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          lineHeight: 1.3,
-                        }}
-                      >
-                        {memberPrimary}
+                    <Box sx={permCols.cellSx('name')}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {permission.type === 'anyone'
+                          ? 'Anyone with link'
+                          : permission.type === 'domain'
+                            ? (permission.domain || permission.displayName || 'Domain')
+                            : permission.displayName
+                              || (permission.emailAddress
+                                ? directoryNameByEmail[permission.emailAddress.toLowerCase()]
+                                : undefined)
+                              || '—'}
                       </Typography>
-                      {memberSecondary && (
-                        <Typography
-                          sx={{
-                            fontFamily: T.mono,
-                            fontSize: '0.75rem',
-                            color: (t) => textTertiary(t),
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            lineHeight: 1.3,
-                            mt: 0.15,
-                          }}
-                        >
-                          {memberSecondary}
-                        </Typography>
-                      )}
+                    </Box>
+                    <Box sx={permCols.cellSx('email')}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {permission.type === 'anyone'
+                          ? 'Anyone with link'
+                          : permission.emailAddress || permission.domain || permission.id || '—'}
+                      </Typography>
                     </Box>
                     <Box sx={permCols.cellSx('access')}>
                       {isPermissionExternal(permission) ? (
@@ -1144,8 +1130,7 @@ export function SharedDrives() {
                             height: 30,
                             fontSize: '0.8125rem',
                             fontFamily: T.font,
-                            '& .MuiOutlinedInput-notchedOutline': { borderColor: (t) => pick(t, T.border, '#3f3f46') },
-                            '& .MuiSelect-select': { py: 0.5, pl: 1, minHeight: 'auto', pr: '24px !important' },
+                            '& .MuiSelect-select': { py: 0.5, minHeight: 'auto', pr: '24px !important' },
                             '& .MuiSelect-icon': { right: 2 },
                           }}
                         >
@@ -1155,7 +1140,13 @@ export function SharedDrives() {
                         </Select>
                       </FormControl>
                     </Box>
-                    <Box sx={permCols.cellSx('member')}>
+                    <Box
+                      sx={{
+                        flex: `${permCols.widthOf('name') + permCols.widthOf('email') + permCols.widthOf('access')} 1 0px`,
+                        minWidth: 0,
+                        overflow: 'hidden',
+                      }}
+                    >
                       {newPermissionType === 'domain' ? (
                         <TextField
                           autoFocus
@@ -1197,7 +1188,6 @@ export function SharedDrives() {
                         />
                       )}
                     </Box>
-                    <Box sx={permCols.cellSx('access')} />
                     <Box sx={permCols.cellSx('role')}>
                       <FormControl size="small" fullWidth>
                         <Select
