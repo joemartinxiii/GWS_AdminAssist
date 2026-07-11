@@ -91,14 +91,22 @@ export const listCheckboxSx = {
 } as const;
 
 /**
- * Trailing actions — fixed width, end of row.
- * Do NOT use marginLeft:auto (that leaves a dead gap before the icons).
- * Growing middle columns push these to the right edge naturally.
+ * Pin the first trailing fixed column (and everything after it) to the right
+ * edge of the row. Required when data columns use fixed/resizable widths so
+ * Actions does not sit mid-row with empty space after it.
+ */
+export const listPinEndSx = {
+  marginLeft: 'auto',
+} as const;
+
+/**
+ * Trailing actions — fixed width, always flush right of the row.
  */
 export const listActionsSx = {
   width: 80,
   minWidth: 80,
   flex: '0 0 80px',
+  marginLeft: 'auto',
   display: 'flex',
   justifyContent: 'flex-end',
   alignItems: 'center',

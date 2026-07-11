@@ -114,8 +114,8 @@ export function EmailDelegation() {
 
   const cols = useResizableColumns(
     'email-delegation',
-    { userEmail: 220, delegateEmail: 220, verificationStatus: 120 },
-    { userEmail: 120, delegateEmail: 120, verificationStatus: 80 }
+    { userEmail: 280, delegateEmail: 280, verificationStatus: 120 },
+    { userEmail: 160, delegateEmail: 160, verificationStatus: 88 }
   );
 
   const handleFilterChange = (key: keyof DelegationFiltersType, value: string) => {
@@ -635,7 +635,7 @@ export function EmailDelegation() {
               <ColumnHeader label="Mailbox owner" columnId="userEmail" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('userEmail')} />
               <ColumnHeader label="Delegate" columnId="delegateEmail" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('delegateEmail')} />
               <ColumnHeader label="Status" columnId="verificationStatus" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('verificationStatus')} />
-              <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={80} align="right" />
+              <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={80} align="right" pinEnd />
             </ListHeaderRow>
             {data.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>

@@ -104,18 +104,18 @@ export function Groups() {
   const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
   const cols = useResizableColumns(
     'groups',
-    { name: 180, email: 220, description: 200, directMembersCount: 88, creationTime: 110 },
-    { name: 100, email: 120, description: 100, directMembersCount: 56, creationTime: 80 }
+    { name: 200, email: 260, description: 240, directMembersCount: 88, creationTime: 120 },
+    { name: 120, email: 160, description: 120, directMembersCount: 56, creationTime: 88 }
   );
   const memberCols = useResizableColumns(
     'groups-members',
-    { email: 240, role: 100, type: 96, status: 88 },
-    { email: 120, role: 72, type: 64, status: 64 }
+    { email: 280, role: 110, type: 100, status: 96 },
+    { email: 160, role: 80, type: 72, status: 72 }
   );
   const pickerCols = useResizableColumns(
     'groups-user-picker',
-    { name: 180, email: 220, description: 200, members: 88 },
-    { name: 100, email: 120, description: 100, members: 56 }
+    { name: 200, email: 260, description: 240, members: 88 },
+    { name: 120, email: 160, description: 120, members: 56 }
   );
   const dialogPaperSx = {
     fontFamily: T.font,
@@ -1113,6 +1113,7 @@ export function Groups() {
             width={96}
             align="right"
             sortable={false}
+            pinEnd
           />
         </ListHeaderRow>
 
@@ -1299,7 +1300,7 @@ export function Groups() {
                 <ColumnHeader label="Role" columnId="rl" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('role')} />
                 <ColumnHeader label="Type" columnId="ty" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('type')} />
                 <ColumnHeader label="Status" columnId="st" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('status')} />
-                <ColumnHeader label="Remove" columnId="rm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="right" />
+                <ColumnHeader label="Remove" columnId="rm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="right" pinEnd />
               </ListHeaderRow>
               {members.length === 0 && !addMemberInlineOpen && (
                 <Box sx={{ py: 4, textAlign: 'center' }}>
@@ -1334,7 +1335,7 @@ export function Groups() {
                   <Box sx={memberCols.cellSx('status')}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{member.status}</Typography>
                   </Box>
-                  <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Box sx={{ width: 72, flex: '0 0 72px', ml: 'auto', display: 'flex', justifyContent: 'flex-end' }}>
                     <ActionTooltip title="Remove member">
                       <IconButton size="small" color="error" onClick={() => handleRemoveMember(member.email)} sx={{ p: 0.5 }}>
                         <Trash2 size={16} strokeWidth={1.75} />

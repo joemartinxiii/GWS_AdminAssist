@@ -7,9 +7,9 @@ Canonical guide for visuals and interaction: Plus Jakarta Sans, Workspace-style 
 ## List & actions contract (do not break)
 
 1. **`ListShell` → `ListHeaderRow` → `ListDataRow`** for every data table.
-2. **Resizable columns:** data columns use **`useResizableColumns(tableId, defaults, minWidths)`** (`frontend/src/hooks/useResizableColumns.ts`). Spread **`cols.headerProps('id')`** on each **`ColumnHeader`** and **`cols.cellSx('id')`** on matching cells. Widths persist in `localStorage` under `gws-col-widths:v1:{tableId}`. Drag the right edge of a header to resize. **Actions** / icon-only columns stay fixed (not resizable).
+2. **Resizable columns:** data columns use **`useResizableColumns(tableId, defaults, minWidths)`** (`frontend/src/hooks/useResizableColumns.ts`). Spread **`cols.headerProps('id')`** on each **`ColumnHeader`** and **`cols.cellSx('id')`** on matching cells. Widths persist in `localStorage` under `gws-col-widths:v2:{tableId}`. Drag the right edge of a header to resize. **Actions** / icon-only columns stay fixed (not resizable) and **pinned to the right** (`pinEnd` / `listActionsSx`).
 3. **Checkboxes:** always wrap in **`listCheckboxSx`** (40px) in **both** header and every data row (empty box when no checkbox) so boxes line up.
-4. **Trailing Actions:** **`listActionsSx`** (80px, flex-end icons). One **Actions** column — not separate Open/Details/Remove headers.
+4. **Trailing Actions:** **`listActionsSx`** (80px, flex-end icons, **`marginLeft: auto`** so they stay flush right when data columns are fixed/resizable). Headers: **`pinEnd`** on the Actions **`ColumnHeader`**. Multi-icon trail (e.g. Open + Perm): **`pinEnd` / `listPinEndSx` only on the first** of the trail.
 5. **Icons mean one thing:**
    - `Pencil` — edit settings / change role (actions strip only)
    - `Users` — manage members or permissions

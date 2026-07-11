@@ -24,6 +24,11 @@ interface ColumnHeaderProps {
   resizable?: boolean;
   /** Called when the user starts dragging the resize handle. */
   onResizeStart?: (e: React.MouseEvent) => void;
+  /**
+   * Pin this header (and following siblings in the flex row) to the right edge.
+   * Use on Actions / trailing icon columns when data columns are fixed-width.
+   */
+  pinEnd?: boolean;
 }
 
 /**
@@ -42,6 +47,7 @@ export function ColumnHeader({
   sortable = true,
   resizable = false,
   onResizeStart,
+  pinEnd = false,
 }: ColumnHeaderProps) {
   const active = sortConfig.key === columnId;
   // Resizable columns always use fixed pixel widths so drag feedback is predictable.
@@ -74,6 +80,7 @@ export function ColumnHeader({
         color: active ? pick(theme, T.accent, '#8ab4f8') : textTertiary(theme),
         justifyContent: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start',
         pr: resizable ? 1 : 0,
+        ...(pinEnd ? { marginLeft: 'auto' } : {}),
         '&:hover': sortable ? { color: pick(theme, T.text, '#e4e4e7') } : {},
         '&:hover .col-resize-handle': { opacity: 1 },
       })}

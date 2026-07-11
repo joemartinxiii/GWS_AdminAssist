@@ -261,13 +261,13 @@ export function SharedDrives() {
 
   const cols = useResizableColumns(
     'shared-drives',
-    { name: 220, hidden: 96, createdTime: 110, sharing: 100, members: 80 },
-    { name: 120, hidden: 72, createdTime: 80, sharing: 80, members: 56 }
+    { name: 260, hidden: 100, createdTime: 120, sharing: 100, members: 88 },
+    { name: 140, hidden: 80, createdTime: 88, sharing: 80, members: 64 }
   );
   const permCols = useResizableColumns(
     'shared-drives-perms',
-    { type: 72, name: 140, email: 200, access: 100, role: 96 },
-    { type: 56, name: 80, email: 120, access: 72, role: 72 }
+    { type: 80, name: 160, email: 240, access: 100, role: 100 },
+    { type: 64, name: 100, email: 140, access: 80, role: 80 }
   );
 
   useEffect(() => {
@@ -877,7 +877,7 @@ export function SharedDrives() {
               <ColumnHeader label="Created" columnId="createdTime" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('createdTime')} />
               <ColumnHeader label="Sharing" columnId="sharing" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('sharing')} />
               <ColumnHeader label="Members" columnId="members" sortConfig={sortConfig} onSort={handleSort} align="right" {...cols.headerProps('members')} />
-              <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={80} align="right" />
+              <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={80} align="right" pinEnd />
             </ListHeaderRow>
             {tableData.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -1073,7 +1073,7 @@ export function SharedDrives() {
                   <ColumnHeader label="Email" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('email')} />
                   <ColumnHeader label="Access" columnId="px" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('access')} />
                   <ColumnHeader label="Role" columnId="pr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('role')} />
-                  <ColumnHeader label="Actions" columnId="pa" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} align="right" />
+                  <ColumnHeader label="Actions" columnId="pa" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} align="right" pinEnd />
                 </ListHeaderRow>
                 {permissions.length === 0 && !addPermissionDialogOpen && (
                   <Box sx={{ py: 4, textAlign: 'center' }}>

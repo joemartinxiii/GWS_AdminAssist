@@ -261,15 +261,15 @@ export function Users() {
   const cols = useResizableColumns(
     'users-people',
     {
-      name: 160,
-      email: 200,
-      status: 110,
+      name: 180,
+      email: 260,
+      status: 100,
       twofa: 72,
       role: 100,
-      ou: 110,
-      lastLogin: 100,
+      ou: 120,
+      lastLogin: 110,
     },
-    { name: 100, email: 120, status: 80, twofa: 56, role: 64, ou: 72, lastLogin: 72 }
+    { name: 120, email: 160, status: 80, twofa: 56, role: 72, ou: 80, lastLogin: 80 }
   );
 
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: AlertColor; action?: React.ReactNode }>({
@@ -1045,6 +1045,7 @@ export function Users() {
                   width={80}
                   align="right"
                   sortable={false}
+                  pinEnd
                 />
               </ListHeaderRow>
 

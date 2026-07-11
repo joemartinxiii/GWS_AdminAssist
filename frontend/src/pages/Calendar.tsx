@@ -111,8 +111,8 @@ export function Calendar() {
   const theme = useTheme();
   const cols = useResizableColumns(
     'calendar-events',
-    { event: 220, start: 140, end: 140, location: 140, attendees: 220 },
-    { event: 120, start: 100, end: 100, location: 80, attendees: 120 }
+    { event: 260, start: 150, end: 150, location: 160, attendees: 240 },
+    { event: 140, start: 110, end: 110, location: 100, attendees: 140 }
   );
   const [viewType, setViewType] = useState<'table' | 'calendar'>('calendar');
   const [calendarView, setCalendarView] = useState<View>('month');
@@ -1221,7 +1221,7 @@ export function Calendar() {
                 <ColumnHeader label="End" columnId="en" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} {...cols.headerProps('end')} />
                 <ColumnHeader label="Location" columnId="loc" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} {...cols.headerProps('location')} />
                 <ColumnHeader label="Attendees" columnId="att" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} {...cols.headerProps('attendees')} />
-                <ColumnHeader label="Actions" columnId="act" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width={100} align="right" />
+                <ColumnHeader label="Actions" columnId="act" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width={100} align="right" pinEnd />
               </ListHeaderRow>
               {pagedTableEvents.map((event, idx) => (
                 <ListDataRow key={event.id} last={idx === pagedTableEvents.length - 1}>

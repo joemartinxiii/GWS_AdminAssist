@@ -50,7 +50,7 @@ import { ActionTooltip } from '../components/ActionTooltip';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx, listPinEndSx } from '../components/ui/ListShell';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
@@ -272,13 +272,13 @@ export function Drive() {
   );
   const searchCols = useResizableColumns(
     'drive-search',
-    { name: 200, owner: 160, created: 104, modified: 104, size: 80, location: 140 },
-    { name: 120, owner: 100, created: 80, modified: 80, size: 56, location: 90 }
+    { name: 240, owner: 180, created: 110, modified: 110, size: 88, location: 160 },
+    { name: 140, owner: 120, created: 80, modified: 80, size: 64, location: 100 }
   );
   const auditCols = useResizableColumns(
     'drive-external',
-    { name: 200, owner: 160, sharedWith: 200, modified: 104, location: 140 },
-    { name: 120, owner: 100, sharedWith: 120, modified: 80, location: 90 }
+    { name: 240, owner: 180, sharedWith: 220, modified: 110, location: 160 },
+    { name: 140, owner: 120, sharedWith: 140, modified: 80, location: 100 }
   );
 
   // Drive Search tab (org-wide, on-demand — no auto-load).
@@ -1532,7 +1532,7 @@ export function Drive() {
                   <Box sx={{ display: { xs: 'none', sm: 'flex' }, minWidth: 0 }}>
                     <ColumnHeader label="Location" columnId="loc" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...searchCols.headerProps('location')} />
                   </Box>
-                  <ColumnHeader label="Open" columnId="op" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={48} align="center" />
+                  <ColumnHeader label="Open" columnId="op" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={48} align="center" pinEnd />
                   <ColumnHeader label="Perm" columnId="pm" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={52} align="center" />
                 </ListHeaderRow>
               {files.length === 0 ? (
@@ -1578,7 +1578,7 @@ export function Drive() {
                       <Box sx={{ ...searchCols.cellSx('location'), display: { xs: 'none', sm: 'block' } }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getFileLocationLabel(file)}</Typography>
                       </Box>
-                      <Box sx={{ width: 48, flex: '0 0 48px', display: 'flex', justifyContent: 'center' }}>
+                      <Box sx={{ ...listPinEndSx, width: 48, flex: '0 0 48px', display: 'flex', justifyContent: 'center' }}>
                         <ActionTooltip title="Open in Google Drive">
                           <Link href={file.webViewLink} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
                             <ExternalLink size={16} strokeWidth={1.75} />
@@ -1670,7 +1670,7 @@ export function Drive() {
                 <Box sx={{ display: { xs: 'none', sm: 'flex' }, minWidth: 0 }}>
                   <ColumnHeader label="Location" columnId="eloc" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...auditCols.headerProps('location')} />
                 </Box>
-                <ColumnHeader label="Open" columnId="eop" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={48} align="center" />
+                <ColumnHeader label="Open" columnId="eop" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={48} align="center" pinEnd />
                 <ColumnHeader label="Perm" columnId="epm" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={52} align="center" />
               </ListHeaderRow>
               {reportRecords.length === 0 ? (
@@ -1722,7 +1722,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ width: 48, flex: '0 0 48px', display: 'flex', justifyContent: 'center' }}>
+                      <Box sx={{ ...listPinEndSx, width: 48, flex: '0 0 48px', display: 'flex', justifyContent: 'center' }}>
                         {f.webViewLink ? (
                           <ActionTooltip title="Open in Google Drive">
                             <Link href={f.webViewLink} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
@@ -1847,7 +1847,7 @@ export function Drive() {
                   <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('email')} />
                   <ColumnHeader label="Access" columnId="dx" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('access')} />
                   <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('role')} />
-                  <ColumnHeader label="Actions" columnId="da" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} align="right" />
+                  <ColumnHeader label="Actions" columnId="da" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} align="right" pinEnd />
                 </ListHeaderRow>
                 {(selectedFile.permissions ?? []).length === 0 && !addPermissionDialogOpen && (
                   <Box sx={{ py: 4, textAlign: 'center' }}>

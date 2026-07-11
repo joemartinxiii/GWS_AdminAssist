@@ -442,18 +442,18 @@ export function SecurityAudit() {
 
   const auditCols = useResizableColumns(
     'security-audit-overview',
-    { check: 220, severity: 100, status: 110, current: 180, recommended: 200 },
-    { check: 120, severity: 72, status: 80, current: 100, recommended: 110 }
+    { check: 240, severity: 100, status: 110, current: 200, recommended: 220 },
+    { check: 140, severity: 80, status: 88, current: 120, recommended: 130 }
   );
   const auditListCols = useResizableColumns(
     'security-audit-list',
-    { check: 180, category: 140, severity: 100, status: 110, current: 160, recommended: 180 },
-    { check: 110, category: 90, severity: 72, status: 80, current: 100, recommended: 110 }
+    { check: 200, category: 140, severity: 100, status: 110, current: 180, recommended: 200 },
+    { check: 120, category: 100, severity: 80, status: 88, current: 120, recommended: 130 }
   );
   const waivedCols = useResizableColumns(
     'security-audit-waived',
-    { check: 180, category: 140, severity: 100, reason: 220 },
-    { check: 110, category: 90, severity: 72, reason: 120 }
+    { check: 200, category: 140, severity: 100, reason: 260 },
+    { check: 120, category: 100, severity: 80, reason: 140 }
   );
 
   const [bootLoading, setBootLoading] = useState(true);
@@ -869,7 +869,7 @@ export function SecurityAudit() {
   };
 
   const chevronCell = () => (
-    <Box sx={{ width: 36, flex: '0 0 36px', display: 'flex', justifyContent: 'flex-end', color: (t) => textTertiary(t), lineHeight: 0 }}>
+    <Box sx={{ width: 36, flex: '0 0 36px', ml: 'auto', display: 'flex', justifyContent: 'flex-end', color: (t) => textTertiary(t), lineHeight: 0 }}>
       <ChevronRight size={18} strokeWidth={1.75} />
     </Box>
   );
@@ -1214,7 +1214,7 @@ export function SecurityAudit() {
                         <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditCols.headerProps('status')} />
                         <ColumnHeader label="Current" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditCols.headerProps('current')} />
                         <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditCols.headerProps('recommended')} />
-                        <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={36} align="right" />
+                        <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={36} align="right" pinEnd />
                       </ListHeaderRow>
                       {categoryChecks.map((check, idx) => {
                         const waived = ignoredIds.has(check.id);
@@ -1384,6 +1384,7 @@ export function SecurityAudit() {
                         sortable={false}
                         width={40}
                         align="right"
+                        pinEnd
                       />
                     </ListHeaderRow>
                     {ignoredChecks.map((check, idx) => {

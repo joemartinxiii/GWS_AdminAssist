@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-const STORAGE_PREFIX = 'gws-col-widths:v1:';
+/** Bump when default widths change so users pick up new sensible defaults. */
+const STORAGE_PREFIX = 'gws-col-widths:v2:';
 const DEFAULT_MIN = 64;
 
 function loadStored(tableId: string): Record<string, number> | null {
