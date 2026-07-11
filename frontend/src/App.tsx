@@ -96,6 +96,9 @@ function App() {
     shape: { borderRadius: 8 },
     typography: {
       fontFamily: T.font,
+      fontWeightRegular: 400,
+      fontWeightMedium: 500,
+      fontWeightBold: 700,
       h1: { letterSpacing: '-0.03em' },
       h2: { letterSpacing: '-0.02em' },
       h3: { letterSpacing: '-0.02em' },
@@ -106,6 +109,12 @@ function App() {
     components: {
       MuiCssBaseline: {
         styleOverrides: `
+          html, body, #root {
+            font-family: ${T.font};
+          }
+          code, kbd, pre, .mono {
+            font-family: ${T.mono};
+          }
           /* Thin overlay scrollbars that appear while actively scrolling */
           ::-webkit-scrollbar {
             width: 0;

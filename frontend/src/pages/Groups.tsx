@@ -47,7 +47,7 @@ import { ListChevron } from '../components/ui/ListChevron';
 import { FlyoutSearch, type FlyoutSearchHandle } from '../components/ui/FlyoutSearch';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
-import { DotLabel } from '../components/StatusDot';
+
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { PageHeader } from '../components/ui/PageHeader';
 import { FilterToken } from '../components/ui/FilterToken';
@@ -108,10 +108,11 @@ export function Groups() {
     { name: 200, email: 260, description: 240, directMembersCount: 88, creationTime: 120 },
     { name: 120, email: 160, description: 120, directMembersCount: 56, creationTime: 88 }
   );
+  // v2: member stack (email as primary) + role + type; no status / per-row trash.
   const memberCols = useResizableColumns(
-    'groups-members',
-    { email: 280, role: 110, type: 100, status: 96 },
-    { email: 160, role: 80, type: 72, status: 72 }
+    'groups-members-v2',
+    { member: 320, role: 100, type: 110 },
+    { member: 180, role: 72, type: 80 }
   );
   const pickerCols = useResizableColumns(
     'groups-user-picker',
@@ -608,20 +609,6 @@ export function Groups() {
       setSnackbar({ open: true, message: error.response?.data?.error || 'Failed to fetch members', severity: 'error' });
     } finally {
       setLoadingMembers(false);
-    }
-  };
-
-  const handleRemoveMember = async (memberEmail: string) => {
-    if (!selectedGroup) return;
-
-    try {
-      await apiClient.delete(`/groups/${encodeURIComponent(selectedGroup.email)}/members/${encodeURIComponent(memberEmail)}`);
-      setMembers(members.filter(m => m.email !== memberEmail));
-      setSnackbar({ open: true, message: 'Member removed successfully', severity: 'success' });
-      fetchGroups(); // Refresh to update member count
-    } catch (error: any) {
-      console.error('Error removing member:', error);
-      setSnackbar({ open: true, message: error.response?.data?.error || 'Failed to remove member', severity: 'error' });
     }
   };
 
@@ -1226,11 +1213,9 @@ export function Groups() {
                 ) : (
                   <Box sx={{ width: 34, mr: 0.5, flexShrink: 0 }} />
                 )}
-                <ColumnHeader label="Email" columnId="em" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('email')} />
+                <ColumnHeader label="Member" columnId="mb" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('member')} />
                 <ColumnHeader label="Role" columnId="rl" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('role')} />
                 <ColumnHeader label="Type" columnId="ty" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('type')} />
-                <ColumnHeader label="Status" columnId="st" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('status')} />
-                <ColumnHeader label="Remove" columnId="rm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="right" pinEnd />
               </ListHeaderRow>
               {members.length === 0 && !addMemberInlineOpen && (
                 <Box sx={{ py: 4, textAlign: 'center' }}>
@@ -1244,33 +1229,62 @@ export function Groups() {
               )}
               {pagedMembersForDialog.map((member, midx) => {
                 const globalMidx = membersPageSafe * membersRowsPerPage + midx;
+                const external = member.type === 'EXTERNAL' || /external/i.test(String(member.status || ''));
+                const roleLabel =
+                  member.role === 'OWNER' ? 'Owner' : member.role === 'MANAGER' ? 'Manager' : 'Member';
                 return (
-                <ListDataRow key={member.id} last={globalMidx === filteredMembersForDialog.length - 1 && addMemberInlineOpen}>
+                <ListDataRow key={member.id} last={globalMidx === filteredMembersForDialog.length - 1 && !addMemberInlineOpen}>
                   <Checkbox size="small" checked={selectedMembers.includes(member.email)} onChange={() => handleSelectMember(member.email)} sx={{ p: 0.25, mr: 0.5 }} />
-                  <Box sx={memberCols.cellSx('email')}>
-                    <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.email}</Typography>
+                  <Box sx={memberCols.cellSx('member')}>
+                    <Typography
+                      sx={{
+                        fontFamily: T.font,
+                        fontSize: '0.8125rem',
+                        fontWeight: 500,
+                        color: (t) => pick(t, T.text, '#fafafa'),
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {member.email}
+                    </Typography>
+                    {external && (
+                      <Typography sx={{ fontFamily: T.mono, fontSize: '0.6875rem', color: T.warning, lineHeight: 1.3, mt: 0.15 }}>
+                        External
+                      </Typography>
+                    )}
                   </Box>
                   <Box sx={memberCols.cellSx('role')}>
-                    <DotLabel
-                      dotColor={
-                        member.role === 'OWNER' ? T.danger : member.role === 'MANAGER' ? T.warning : textTertiary(theme)
-                      }
-                    >
-                      {member.role}
-                    </DotLabel>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                      {roleLabel}
+                    </Typography>
                   </Box>
                   <Box sx={memberCols.cellSx('type')}>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{member.type}</Typography>
-                  </Box>
-                  <Box sx={memberCols.cellSx('status')}>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{member.status}</Typography>
-                  </Box>
-                  <Box sx={{ width: 72, flex: '0 0 72px', ml: 'auto', display: 'flex', justifyContent: 'flex-end' }}>
-                    <ActionTooltip title="Remove member">
-                      <IconButton size="small" color="error" onClick={() => handleRemoveMember(member.email)} sx={{ p: 0.5 }}>
-                        <Trash2 size={16} strokeWidth={1.75} />
-                      </IconButton>
-                    </ActionTooltip>
+                    {external ? (
+                      <Box
+                        component="span"
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          px: 1,
+                          py: 0.25,
+                          borderRadius: 999,
+                          bgcolor: 'rgba(217, 119, 6, 0.15)',
+                          color: '#fbbf24',
+                          fontFamily: T.font,
+                        }}
+                      >
+                        External
+                      </Box>
+                    ) : (
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t) }}>
+                        {member.type === 'GROUP' ? 'Group' : member.type === 'CUSTOMER' ? 'Customer' : 'User'}
+                      </Typography>
+                    )}
                   </Box>
                 </ListDataRow>
               );
@@ -1298,7 +1312,7 @@ export function Groups() {
                   })}
                 >
                   <Box sx={{ width: 34, flexShrink: 0 }} />
-                  <Box sx={{ ...memberCols.cellSx('email'), overflow: 'visible' }}>
+                  <Box sx={{ ...memberCols.cellSx('member'), overflow: 'visible' }}>
                     <Autocomplete
                       freeSolo
                       options={directorySuggestions}
@@ -1333,13 +1347,7 @@ export function Groups() {
                       </Select>
                     </FormControl>
                   </Box>
-                  <Box sx={memberCols.cellSx('type')}>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>—</Typography>
-                  </Box>
-                  <Box sx={memberCols.cellSx('status')}>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>—</Typography>
-                  </Box>
-                  <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
+                  <Box sx={{ ...memberCols.cellSx('type'), display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
                     <Tooltip title="Cancel">
                       <IconButton size="small" onClick={() => { setAddMemberInlineOpen(false); setAddMemberEmail(''); setAddMemberRole('MEMBER'); }} aria-label="Cancel">
                         <X size={18} strokeWidth={1.75} />

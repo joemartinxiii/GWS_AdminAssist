@@ -37,7 +37,7 @@ import { ActionTooltip } from '../components/ActionTooltip';
 import { useTheme } from '@mui/material/styles';
 import { ConfirmDialog, type ConfirmEntity } from '../components/ConfirmDialog';
 import { EditUserDialog } from '../components/EditUserDialog';
-import { StatusDot, DotLabel } from '../components/StatusDot';
+import { DotLabel } from '../components/StatusDot';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { shortcut } from '../utils/keyboard';
@@ -184,47 +184,6 @@ function formatFilterDateRange(from: string, to: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Tiny sub-components (co-located, not worth separate files)
-// ---------------------------------------------------------------------------
-
-function Initials({ name, suspended }: { name: string; suspended?: boolean }) {
-  const letters = name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-  return (
-    <Box
-      sx={(theme) => ({
-        width: 34,
-        height: 34,
-        borderRadius: '50%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontWeight: 600,
-        fontSize: '0.75rem',
-        letterSpacing: '0.02em',
-        fontFamily: T.font,
-        flexShrink: 0,
-        bgcolor: suspended
-          ? pick(theme, T.dangerSoft, '#3f1a1a')
-          : pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)'),
-        color: suspended
-          ? pick(theme, T.danger, '#fca5a5')
-          : pick(theme, T.accent, '#8ab4f8'),
-        opacity: suspended ? 0.7 : 1,
-      })}
-    >
-      {letters}
-    </Box>
-  );
-}
-
-// SegmentedControl + FilterToken extracted to shared components
-
-// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -263,18 +222,18 @@ export function Users() {
   const isAdminsTab = tab === 1;
   const [protectedUserEmails, setProtectedUserEmails] = useState<Set<string>>(new Set());
 
+  // v3: name stacks OU under full name (no separate OU column / initials).
   const cols = useResizableColumns(
-    'users-people',
+    'users-people-v3',
     {
-      name: 180,
-      email: 260,
-      status: 100,
+      name: 220,
+      email: 240,
+      status: 96,
       twofa: 72,
-      role: 100,
-      ou: 120,
-      lastLogin: 110,
+      role: 110,
+      lastLogin: 100,
     },
-    { name: 120, email: 160, status: 80, twofa: 56, role: 72, ou: 80, lastLogin: 80 }
+    { name: 140, email: 160, status: 80, twofa: 56, role: 72, lastLogin: 80 }
   );
 
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: AlertColor; action?: React.ReactNode }>({
@@ -289,6 +248,7 @@ export function Users() {
     title: string;
     description?: React.ReactNode;
     entities?: ConfirmEntity[];
+    footnote?: React.ReactNode;
     confirmLabel: string;
     cancelLabel?: string;
     danger?: boolean;
@@ -688,23 +648,15 @@ export function Users() {
     setConfirmConfig({
       title: `Delete ${targets.length} ${targets.length === 1 ? 'person' : 'people'}?`,
       description: (
-        <Box>
-          <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
-            This permanently removes the accounts from Workspace. There is no trash — this cannot be undone from AdminAssist.
-          </Typography>
-          {blocked.length > 0 && (
-            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t), mt: 1.5 }}>
-              Skipping {blocked.length} admin or protected account{blocked.length === 1 ? '' : 's'}. Admins are never deleted from this app.
-            </Typography>
-          )}
-          {blocked.length === 0 && (
-            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t), mt: 1.5 }}>
-              Admins and protected accounts are never deleted from this app.
-            </Typography>
-          )}
-        </Box>
+        <Typography component="span" sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t), lineHeight: 1.5 }}>
+          This permanently removes the accounts from Workspace. There is no trash — this cannot be undone from AdminAssist.
+        </Typography>
       ),
       entities: targets.map((u) => ({ name: u.name.fullName, detail: u.primaryEmail })),
+      footnote:
+        blocked.length > 0
+          ? `Skipping ${blocked.length} admin or protected account${blocked.length === 1 ? '' : 's'}. Admins and protected accounts are never deleted from this app.`
+          : 'Admins and protected accounts are never deleted from this app.',
       confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
       danger: true,
@@ -1074,7 +1026,6 @@ export function Users() {
                     sx={{ p: 0.25 }}
                   />
                 </Box>
-                <Box sx={{ width: 34, flex: '0 0 34px' }} />
                 <ColumnHeader
                   label="Name"
                   columnId="name"
@@ -1097,13 +1048,6 @@ export function Users() {
                   {...cols.headerProps('status')}
                 />
                 <ColumnHeader
-                  label="2FA"
-                  columnId="2fa"
-                  sortConfig={{ key: effectiveSortKey, direction: sortDir }}
-                  onSort={(id) => handleSort(id as SortKey)}
-                  {...cols.headerProps('twofa')}
-                />
-                <ColumnHeader
                   label={isAdminsTab ? 'Admin type' : 'Role'}
                   columnId={isAdminsTab ? 'adminType' : 'role'}
                   sortConfig={{ key: effectiveSortKey, direction: sortDir }}
@@ -1111,15 +1055,15 @@ export function Users() {
                   {...cols.headerProps('role')}
                 />
                 <ColumnHeader
-                  label="OU"
-                  columnId="ou"
+                  label="2FA"
+                  columnId="2fa"
                   sortConfig={{ key: effectiveSortKey, direction: sortDir }}
                   onSort={(id) => handleSort(id as SortKey)}
-                  {...cols.headerProps('ou')}
+                  {...cols.headerProps('twofa')}
                 />
                 {isMdUp && (
                   <ColumnHeader
-                    label="Last sign-in"
+                    label="Last login"
                     columnId="lastLogin"
                     sortConfig={{ key: effectiveSortKey, direction: sortDir }}
                     onSort={(id) => handleSort(id as SortKey)}
@@ -1183,11 +1127,44 @@ export function Users() {
                       <Box sx={listCheckboxSx} onClick={(e) => e.stopPropagation()}>
                         <Checkbox size="small" checked={isSelected} sx={{ p: 0.25 }} onChange={() => toggleUser(user.primaryEmail)} />
                       </Box>
-                      <Initials name={user.name.fullName} suspended={user.suspended} />
                       <Box sx={cols.cellSx('name')}>
-                        <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (theme) => pick(theme, T.text, '#fafafa'), textDecoration: user.suspended ? 'line-through' : 'none', opacity: user.suspended ? 0.5 : 1 }}>
+                        <Typography
+                          sx={{
+                            fontFamily: T.font,
+                            fontSize: '0.8125rem',
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            color: (theme) => pick(theme, T.text, '#fafafa'),
+                            textDecoration: user.suspended ? 'line-through' : 'none',
+                            opacity: user.suspended ? 0.5 : 1,
+                            lineHeight: 1.3,
+                          }}
+                        >
                           {user.name.fullName}
                         </Typography>
+                        <Tooltip title={user.orgUnitPath || '/'} placement="top">
+                          <Typography
+                            sx={{
+                              fontFamily: T.font,
+                              fontSize: '0.75rem',
+                              color: (t) => textTertiary(t),
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              lineHeight: 1.3,
+                              mt: 0.15,
+                              opacity: user.suspended ? 0.5 : 1,
+                            }}
+                          >
+                            {user.orgUnitPath && user.orgUnitPath !== '/'
+                              ? user.orgUnitPath.startsWith('/')
+                                ? user.orgUnitPath
+                                : `/${orgUnitLeaf(user.orgUnitPath)}`
+                              : '/'}
+                          </Typography>
+                        </Tooltip>
                       </Box>
                       <Box sx={cols.cellSx('email')}>
                         <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -1196,18 +1173,10 @@ export function Users() {
                       </Box>
                       <Box sx={cols.cellSx('status')}>
                         <DotLabel
-                          dotColor={user.suspended ? T.danger : T.success}
+                          dotColor={user.suspended ? textTertiary(theme) : T.success}
                           dotTooltip={user.suspended ? 'Suspended' : 'Active'}
                         >
                           {user.suspended ? 'Suspended' : 'Active'}
-                        </DotLabel>
-                      </Box>
-                      <Box sx={cols.cellSx('twofa')}>
-                        <DotLabel
-                          dotColor={user.isEnrolledIn2Sv ? T.success : user.isEnforcedIn2Sv ? T.warning : textTertiary(theme)}
-                          dotTooltip={user.isEnrolledIn2Sv ? 'Enrolled' : user.isEnforcedIn2Sv ? 'Enforced' : 'None'}
-                        >
-                          {user.isEnrolledIn2Sv ? 'On' : user.isEnforcedIn2Sv ? 'Enf.' : '—'}
                         </DotLabel>
                       </Box>
                       {isAdminsTab ? (
@@ -1216,9 +1185,9 @@ export function Users() {
                             <Typography
                               sx={{
                                 fontFamily: T.font,
-                                fontSize: '0.75rem',
+                                fontSize: '0.8125rem',
                                 fontWeight: 500,
-                                color: (t) => (user.isAdmin ? T.accent : textSecondary(t)),
+                                color: (t) => (user.isAdmin ? pick(t, T.accent, '#8ab4f8') : textSecondary(t)),
                                 whiteSpace: 'nowrap',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
@@ -1230,21 +1199,29 @@ export function Users() {
                         </Box>
                       ) : (
                         <Box sx={cols.cellSx('role')}>
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', fontWeight: user.isAdmin ? 600 : 400, color: (t) => (user.isAdmin ? T.accent : textSecondary(t)) }}>
-                            {isWorkspaceAdmin(user) ? 'Admin' : 'User'}
+                          <Typography
+                            sx={{
+                              fontFamily: T.font,
+                              fontSize: '0.8125rem',
+                              fontWeight: isWorkspaceAdmin(user) ? 500 : 400,
+                              color: (t) => (isWorkspaceAdmin(user) ? pick(t, T.accent, '#8ab4f8') : textSecondary(t)),
+                            }}
+                          >
+                            {isWorkspaceAdmin(user) ? (user.isAdmin ? 'Super admin' : 'Admin') : 'User'}
                           </Typography>
                         </Box>
                       )}
-                      <Box sx={cols.cellSx('ou')}>
-                        <Tooltip title={user.orgUnitPath || '/'} placement="top">
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {orgUnitLeaf(user.orgUnitPath)}
-                          </Typography>
-                        </Tooltip>
+                      <Box sx={cols.cellSx('twofa')}>
+                        <DotLabel
+                          dotColor={user.isEnrolledIn2Sv ? T.success : user.isEnforcedIn2Sv ? T.warning : textTertiary(theme)}
+                          dotTooltip={user.isEnrolledIn2Sv ? 'Enrolled' : user.isEnforcedIn2Sv ? 'Enforced' : 'None'}
+                        >
+                          {user.isEnrolledIn2Sv ? 'On' : user.isEnforcedIn2Sv ? 'Enf.' : 'Off'}
+                        </DotLabel>
                       </Box>
                       {isMdUp && (
                         <Box sx={cols.cellSx('lastLogin')}>
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
+                          <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
                             {formatRelative(user.lastLoginTime)}
                           </Typography>
                         </Box>
@@ -1423,11 +1400,12 @@ export function Users() {
                         onChange={(e) => setSelectedUsersWithout2FA(e.target.checked ? new Set(usersWithout2FAData.usersWithout2FA.map((u: User) => u.primaryEmail)) : new Set())}
                         sx={{ p: 0.25, mr: 0.5 }}
                       />
-                      <Box sx={{ width: 34 }} />
-                      <Typography sx={{ flex: 1, fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>Person</Typography>
-                      <Typography sx={{ width: 80, fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>2FA</Typography>
-                      <Typography sx={{ width: 80, fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>Enforced</Typography>
+                      <Typography sx={{ flex: 1.2, fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>Name</Typography>
+                      <Typography sx={{ flex: 1.4, fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>Email</Typography>
+                      <Typography sx={{ width: 120, fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>Org unit</Typography>
+                      <Typography sx={{ width: 100, fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>Last login</Typography>
                       <Box sx={{ width: 36 }} />
+                      <Box sx={{ width: 28 }} />
                     </Box>
                     {/* Rows */}
                     {paged2FAUsers.map((user: User, idx: number) => {
@@ -1436,7 +1414,7 @@ export function Users() {
                         <Box
                           key={user.id}
                           sx={(theme) => ({
-                            display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1,
+                            display: 'flex', alignItems: 'center', gap: 1.5, px: 2, py: 1.1,
                             borderBottom: idx < paged2FAUsers.length - 1 ? `1px solid ${pick(theme, T.borderSubtle, '#27272a')}` : 'none',
                             bgcolor: isSelected ? pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.16)') : 'transparent',
                             '&:hover': { bgcolor: isSelected ? pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.16)') : pick(theme, T.surfaceHover, '#27272a') },
@@ -1446,23 +1424,41 @@ export function Users() {
                           onClick={() => { const n = new Set(selectedUsersWithout2FA); n.has(user.primaryEmail) ? n.delete(user.primaryEmail) : n.add(user.primaryEmail); setSelectedUsersWithout2FA(n); }}
                         >
                           <Checkbox size="small" checked={isSelected} sx={{ p: 0.25, mr: 0.5 }} onClick={(e) => e.stopPropagation()} onChange={() => { const n = new Set(selectedUsersWithout2FA); n.has(user.primaryEmail) ? n.delete(user.primaryEmail) : n.add(user.primaryEmail); setSelectedUsersWithout2FA(n); }} />
-                          <Initials name={user.name.fullName} />
-                          <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (theme) => pick(theme, T.text, '#fafafa') }}>{user.name.fullName}</Typography>
-                            <Typography sx={{ fontFamily: T.mono, fontSize: '0.6875rem', color: (t) => textTertiary(t) }}>{user.primaryEmail}</Typography>
+                          <Box sx={{ flex: 1.2, overflow: 'hidden', minWidth: 0 }}>
+                            <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (theme) => pick(theme, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.name.fullName}</Typography>
                           </Box>
-                          <Box sx={{ width: 80, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                            <StatusDot color={user.isEnrolledIn2Sv ? T.success : T.danger} label={user.isEnrolledIn2Sv ? 'Enrolled' : 'Not enrolled'} />
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: user.isEnrolledIn2Sv ? T.success : T.danger }}>{user.isEnrolledIn2Sv ? 'On' : 'Off'}</Typography>
+                          <Box sx={{ flex: 1.4, overflow: 'hidden', minWidth: 0 }}>
+                            <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.primaryEmail}</Typography>
                           </Box>
-                          <Box sx={{ width: 80, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                            <StatusDot color={user.isEnforcedIn2Sv ? T.warning : textTertiary(theme)} label={user.isEnforcedIn2Sv ? 'Enforced' : 'Not enforced'} />
-                            <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t) }}>{user.isEnforcedIn2Sv ? 'Yes' : 'No'}</Typography>
+                          <Box sx={{ width: 120, overflow: 'hidden' }}>
+                            <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {user.orgUnitPath || '/'}
+                            </Typography>
                           </Box>
-                          <Box className="notify-action" sx={{ width: 36, display: 'flex', justifyContent: 'center', opacity: 0, transition: 'opacity 0.15s ease' }} onClick={(e) => e.stopPropagation()}>
+                          <Box sx={{ width: 100 }}>
+                            <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
+                              {formatRelative(user.lastLoginTime)}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ width: 36, display: 'flex', justifyContent: 'center', opacity: 0.7 }} onClick={(e) => e.stopPropagation()}>
+                            <ActionTooltip title="Open in Admin">
+                              <IconButton
+                                size="small"
+                                component="a"
+                                href={`https://admin.google.com/ac/users/${encodeURIComponent(user.primaryEmail)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                sx={{ color: (t) => textTertiary(t), p: 0.5 }}
+                                aria-label="Open in Admin"
+                              >
+                                <ExternalLink size={14} strokeWidth={1.75} />
+                              </IconButton>
+                            </ActionTooltip>
+                          </Box>
+                          <Box className="notify-action" sx={{ width: 28, display: 'flex', justifyContent: 'center', opacity: 0.5, transition: 'opacity 0.15s ease' }} onClick={(e) => e.stopPropagation()}>
                             <ActionTooltip title="Send reminder">
-                              <IconButton size="small" disabled={sending2FAEmails} onClick={() => openSingle2FAConfirm(user)} sx={{ color: T.accent }}>
-                                <Mail size={16} strokeWidth={1.75} />
+                              <IconButton size="small" disabled={sending2FAEmails} onClick={() => openSingle2FAConfirm(user)} sx={{ color: T.accent, p: 0.5 }}>
+                                <Mail size={15} strokeWidth={1.75} />
                               </IconButton>
                             </ActionTooltip>
                           </Box>
@@ -1526,6 +1522,7 @@ export function Users() {
         cancelLabel={confirmConfig?.cancelLabel}
         danger={confirmConfig?.danger}
         entities={confirmConfig?.entities}
+        footnote={confirmConfig?.footnote}
         onClose={() => setConfirmConfig(null)}
         onConfirm={async () => { if (confirmConfig) await confirmConfig.onConfirm(); }}
       >

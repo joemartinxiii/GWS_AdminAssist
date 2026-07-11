@@ -1498,24 +1498,46 @@ export function SecurityAudit() {
       >
         {detailCheck && (
           <>
-            <DialogTitle sx={(th) => ({ ...dialogTitleSx(th), display: 'flex', alignItems: 'flex-start', gap: 1.5, pr: 1 })}>
+            <DialogTitle sx={(th) => ({ ...dialogTitleSx(th), display: 'flex', alignItems: 'flex-start', gap: 1.5, pr: 1, pb: 1.5 })}>
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Box sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em' }}>
+                <Box sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', lineHeight: 1.25 }}>
                   {detailCheck.name}
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1, flexWrap: 'wrap' }}>
-                  <DotLabel
-                    dotColor={severityColor(detailCheck.severity)}
-                    dotTooltip={`Severity: ${detailCheck.severity || 'medium'}`}
+                  <Box
+                    component="span"
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      fontFamily: T.font,
+                      fontSize: '0.75rem',
+                      fontWeight: 500,
+                      px: 1,
+                      py: 0.25,
+                      borderRadius: 999,
+                      bgcolor: 'rgba(220, 38, 38, 0.12)',
+                      color: severityColor(detailCheck.severity),
+                    }}
                   >
-                    {(detailCheck.severity || 'medium').toUpperCase()}
-                  </DotLabel>
-                  <DotLabel
-                    dotColor={detailStatusColor(detailCheck.status)}
-                    dotTooltip={detailCheck.status.toUpperCase()}
+                    {(detailCheck.severity || 'medium').charAt(0).toUpperCase() + (detailCheck.severity || 'medium').slice(1)}
+                  </Box>
+                  <Box
+                    component="span"
+                    sx={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      fontFamily: T.font,
+                      fontSize: '0.75rem',
+                      fontWeight: 500,
+                      px: 1,
+                      py: 0.25,
+                      borderRadius: 999,
+                      bgcolor: `${detailStatusColor(detailCheck.status)}22`,
+                      color: detailStatusColor(detailCheck.status),
+                    }}
                   >
-                    {detailCheck.status.toUpperCase()}
-                  </DotLabel>
+                    {detailCheck.status.charAt(0).toUpperCase() + detailCheck.status.slice(1)}
+                  </Box>
                   <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
                     {detailCheck.category}
                   </Typography>

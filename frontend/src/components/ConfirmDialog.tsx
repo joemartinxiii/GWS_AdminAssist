@@ -34,6 +34,8 @@ export interface ConfirmDialogProps {
   children?: ReactNode;
   /** Optional list of affected entities (bulk delete, etc.). */
   entities?: ConfirmEntity[];
+  /** Quiet line under entities (e.g. policy note). */
+  footnote?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   onConfirm: () => void | Promise<void>;
@@ -48,6 +50,7 @@ export function ConfirmDialog({
   title,
   children,
   entities,
+  footnote,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   onConfirm,
@@ -121,13 +124,17 @@ export function ConfirmDialog({
           <X size={16} strokeWidth={1.75} />
         </IconButton>
       </DialogTitle>
-      {(children || (entities && entities.length > 0)) && (
-        <DialogContent sx={{ fontFamily: T.font, fontSize: '0.875rem', pt: '8px !important' }}>
-          {children}
+      {(children || (entities && entities.length > 0) || footnote) && (
+        <DialogContent sx={{ fontFamily: T.font, fontSize: '0.875rem', pt: '8px !important', px: 2.5 }}>
+          {children && (
+            <Box sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t), lineHeight: 1.5 }}>
+              {children}
+            </Box>
+          )}
           {entities && entities.length > 0 && (
             <Box
               sx={(th) => ({
-                mt: 1.75,
+                mt: children ? 1.75 : 0.5,
                 border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
                 borderRadius: T.radius,
                 overflow: 'hidden',
@@ -171,6 +178,19 @@ export function ConfirmDialog({
                 </Box>
               ))}
             </Box>
+          )}
+          {footnote != null && footnote !== '' && (
+            <Typography
+              sx={{
+                fontFamily: T.font,
+                fontSize: '0.75rem',
+                color: (t) => textTertiary(t),
+                mt: 1.5,
+                lineHeight: 1.45,
+              }}
+            >
+              {footnote}
+            </Typography>
           )}
         </DialogContent>
       )}

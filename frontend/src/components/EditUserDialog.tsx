@@ -34,13 +34,16 @@ import {
   dialogCancelButtonSx,
   dialogPrimaryButtonSx,
   dialogSecondaryButtonSx,
+  dialogFieldLabelSx,
+  dialogFieldSx,
+  dialogTabRowSx,
+  dialogTabButtonSx,
 } from '../theme/designTokens';
 import { ColumnHeader } from './ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from './ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from './ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from './ui/dialogListSort';
 import { DotLabel } from './StatusDot';
-import { SegmentedControl } from './ui/SegmentedControl';
 
 export interface User {
   id: string;
@@ -314,15 +317,6 @@ export function EditUserDialog({
     return next;
   };
 
-  const sectionHeadingSx = {
-    fontFamily: T.font,
-    fontWeight: 600,
-    fontSize: '0.6875rem',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.06em',
-    color: (t: any) => textTertiary(t),
-  };
-
   const countBadgeSx = {
     fontFamily: T.font,
     fontSize: '0.6875rem',
@@ -365,6 +359,7 @@ export function EditUserDialog({
                 fontWeight: 700,
                 fontSize: '1.125rem',
                 letterSpacing: '-0.02em',
+                lineHeight: 1.25,
                 color: (t) => pick(t, T.text, '#fafafa'),
               }}
             >
@@ -402,41 +397,53 @@ export function EditUserDialog({
           </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ pt: '16px !important' }}>
+        <DialogContent sx={{ pt: '16px !important', px: 2.5 }}>
           {user && (
             <Box>
-              <Box sx={{ mb: 2 }}>
-                <SegmentedControl value={dialogTab} options={['Profile', 'Groups', 'Apps']} onChange={setDialogTab} />
+              <Box sx={(th) => dialogTabRowSx(th)}>
+                {(['Profile', 'Groups', 'Apps'] as const).map((label, idx) => (
+                  <Button
+                    key={label}
+                    size="small"
+                    disableRipple
+                    onClick={() => setDialogTab(idx)}
+                    sx={(th) => dialogTabButtonSx(th, dialogTab === idx)}
+                  >
+                    {label}
+                  </Button>
+                ))}
               </Box>
 
               {dialogTab === 0 && (
               <>
               <Grid container spacing={2} sx={{ mb: 1 }}>
                 <Grid item xs={12} sm={6}>
-                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>First name</Typography>
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>First name</Typography>
                   <TextField
                     fullWidth size="small" hiddenLabel
                     value={editingUser.name?.givenName || ''}
                     onChange={(e) => setEditingUser({ ...editingUser, name: { ...editingUser.name, givenName: e.target.value } as any })}
+                    sx={(th) => dialogFieldSx(th)}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Last name</Typography>
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>Last name</Typography>
                   <TextField
                     fullWidth size="small" hiddenLabel
                     value={editingUser.name?.familyName || ''}
                     onChange={(e) => setEditingUser({ ...editingUser, name: { ...editingUser.name, familyName: e.target.value } as any })}
+                    sx={(th) => dialogFieldSx(th)}
                   />
                 </Grid>
 
                 <Grid item xs={12}>
-                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Primary email</Typography>
-                  <TextField fullWidth size="small" hiddenLabel value={user.primaryEmail} InputProps={{ readOnly: true }} />
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>Primary email</Typography>
+                  <TextField fullWidth size="small" hiddenLabel value={user.primaryEmail} InputProps={{ readOnly: true }} sx={(th) => dialogFieldSx(th)} />
                 </Grid>
 
                 <Grid item xs={12} sm={6}>
-                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Org unit</Typography>
-                  <FormControl fullWidth size="small">
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>Org unit</Typography>
+                  <FormControl fullWidth size="small" sx={(th) => dialogFieldSx(th)}>
                     <Select
                       value={editingUser.orgUnitPath || '/'}
                       onChange={(e) => setEditingUser({ ...editingUser, orgUnitPath: e.target.value })}
@@ -453,8 +460,8 @@ export function EditUserDialog({
                 </Grid>
 
                 <Grid item xs={12} sm={6}>
-                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Status</Typography>
-                  <FormControl fullWidth size="small">
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>Status</Typography>
+                  <FormControl fullWidth size="small" sx={(th) => dialogFieldSx(th)}>
                     <Select
                       value={editingUser.suspended ? 'suspended' : 'active'}
                       onChange={(e) => setEditingUser({ ...editingUser, suspended: e.target.value === 'suspended' })}
@@ -467,24 +474,26 @@ export function EditUserDialog({
                 </Grid>
 
                 <Grid item xs={12} sm={6}>
-                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Department</Typography>
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>Department</Typography>
                   <TextField
                     fullWidth size="small" hiddenLabel
                     value={editingUser.department || ''}
                     onChange={(e) => setEditingUser({ ...editingUser, department: e.target.value })}
+                    sx={(th) => dialogFieldSx(th)}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Location</Typography>
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>Location</Typography>
                   <TextField
                     fullWidth size="small" hiddenLabel
                     value={editingUser.location || ''}
                     onChange={(e) => setEditingUser({ ...editingUser, location: e.target.value })}
+                    sx={(th) => dialogFieldSx(th)}
                   />
                 </Grid>
 
                 <Grid item xs={12} sm={6}>
-                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>2FA</Typography>
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>2FA</Typography>
                   <DotLabel
                     dotColor={user.isEnrolledIn2Sv ? T.success : T.warning}
                     dotTooltip={user.isEnrolledIn2Sv ? 'Enrolled' : 'Not enrolled'}
@@ -493,19 +502,20 @@ export function EditUserDialog({
                   </DotLabel>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Last login</Typography>
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>Last login</Typography>
                   <Typography sx={{ fontFamily: T.mono, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
                     {user.lastLoginTime ? new Date(user.lastLoginTime).toLocaleString() : '—'}
                   </Typography>
                 </Grid>
 
                 <Grid item xs={12}>
-                  <Typography sx={{ ...sectionHeadingSx, mb: 0.75 }}>Notes</Typography>
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>Notes</Typography>
                   <TextField
                     fullWidth size="small" hiddenLabel
                     value={editingUser.notes || ''}
                     onChange={(e) => setEditingUser({ ...editingUser, notes: e.target.value })}
                     multiline minRows={2}
+                    sx={(th) => dialogFieldSx(th)}
                   />
                 </Grid>
               </Grid>
@@ -517,7 +527,7 @@ export function EditUserDialog({
               {/* ---- Groups ---- */}
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5} mt={0.5}>
                 <Box display="flex" alignItems="center">
-                  <Typography sx={sectionHeadingSx}>Groups</Typography>
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>Groups</Typography>
                   {!loadingGroups && userGroups.length > 0 && (
                     <Typography sx={countBadgeSx}>{userGroups.length}</Typography>
                   )}
@@ -593,7 +603,7 @@ export function EditUserDialog({
               {/* ---- Third-Party Apps ---- */}
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={1.5} mt={0.5}>
                 <Box display="flex" alignItems="center">
-                  <Typography sx={sectionHeadingSx}>Third-Party Apps</Typography>
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>Third-Party Apps</Typography>
                   {!loadingApps && thirdPartyApps.length > 0 && (
                     <Typography sx={countBadgeSx}>{thirdPartyApps.length}</Typography>
                   )}

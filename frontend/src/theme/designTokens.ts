@@ -229,6 +229,71 @@ export function dialogCancelButtonSx(theme: Theme): SystemStyleObject<Theme> {
   };
 }
 
+/** Uppercase field label inside modals (mock product chrome). */
+export function dialogFieldLabelSx(theme: Theme): SystemStyleObject<Theme> {
+  return {
+    fontFamily: T.font,
+    fontSize: '0.6875rem',
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    color: textTertiary(theme),
+    mb: 0.75,
+  };
+}
+
+/**
+ * Darker outlined fields inside dialogs (mock #111114 surface).
+ * Apply on TextField / FormControl: `sx={(t) => dialogFieldSx(t)}`.
+ */
+export function dialogFieldSx(theme: Theme): SystemStyleObject<Theme> {
+  return {
+    fontFamily: T.font,
+    width: '100%',
+    '& .MuiOutlinedInput-root': {
+      fontFamily: T.font,
+      fontSize: '0.8125rem',
+      borderRadius: T.radius,
+      bgcolor: pick(theme, '#f5f5f3', '#111114'),
+      '& fieldset': { borderColor: pick(theme, T.border, '#3f3f46') },
+      '&:hover fieldset': { borderColor: pick(theme, T.textTertiary, '#52525b') },
+      '&.Mui-focused fieldset': { borderColor: T.accent },
+    },
+    '& .MuiInputBase-input': { fontFamily: T.font, fontSize: '0.8125rem' },
+  };
+}
+
+/** Underline-style modal tabs (Profile / Groups / Apps) — mock parity vs SegmentedControl. */
+export function dialogTabRowSx(theme: Theme): SystemStyleObject<Theme> {
+  return {
+    display: 'flex',
+    gap: 0.5,
+    mb: 2,
+    borderBottom: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
+  };
+}
+
+export function dialogTabButtonSx(theme: Theme, active: boolean): SystemStyleObject<Theme> {
+  return {
+    fontFamily: T.font,
+    fontSize: '0.8125rem',
+    fontWeight: 500,
+    textTransform: 'none',
+    minWidth: 0,
+    px: 1.5,
+    py: 1,
+    mb: '-1px',
+    borderRadius: 0,
+    color: active ? pick(theme, T.accent, '#8ab4f8') : textTertiary(theme),
+    borderBottom: `2px solid ${active ? T.accent : 'transparent'}`,
+    bgcolor: 'transparent',
+    '&:hover': {
+      bgcolor: 'transparent',
+      color: active ? pick(theme, T.accent, '#8ab4f8') : pick(theme, T.text, '#fafafa'),
+    },
+  };
+}
+
 /** Danger contained (Delete, Remove). */
 export function dialogDangerButtonSx(_theme: Theme): SystemStyleObject<Theme> {
   return {
