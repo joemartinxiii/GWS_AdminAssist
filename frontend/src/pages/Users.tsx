@@ -96,12 +96,9 @@ function orgUnitLeaf(path?: string): string {
   return parts[parts.length - 1] || path;
 }
 
-const PROTECTED_USER_EMAILS = new Set(
-  ['joe@befree.wtf', 'backup@befree.wtf'].map((e) => e.toLowerCase())
-);
-
-function isProtectedUser(email: string): boolean {
-  return PROTECTED_USER_EMAILS.has(email.trim().toLowerCase());
+/** Populated from /auth/me → protectedUsers (server GWS_PROTECTED_USERS). Empty by default. */
+function isProtectedUser(email: string, protectedSet: Set<string>): boolean {
+  return protectedSet.has(email.trim().toLowerCase());
 }
 
 function humanizeGooglePrivilege(id: string): string {
@@ -259,6 +256,7 @@ export function Users() {
   const theme = useTheme();
   const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
   const isAdminsTab = tab === 1;
+  const [protectedUserEmails, setProtectedUserEmails] = useState<Set<string>>(new Set());
 
   const cols = useResizableColumns(
     'users-people',
@@ -367,6 +365,13 @@ export function Users() {
   };
 
   useEffect(() => {
+    apiClient
+      .get('/auth/me')
+      .then((r) => {
+        const list = Array.isArray(r.data?.protectedUsers) ? r.data.protectedUsers : [];
+        setProtectedUserEmails(new Set(list.map((e: string) => String(e).toLowerCase())));
+      })
+      .catch(() => setProtectedUserEmails(new Set()));
     void fetchUsers();
     void fetchUsersWithout2FA();
     void fetchOrganizationalUnits();
@@ -614,7 +619,7 @@ export function Users() {
   const handleCloseEdit = () => { setEditDialogOpen(false); setSelectedUser(null); };
 
   const handleDeleteUser = (user: User) => {
-    if (isProtectedUser(user.primaryEmail)) {
+    if (isProtectedUser(user.primaryEmail, protectedUserEmails)) {
       showSnackbar(`${user.primaryEmail} is protected and cannot be deleted. Suspend instead if needed.`, 'warning');
       return;
     }
@@ -1068,7 +1073,7 @@ export function Users() {
               ) : (
                 paged.map((user, idx) => {
                   const isSelected = selectedUsers.has(user.primaryEmail);
-                  const protectedAcct = isProtectedUser(user.primaryEmail);
+                  const protectedAcct = isProtectedUser(user.primaryEmail, protectedUserEmails);
                   return (
                     <ListDataRow
                       key={user.id}

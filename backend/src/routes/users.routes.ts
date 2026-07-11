@@ -9,6 +9,7 @@ import { sanitizeText, validateEmail, requireAllowedEmail } from '../utils/valid
 import { convertToCSV, generateExportFilename } from '../utils/csv';
 import { normalizeEmailParam } from '../utils/email';
 import { sendApiError } from '../utils/apiError';
+import { isProtectedUserEmail } from '../utils/protectedUsers';
 
 const router = Router();
 
@@ -523,17 +524,6 @@ router.patch('/:email', requirePermission('users.update'), auditLog('user.update
     next(error);  // Let global errorHandler sanitize and log consistently
   }
 });
-
-/** Never permanently delete these accounts (permanent tenant backups / primary admin). */
-function isProtectedUserEmail(email: string): boolean {
-  const lower = email.trim().toLowerCase();
-  const fromEnv = (process.env.GWS_PROTECTED_USERS || '')
-    .split(',')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  const defaults = ['joe@befree.wtf', 'backup@befree.wtf'];
-  return new Set([...defaults, ...fromEnv]).has(lower);
-}
 
 /**
  * DELETE /api/users/:email

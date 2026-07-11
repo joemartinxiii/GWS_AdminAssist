@@ -41,5 +41,6 @@ scripts/        bootstrap, deploy, CI helpers
 
 1. **On-demand, free-tier** — heavy work is explicit (Run audit, Run scan), not continuous paid infra.
 2. **Super admin for mutations** — delegates can view; changes need super.
-3. **Protect critical accounts** — never delete configured protected users (e.g. primary admin / backup).
+3. **Protect critical accounts** — set `GWS_PROTECTED_USERS` so primary admin / break-glass accounts cannot be permanently deleted.
 4. **UI consistency** — data columns left, risk chips fixed-width, **Actions trailing right** (see [ui.md](ui.md)).
+5. **One deploy implementation** — after the container image exists, all paths call `scripts/deploy-from-image.sh` (see [DEPLOY.md](DEPLOY.md)).

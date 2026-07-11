@@ -55,7 +55,14 @@ Use **no spaces** after commas. Some UIs accept one line; others let you add sco
 openid,https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/userinfo.profile
 ```
 
-**Google Workspace Admin — domain-wide delegation** (admin.google.com → Security → API controls → Domain-wide delegation). Use the **`client_id`** from the **service account JSON** (not the OAuth web client ID). Scopes must match `backend/src/config/google.config.ts` and [`scripts/lib/scopes.sh`](scripts/lib/scopes.sh) (`getServiceAccountClient`):
+**Google Workspace Admin — domain-wide delegation** (admin.google.com → Security → API controls → Domain-wide delegation). Use the service account's **numeric OAuth2 client ID** (not the OAuth web client ID). With keyless runtime auth there is no JSON key file — get it with:
+
+```bash
+gcloud iam service-accounts describe workspace-admin-sa@YOUR_PROJECT.iam.gserviceaccount.com \
+  --format='value(oauth2ClientId)'
+```
+
+Scopes must match `backend/src/config/google.config.ts` and [`scripts/lib/scopes.sh`](scripts/lib/scopes.sh):
 
 ```
 https://www.googleapis.com/auth/admin.directory.user,https://www.googleapis.com/auth/admin.directory.group,https://www.googleapis.com/auth/admin.directory.orgunit.readonly,https://www.googleapis.com/auth/admin.directory.user.security,https://www.googleapis.com/auth/apps.security,https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/gmail.settings.basic,https://www.googleapis.com/auth/gmail.settings.sharing,https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/calendar,https://www.googleapis.com/auth/admin.directory.resource.calendar,https://www.googleapis.com/auth/chrome.management.policy,https://www.googleapis.com/auth/cloud-identity.policies.readonly
@@ -83,13 +90,12 @@ Key security setup (one-time):
    ```
 
 2. **Service Account (`workspace-admin-sa`)**:
-   - Create in IAM & Admin > Service Accounts.
-   - Grant `roles/secretmanager.secretAccessor`, `roles/run.invoker`, and `roles/logging.logWriter` (for audit logging).
-   - Set up **domain-wide delegation** in Google Workspace Admin Console > Security > API Controls:
-     - **Client ID**: numeric `client_id` from the service account JSON key (not the OAuth web client).
+   - Create in IAM & Admin > Service Accounts (bootstrap does this).
+   - Grant `roles/secretmanager.secretAccessor`, `roles/logging.logWriter`, and **`roles/iam.serviceAccountTokenCreator` on itself** (keyless DWD via `signJwt`).
+   - Set up **domain-wide delegation** in Google Workspace Admin Console > Security → API Controls:
+     - **Client ID**: numeric `oauth2ClientId` of the runtime SA (see command above) — not the OAuth web client.
      - **OAuth scopes (comma-delimited)**: paste the **domain-wide delegation** single line from the **Copy-paste scope strings** section at the top of this file.
-   - Download JSON key (`sa-key.json`) — passed to `setup-secrets.sh`.
-   - **Cloud Build permission** (common with `--source .`): The default compute service account must have `roles/storage.objectViewer`. The deploy scripts grant this automatically. See [docs/DEPLOY.md](docs/DEPLOY.md) if it fails.
+   - **No JSON key** is required or created for production runtime.
 
 3. **OAuth 2.0 Web Client** (APIs & Services > Credentials):
    - Application type: Web application.
@@ -242,8 +248,9 @@ Required environment variables (stored as secrets):
 - `WORKSPACE_DOMAIN`: Your primary Google Workspace domain
 - `CORS_ORIGIN`: Frontend URL for CORS policy (e.g., https://your-app.a.run.app). In production, if unset the app enforces same-origin.
 - `GWS_ALLOWED_DOMAINS`: Comma-separated list of trusted domains for cross-domain operations. Also enforced by the **login-time gate** — sign-in is rejected unless the user's email domain is in this list (or `WORKSPACE_DOMAIN`) **and** they hold a Workspace admin role.
-- `SIGNATURE_TEMPLATE_BUCKET` *(optional)*: GCS bucket for durable persistence of the org signature template. Without it, the template is stored on ephemeral local disk and is lost on redeploy. The deploy script provisions the bucket and grants the runtime SA `roles/storage.objectAdmin` when this is exported.
-- `SCAN_BUCKET`, `SCAN_JOB_NAME`, `SCAN_REGION`, `SCAN_USER_CONCURRENCY`: External-sharing scan configuration (see below).
+- `SIGNATURE_TEMPLATE_BUCKET` *(optional)*: GCS bucket for durable persistence of the org signature template. Without it, the template is stored on ephemeral local disk and is lost on redeploy. Export before deploy (or set the GitHub Actions variable); the deploy path provisions the bucket and grants the runtime SA `roles/storage.objectAdmin`.
+- `GWS_PROTECTED_USERS` *(optional)*: comma-separated emails that **cannot be permanently deleted** via this app (e.g. primary admin and break-glass account). Empty by default — configure for your tenant. Exposed to the UI via `/api/auth/me` → `protectedUsers`.
+- `SCAN_BUCKET`, `SCAN_JOB_NAME`, `SCAN_REGION`, `SCAN_USER_CONCURRENCY`: External-sharing scan **and** Security Audit durability (last-run + waivers under `security-audit/` in the same bucket).
 
 ### External-sharing scan security
 
@@ -267,15 +274,15 @@ gcloud run services logs read workspace-admin --region us-central1 --limit 200
 ### Service Account / Permissions / "What I Can and Cannot Do" Fails (Most Common)
 
 - **Delegated vs Super Admin**: If badge shows "Delegated Admin (View Only)", mutations are intentionally blocked (see Application Roles section). Use a true Super Admin account.
-- Verify domain-wide delegation scopes **exactly** match SECURITY.md (copy-paste, no extra spaces/commas) using SA `client_id` in GWS Admin Console > Security > API controls.
-- Re-run `./setup-secrets.sh <project>` and all printed IAM commands. SA must have Secret Manager access on **every** secret.
+- Verify domain-wide delegation scopes **exactly** match SECURITY.md (copy-paste, no extra spaces/commas) using the SA numeric `oauth2ClientId` in GWS Admin Console → Security → API controls.
+- Confirm the runtime SA has `roles/iam.serviceAccountTokenCreator` on itself and Secret Manager accessor on every secret (bootstrap / deploy grants these).
 - Check for 403s on `users.get()` or SA init in logs.
 
 ### OAuth Flow Fails
 
-- Verify redirect URI matches **exactly** (including trailing slashes, no query params) in GCP Console (use the one printed by `./deploy.sh`).
-- Check OAuth consent screen is configured with readonly scopes.
-- Ensure `GOOGLE_CLIENT_ID`/`SECRET` are in Secret Manager.
+- Verify redirect URI matches **exactly** (including trailing slashes, no query params) in GCP Console (use the URI printed at the end of deploy).
+- Check OAuth consent screen is configured with identity-only scopes.
+- Ensure `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` are in Secret Manager and not stuck on `PLACEHOLDER`.
 
 ### Secret Manager Access Denied
 

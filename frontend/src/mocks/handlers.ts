@@ -19,7 +19,12 @@ import {
   userGroups,
 } from './fixtures';
 
-const MOCK_USER = { email: 'admin@example.com', name: 'Mock Admin' };
+const MOCK_USER = {
+  email: 'admin@example.com',
+  name: 'Mock Admin',
+  allowedDomains: ['example.com'],
+  protectedUsers: [] as string[],
+};
 
 const ALL_PERMISSIONS = [
   'users.create',

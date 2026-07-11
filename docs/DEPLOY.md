@@ -7,7 +7,7 @@ There are two deploy paths:
 1. **Bootstrap wizard** (first-time / greenfield) — one command in Cloud Shell provisions everything and deploys.
 2. **GitHub Actions** (ongoing) — every push to `main` builds and redeploys.
 
-A local-Docker fallback (`deploy.sh`) exists but is not required.
+A local-Docker fallback (`./deploy.sh`) exists but is not required. **All three paths share the same post-image deploy steps** (`scripts/lib/deploy-cloud-run.sh` via `scripts/deploy-from-image.sh`): OAuth redirect pin, CORS, scan/audit bucket + job, health check, and DWD scope reminder.
 
 ---
 
@@ -81,13 +81,13 @@ bash scripts/bootstrap-tenant.sh \
 | Link billing | Yes | Auto-detects your billing account (or `--billing-account`) |
 | Enable APIs | Yes | `gcloud services enable` |
 | `workspace-admin-sa` (keyless: tokenCreator on itself, no key) | Yes | IAM |
-| `github-deploy-sa` (key for optional CI; skipped if org blocks keys) | Optional | IAM |
+| `github-deploy-sa` + Workload Identity Federation for CI | Optional | IAM + WIF |
 | Secret Manager secrets + IAM bindings | Yes | — |
 | Artifact Registry | Yes | — |
 | OAuth consent screen + Web client | **No** | GCP Console (wizard opens links + copy-paste scopes) |
 | Domain-wide delegation | **No** | admin.google.com (wizard prints the SA `client_id` + scopes) |
 | First Cloud Run deploy | Yes | Cloud Build via `deploy-cloudshell.sh` |
-| GitHub Actions secrets | Optional | `gh secret set` or printed instructions |
+| GitHub Actions secrets (WIF) | Optional | `setup-github-ci.sh` / `gh secret set` |
 | DWD smoke test + `/health` check | Best-effort | Keyless: mints a delegated token, lists 1 user |
 
 ### Wizard options
@@ -99,9 +99,9 @@ bash scripts/bootstrap-tenant.sh \
 --folder ID               Folder for a new project
 --region REGION           Default: us-central1
 --skip-cloudshell         Skip the immediate deploy
---skip-github             Skip GitHub secret setup
+--skip-github             Skip GitHub CI (WIF) setup
 --non-interactive         Requires CLIENT_ID, CLIENT_SECRET, --billing-account via env/flags
---github-repo OWNER/REPO  For `gh secret set`
+--github-repo OWNER/REPO  For WIF + gh secret set
 ```
 
 ### Manual console steps (the wizard guides these)
@@ -116,7 +116,7 @@ bash scripts/bootstrap-tenant.sh \
 
 ## 2. Ongoing deploys
 
-Once the app is live you keep it up to date in one of two ways: a **single manual command** (no CI required) or **GitHub Actions** (auto-deploy on push). Pick whichever fits — the underlying build/deploy steps are identical.
+Once the app is live you keep it up to date in one of two ways: a **single manual command** (no CI required) or **GitHub Actions** (auto-deploy on push). Both end in the **same** `deploy-from-image.sh` steps.
 
 ### 2a. Manual update from GitHub (single command)
 
@@ -135,8 +135,9 @@ git clone https://github.com/joemartinxiii/GWS_AdminAssist && cd GWS_AdminAssist
 - Requires the tenant to already be bootstrapped (`scripts/bootstrap-tenant.sh` created the secrets + runtime SA). The script refuses to run otherwise.
 - `<PROJECT_ID>` is optional if `gcloud config set project` is already pointed at the right project; a second arg overrides the region (default `us-central1`).
 - Re-run it any time you `git pull` new code. It's idempotent.
-- **Enables every required API on each run** (`gcloud services enable "${GCP_APIS[@]}"` from [`scripts/lib/scopes.sh`](../scripts/lib/scopes.sh)) — a no-op when they're already on, so a newly added API dep (e.g. Cloud Identity Policy) turns on automatically with the code that needs it. **No manual `gcloud services enable`.**
-- **Surfaces the DWD scopes** at the end of every deploy — the exact scope string + the SA Client ID + the admin.google.com link. DWD authorization is the one step Google has no API for, so this keeps it to a 10-second copy-paste only when scopes actually change. Add `DWD_ADMIN_EMAIL=<super-admin@domain>` to also live-verify the full scope set.
+- **Enables every required API on each run** (`gcloud services enable "${GCP_APIS[@]}"` from [`scripts/lib/scopes.sh`](../scripts/lib/scopes.sh)) — a no-op when they're already on.
+- **Pins the OAuth redirect URI secret version** and updates CORS, scan job, and health-checks `/health`.
+- **Surfaces the DWD scopes** at the end of every deploy. Add `DWD_ADMIN_EMAIL=<super-admin@domain>` to also live-verify the full scope set.
 
 ### 2b. GitHub Actions (auto-deploy on push) — recommended
 
@@ -144,7 +145,7 @@ After a one-time setup, every push to `main` builds on GitHub's runner and redep
 
 #### One-time CI setup (keyless, via Workload Identity Federation)
 
-This project is **keyless by design** — the org policy `iam.disableServiceAccountKeyCreation` blocks service-account keys (the same reason runtime DWD is keyless). So CI authenticates with **Workload Identity Federation (WIF)**: GitHub's OIDC token impersonates a deploy SA with no key to create, store, or rotate.
+This project is **keyless by default** — runtime DWD uses no SA key, and CI uses **Workload Identity Federation (WIF)** so GitHub's OIDC token impersonates a deploy SA with no key to create, store, or rotate.
 
 One command provisions the deploy SA, the WIF pool + GitHub provider (locked to your repo owner), the IAM bindings, and prints (or sets) the three GitHub secrets:
 
@@ -153,7 +154,7 @@ bash scripts/setup-github-ci.sh <PROJECT_ID> <GITHUB_OWNER/REPO>
 # e.g. bash scripts/setup-github-ci.sh my-proj joemartinxiii/GWS_AdminAssist
 ```
 
-If the `gh` CLI is authenticated it offers to set the secrets and trigger the workflow for you; otherwise it prints them to add under **Settings → Secrets and variables → Actions**:
+If the `gh` CLI is authenticated it offers to set the secrets and trigger the workflow for you; otherwise add them under **Settings → Secrets and variables → Actions**:
 
 | Secret | Value |
 |--------|-------|
@@ -161,18 +162,27 @@ If the `gh` CLI is authenticated it offers to set the secrets and trigger the wo
 | `GCP_WIF_PROVIDER` | `projects/<num>/locations/global/workloadIdentityPools/github-pool/providers/github-provider` |
 | `GCP_DEPLOY_SA` | `github-deploy-sa@<project>.iam.gserviceaccount.com` |
 
-> **Fork whose org allows SA keys?** The workflow also supports a key fallback: skip `GCP_WIF_PROVIDER` and instead set `GCP_SA_KEY` to a deploy-SA key JSON (plus `GCP_PROJECT_ID`). The workflow picks WIF automatically whenever `GCP_WIF_PROVIDER` is present, and only falls back to the key when it isn't.
+**Optional repository variables** (Settings → Secrets and variables → Actions → Variables):
 
-> CI only needs **deploy** permissions (push images, deploy the service + scan job, add the redirect-URI secret version, `actAs` the runtime SA, and `serviceusage.serviceUsageAdmin` to keep the enabled API set in sync). The Cloud Run **runtime** still uses `workspace-admin-sa`, never the deploy SA.
+| Variable | Purpose |
+|----------|---------|
+| `GWS_PROTECTED_USERS` | Comma-separated emails that cannot be permanently deleted (e.g. primary admin + backup) |
+| `SIGNATURE_TEMPLATE_BUCKET` | GCS bucket for durable org email signature templates |
+| `DWD_ADMIN_EMAIL` | Super-admin email used to live-verify DWD scopes after deploy |
 
-### What the workflow does
+> **Fork whose org allows SA keys?** The workflow also supports a key fallback: skip `GCP_WIF_PROVIDER` and instead set `GCP_SA_KEY` to a deploy-SA key JSON (plus `GCP_PROJECT_ID`). Prefer WIF.
 
-1. `npm ci` → type-check, scope check, security tests (lint is informational)
-2. Enables every required API (`gcloud services enable "${GCP_APIS[@]}"` from [`scripts/lib/scopes.sh`](../scripts/lib/scopes.sh)) — no-op when already on, so new API deps ship automatically
-3. Docker build (`linux/amd64`) → Artifact Registry `workspace-admin-repo`
-4. `gcloud run deploy workspace-admin` (with `--no-invoker-iam-check`)
-5. Updates `CORS_ORIGIN` and the `oauth-redirect-uri` secret
-6. Configures the external-sharing scan (bucket + Cloud Run Job `workspace-admin-scan`)
+> CI only needs **deploy** permissions. The Cloud Run **runtime** still uses `workspace-admin-sa`, never the deploy SA.
+
+### What every deploy path does (after the image exists)
+
+1. `gcloud run deploy workspace-admin` with secrets + scan env (`--no-invoker-iam-check`)
+2. Writes the real redirect URI to Secret Manager and **pins that version** on the service (avoids stuck `PLACEHOLDER`)
+3. Sets `CORS_ORIGIN` to the live service URL
+4. Ensures the scan/audit GCS bucket + IAM + Cloud Run Job `workspace-admin-scan`
+5. Optional signature-template bucket when `SIGNATURE_TEMPLATE_BUCKET` is set
+6. Post-deploy `/health` check
+7. Prints DWD scopes + SA Client ID (and verifies if `DWD_ADMIN_EMAIL` is set)
 
 ### Local-Docker alternative
 
@@ -182,64 +192,87 @@ If you cannot use CI and want to deploy from your machine (requires Docker Deskt
 ./deploy.sh your-gcp-project-id us-central1
 ```
 
+Same shared post-image steps as Cloud Shell and GitHub Actions.
+
 ---
 
 ## Secrets & environment mapping
 
-Runtime configuration comes from Secret Manager, injected by Cloud Run. See [SECURITY.md](../SECURITY.md#environment-variables) for the full list. Key mappings (in `scripts/deploy-cloudshell.sh` and `.github/workflows/deploy.yml`):
+Runtime configuration comes from Secret Manager, injected by Cloud Run. See [SECURITY.md](../SECURITY.md#environment-variables) for the full list. Key mappings:
 
 - `GOOGLE_CLIENT_ID` ← `oauth-client-id:latest`
 - `GOOGLE_CLIENT_SECRET` ← `oauth-client-secret:latest`
-- `GOOGLE_REDIRECT_URI` ← `oauth-redirect-uri:latest`
+- `GOOGLE_REDIRECT_URI` ← `oauth-redirect-uri:<pinned version after each deploy>`
 - `JWT_SECRET` ← `app-jwt-secret:latest`
 - `WORKSPACE_DOMAIN` ← `app-workspace-domain:latest` (primary domain)
 - `GWS_ALLOWED_DOMAINS` ← `app-allowed-domains:latest` (primary + secondary/contractor domains, comma-separated)
 
 **Multi-domain:** bootstrap asks for optional extra domains and merges the admin’s email domain into the allowlist. Update `app-allowed-domains` in Secret Manager if you add a domain later, then redeploy. Domain-wide delegation is **not** repeated per domain.
+
 - `GCP_PROJECT_ID`, `SERVICE_ACCOUNT_EMAIL` set as literal env vars
-- `SCAN_BUCKET`, `SCAN_JOB_NAME`, `SCAN_REGION` set as literal env vars (external-sharing scan — see below)
+- `SCAN_BUCKET`, `SCAN_JOB_NAME`, `SCAN_REGION` set as literal env vars (Drive external scan **and** Security Audit last-run/waivers)
 - **Keyless domain-wide delegation** — no service-account key is created or stored. Cloud Run runs as the runtime SA, which signs its own delegation tokens via the IAM Credentials API (`signJwt`); the SA holds `roles/iam.serviceAccountTokenCreator` on itself
-- **Optional:** export `SIGNATURE_TEMPLATE_BUCKET=<bucket>` before deploying to persist the org signature template in GCS (survives redeploys). The deploy script creates the bucket and grants the runtime SA `roles/storage.objectAdmin`. Without it, the template uses ephemeral local disk.
+- **`GWS_PROTECTED_USERS`** *(optional)*: comma-separated emails that cannot be permanently deleted. Empty by default — set this for your primary admin / break-glass accounts. Export before deploy or set the GitHub Actions variable.
+- **`SIGNATURE_TEMPLATE_BUCKET`** *(optional)*: GCS bucket for durable org signature templates. Without it, templates use ephemeral local disk and are **lost on redeploy**. Export before deploy or set the GitHub Actions variable.
 
 ---
 
 ## External-sharing scan (on-demand Cloud Run Job)
 
-The **External Shares** / **Public Links** tabs on the Drive page audit *every* user's My Drive plus all Shared Drives. Google has no domain-wide "list all files" API, so the scan impersonates each user via domain-wide delegation — slow and bursty work that must not block the web request. The deploy therefore provisions a second Cloud Run resource:
+The **External Shares** / **Public Links** tabs on the Drive page audit *every* user's My Drive plus all Shared Drives. The deploy provisions:
 
 | Resource | Name | Purpose |
 | --- | --- | --- |
 | Cloud Run **Job** | `workspace-admin-scan` | Runs `node backend/dist/jobs/externalScan.js` from the **same image**. Triggered on demand by the web app. |
-| GCS bucket | `<project>-workspace-admin-scans` | Stores the categorized report (`latest.json`), progress (`status.json`), and immutable per-scan snapshots under `history/`. |
+| GCS bucket | `<project>-workspace-admin-scans` | Drive scan reports **and** Security Audit state (`security-audit/latest.json`, `security-audit/waivers.json`). |
 
-The deploy (`scripts/deploy-cloudshell.sh`, `deploy.sh`, and the GitHub workflow) automatically:
+**Usage:** Drive → *External Shares* (or *Public Links*) → **Run scan** (super admin only). Results are cached; re-scan as needed.
 
-- creates the bucket and grants the runtime SA `roles/storage.objectAdmin` on it;
-- grants the runtime SA `roles/run.developer` so the web service can start the job via the Cloud Run Admin API;
-- creates/updates the job with `--task-timeout 3600 --max-retries 1` and env `SCAN_BUCKET`, `SCAN_USER_CONCURRENCY` (default 15), plus the `WORKSPACE_DOMAIN`/`GWS_ALLOWED_DOMAINS` secrets.
-
-**Usage:** open Drive → *External Shares* (or *Public Links*) → **Run scan** (super admin only). The header shows *Last scan {date}* and live progress. Results are cached, so subsequent visits load instantly. Re-scan as often as you like — this tool is typically run quarterly.
-
-**Cost:** idle cost is ~$0 (the job scales to zero and the bucket holds a few small JSON blobs). Each scan bills only for the minutes it runs. Tune throughput/cost with `SCAN_USER_CONCURRENCY`.
+**Cost:** idle cost is ~$0. Each scan bills only for the minutes it runs.
 
 ---
 
 ## Security Audit (Cloud Identity Policy API)
 
-The **Security Audit** page (`/audit`) automates most hardening checks by reading org policies from the **Cloud Identity Policy API**. This needs two things beyond a normal deploy:
+The **Security Audit** page (`/audit`) reads org policies from the **Cloud Identity Policy API**. Deploy enables:
 
-- **API enabled:** `cloudidentity.googleapis.com` (and `chromepolicy.googleapis.com` for the Chrome checks). **Every deploy path enables these automatically** — the bootstrap wizard, `deploy-cloudshell.sh`, and the GitHub Actions workflow all run `gcloud services enable "${GCP_APIS[@]}"` from the single source of truth in [`scripts/lib/scopes.sh`](../scripts/lib/scopes.sh). Add a new API dependency there once and it ships on the next deploy — no manual `gcloud services enable`.
-- **DWD scope:** `https://www.googleapis.com/auth/cloud-identity.policies.readonly`, authorized on the service account's domain-wide delegation (part of the copy-paste block in [SECURITY.md](../SECURITY.md#copy-paste-scope-strings-full-urls-comma-delimited)).
-- **Super admin:** the audit reads org policy as the **signed-in user**, so run it while signed in as a Workspace super admin.
+- APIs: `cloudidentity.googleapis.com`, `chromepolicy.googleapis.com` (via `GCP_APIS`)
+- DWD scope: `https://www.googleapis.com/auth/cloud-identity.policies.readonly` (in the SECURITY.md copy-paste block)
+- Durable last-run + waivers in the **same** `SCAN_BUCKET` under `security-audit/`
 
-> **APIs are never a manual step.** Since API enablement is idempotent, re-running it on every deploy is a no-op when everything is already on — so updating an existing tenant just means `git pull && bash scripts/deploy-cloudshell.sh <PROJECT_ID>` (or a push to `main` for CI). Any newly added API is turned on automatically.
+Run the audit while signed in as a Workspace **super admin**. If the API or scope is missing, affected checks show **Manual** instead of failing the whole page.
+
+> **APIs are never a manual step.** Re-running deploy enables any newly added API from `scopes.sh`.
 >
-> **The one step Google keeps manual is DWD authorization** — there is no gcloud/API equivalent for adding delegation scopes; a super admin must paste them in [admin.google.com → DWD](https://admin.google.com/ac/owl/domainwidedelegation). To make that painless, **every deploy prints the exact scope string + the SA Client ID + the console link.** If you added a scope, paste the printed line into the existing entry for that Client ID. To have the deploy *verify* the whole scope set for you (it mints a delegated token requesting every scope), export a super-admin subject first:
+> **DWD is the only always-manual step.** Every deploy prints the scope string + SA Client ID + [admin console link](https://admin.google.com/ac/owl/domainwidedelegation). Verify with:
 > ```bash
 > DWD_ADMIN_EMAIL=admin@your-domain.com bash scripts/deploy-cloudshell.sh <PROJECT_ID>
 > ```
 
-If the API or scope is missing, the audit still loads — the affected checks just show **Manual** with a one-line notice instead of failing.
+---
+
+## Go-live checklist (hand to a coworker)
+
+After first deploy (or after a major change), walk this list:
+
+| # | Check | How |
+|---|--------|-----|
+| 1 | `/health` returns OK | `curl -s "$SERVICE_URL/health"` → `"status":"ok"` |
+| 2 | OAuth redirect registered | Exact `https://…/api/auth/callback` on the OAuth Web client |
+| 3 | Super admin can sign in | Open Service URL → Google → land on app |
+| 4 | Role badge correct | Super Admin (green) vs Delegated (orange, view-only) |
+| 5 | Mutation works | e.g. edit a non-critical group description or user phone |
+| 6 | Drive scan job exists | Drive → External Shares → **Run scan** (or check Cloud Run Jobs) |
+| 7 | Security Audit runs | Security Audit → **Run audit** (super admin) |
+| 8 | DWD scopes current | Deploy log prints Client ID + scopes; paste if you added any |
+| 9 | Protected deletes (optional) | Set `GWS_PROTECTED_USERS` so critical accounts cannot be deleted |
+| 10 | Signature templates (optional) | Set `SIGNATURE_TEMPLATE_BUCKET` if templates must survive redeploys |
+
+Logs:
+
+```bash
+gcloud run services logs read workspace-admin --region us-central1 --limit 100
+```
 
 ---
 
@@ -249,8 +282,8 @@ If the API or scope is missing, the audit still loads — the affected checks ju
 # Health
 curl -s "$(gcloud run services describe workspace-admin --region us-central1 --format='value(status.url)')/health"
 
-# DWD only (if troubleshooting)
-npx tsx scripts/verify-dwd.ts /path/to/sa-key.json you@yourcompany.com
+# DWD (keyless — needs ADC with tokenCreator on the runtime SA)
+npx tsx scripts/verify-dwd.ts workspace-admin-sa@PROJECT.iam.gserviceaccount.com you@yourcompany.com
 
 # Read-only live tests (optional; requires .env.test — see STAGING_TEST_SETUP.md)
 npm run bootstrap:test
@@ -263,45 +296,37 @@ After deploy, add the printed redirect URI to your OAuth Web client if the URL c
 
 ## Teardown / rebuild
 
-Remove the app from GCP (Cloud Run service, 7 secrets, both service accounts, Artifact Registry repo):
+Remove the app from GCP (Cloud Run service, scan job + bucket, secrets, service accounts, Artifact Registry):
 
 ```bash
 bash scripts/teardown-project.sh --project your-gcp-project-id
 ```
 
-Delete the entire GCP project (true greenfield; deletion is async — wait a few minutes before reusing the ID):
+Delete the entire GCP project:
 
 ```bash
 bash scripts/teardown-project.sh --project your-gcp-project-id --delete-project
 ```
 
-Delete only the Cloud Run service:
-
-```bash
-gcloud run services delete workspace-admin --region us-central1 --quiet
-```
-
-Manual cleanup (not automated): remove the DWD entry for the old SA `client_id` in [admin.google.com → DWD](https://admin.google.com/ac/owl/domainwidedelegation), delete/clear the OAuth Web client in GCP Console, and clear the CI GitHub secrets (`GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`, or `GCP_SA_KEY` for key-based forks). Then re-run the bootstrap wizard.
+Manual cleanup (not automated): remove the DWD entry for the old SA `client_id` in [admin.google.com → DWD](https://admin.google.com/ac/owl/domainwidedelegation), delete/clear the OAuth Web client in GCP Console, and clear GitHub secrets (`GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`; and `GCP_SA_KEY` only if used). Then re-run the bootstrap wizard.
 
 ---
 
 ## Expected output & harmless warnings
 
-During a normal, successful deploy you will see warnings and red/yellow text. **None of these mean the deploy failed.** Here is what's expected and why it's safe:
+During a normal, successful deploy you will see warnings and red/yellow text. **None of these mean the deploy failed.**
 
 | What you see | Why | Action |
 |--------------|-----|--------|
-| `Regional Access Boundary HTTP request failed after retries: … Account not found for email: …` | A benign `google-auth` library check for an optional org feature (trust boundary) that your org hasn't enabled. It's logged as a warning but the command still succeeds. Google is downgrading it to DEBUG in newer releases. | Ignore. Our scripts filter it automatically; it only shows if you run raw `gcloud` commands by hand. |
-| `[environment: untagged] Read more to tag: g.co/cloud/project-env-tag.` | A `gcloud` nag about optionally tagging your project's environment. | Ignore. Filtered by our scripts. |
-| npm `deprecated` / `EBADENGINE` / `N vulnerabilities` / funding / "New major version of npm" notices during the Docker build | Standard npm chatter from transitive dependencies. They don't affect the built image. | Ignore. Quieted in the Dockerfile (Node 24 LTS base + `NPM_CONFIG_LOGLEVEL=error`). |
-| `Completed with warnings: Setting IAM policy failed … allUsers … run.invoker` | Many orgs block granting `allUsers` (domain-restricted-sharing policy). The service is instead made public with `--no-invoker-iam-check`, so it's reachable — that's why the `/health` check passes. | Ignore. Access is enforced at the app layer (see [SECURITY.md](../SECURITY.md)). |
-| Two different Service URLs in the logs (`…-<projectnumber>.<region>.run.app` and `…-<hash>-<region>.a.run.app`) | Cloud Run issues both a project-number URL and a classic hash URL; both point to the same service. | Use the URL the wizard prints at the end. |
-| `useradd warning: … uid 1001 is greater than SYS_UID_MAX 999` | Cosmetic warning from creating the non-root container user. | Fixed — no longer appears. |
-| Vite `Some chunks are larger than 500 kB` | Frontend bundle-size hint. | Fixed — vendors are code-split, no longer appears. |
+| `Regional Access Boundary HTTP request failed…` | Benign `google-auth` lookup for an optional org feature | Ignore (filtered by our scripts) |
+| `[environment: untagged]…` | `gcloud` nag about optional project tags | Ignore |
+| npm deprecation / vulnerability notices in Docker build | Transitive deps; build still succeeds | Ignore |
+| `Setting IAM policy failed … allUsers … run.invoker` | Org policy blocks `allUsers`; service uses `--no-invoker-iam-check` | Ignore — access is app-layer (see SECURITY.md) |
+| Two Service URLs (project-number and hash) | Both point at the same service | Use the URL printed at the end |
 
-**Real** failures look different: they stop the run with a line beginning `ERROR:` (from our scripts) or a non-zero build/deploy status. If the wizard finishes and prints a **Service URL** with `Deployed successfully — /health responded OK.`, the deploy worked regardless of any warnings above.
+**Real** failures stop the run with `ERROR:` or a non-zero status. If the wizard prints a Service URL with `/health` OK, the deploy worked.
 
-To see the raw, unfiltered `gcloud` output for debugging, set `GWS_SHOW_GCLOUD_NOISE=1` before running.
+To see unfiltered `gcloud` output: `GWS_SHOW_GCLOUD_NOISE=1`.
 
 ---
 
@@ -310,12 +335,13 @@ To see the raw, unfiltered `gcloud` output for debugging, set `GWS_SHOW_GCLOUD_N
 | Symptom | Fix |
 |---------|-----|
 | `unauthorized_client` on DWD test | Use the SA's numeric `client_id`, not the OAuth web client ID. Scopes must match `scopes.sh`. Wait 1–5 min after saving. |
-| SA key creation blocked | Org policy `iam.disableServiceAccountKeyCreation` — CI is keyless by default; run `scripts/setup-github-ci.sh` (Workload Identity Federation). |
-| CI: `Permission denied` / no auth | Ensure all three secrets are set (`GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`). Re-run `scripts/setup-github-ci.sh`; the WIF provider is locked to your repo owner. |
-| `400: redirect_uri_mismatch` on sign-in | The redirect URI the app sends must be registered **exactly** on the OAuth Web client. Confirm the app is sending the real URL (not `PLACEHOLDER`): `gcloud secrets versions access latest --secret=oauth-redirect-uri`. It must equal `https://<cloud-run-url>/api/auth/callback` and be listed under the client's Authorized redirect URIs. Changes take ~1 min to propagate. |
-| OAuth login fails | Redirect URI must exactly match the Cloud Run URL + `/api/auth/callback`. |
-| Billing not enabled | Pass `--billing-account` or link it in the GCP Console. |
-| Permission denied on deploy | Grant `roles/run.admin` + `roles/iam.serviceAccountUser` to `github-deploy-sa`. |
-| Docker push denied | Grant `roles/artifactregistry.writer`; ensure `artifactregistry.googleapis.com` is enabled. |
-| Scope drift | Run `npm run check:scopes`. |
-| Public access blocked | The service deploys with `--no-invoker-iam-check` because many orgs block `allUsers` invoker IAM. Access is enforced at the app layer (see SECURITY.md). |
+| SA key creation blocked | Expected on secure orgs — use WIF: `scripts/setup-github-ci.sh` |
+| CI: `Permission denied` / no auth | Set `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`. Re-run `scripts/setup-github-ci.sh`. |
+| `400: redirect_uri_mismatch` | Confirm secret: `gcloud secrets versions access latest --secret=oauth-redirect-uri` equals `https://<url>/api/auth/callback` and is listed on the OAuth client. Redeploy if stuck on `PLACEHOLDER`. |
+| OAuth login fails | Redirect URI must match Cloud Run URL + `/api/auth/callback` exactly. |
+| Billing not enabled | Pass `--billing-account` or link billing in Console. |
+| Permission denied on deploy | Deploy SA needs `run.admin`, `artifactregistry.writer`, `secretVersionAdder`, `serviceUsageAdmin`, and `actAs` on runtime SA. |
+| Scope drift | `npm run check:scopes` |
+| Public access blocked | Service uses `--no-invoker-iam-check`; app enforces auth (SECURITY.md). |
+| Deleted user should have been blocked | Set `GWS_PROTECTED_USERS` and redeploy. |
+| Signature template lost after redeploy | Set `SIGNATURE_TEMPLATE_BUCKET` and redeploy. |

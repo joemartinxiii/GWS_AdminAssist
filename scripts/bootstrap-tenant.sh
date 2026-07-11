@@ -237,7 +237,6 @@ TMP_DIR="${REPO_ROOT}/.bootstrap-tmp-$$"
 mkdir -p "$TMP_DIR"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-DEPLOY_KEY="${TMP_DIR}/github-deploy-sa-key.json"
 RUNTIME_SA_EMAIL="${RUNTIME_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
 
 # Phase 1 — GCP provision
@@ -248,19 +247,7 @@ provision_deploy_sa "$PROJECT_ID"
 
 # Runtime auth is KEYLESS — no service-account key is created for the runtime SA.
 # It signs its own domain-wide-delegation tokens via the IAM Credentials API.
-#
-# The optional GitHub Actions deploy SA still uses a key; if org policy blocks
-# key creation we skip GitHub setup rather than failing the whole bootstrap.
-DEPLOY_KEY_OK=false
-if [[ "$SKIP_GITHUB" != "true" ]]; then
-  if try_create_sa_key "$PROJECT_ID" "$DEPLOY_SA" "$DEPLOY_KEY"; then
-    DEPLOY_KEY_OK=true
-  else
-    warn "Could not create a deploy-SA key (org policy). Skipping GitHub Actions setup."
-    warn "Ongoing deploys: re-run 'bash scripts/deploy-cloudshell.sh ${PROJECT_ID} ${REGION}' from Cloud Shell, or set up Workload Identity Federation."
-    SKIP_GITHUB=true
-  fi
-fi
+# GitHub Actions CI is also keyless by default (Workload Identity Federation).
 
 provision_secrets "$PROJECT_ID" "" "" "$WORKSPACE_DOMAIN" "$ALLOWED_DOMAINS" ""
 provision_artifact_registry "$PROJECT_ID" "$REGION"
@@ -332,11 +319,17 @@ else
 fi
 
 if [[ "$SKIP_GITHUB" != "true" ]]; then
-  log "Phase 4b: GitHub Actions setup"
+  log "Phase 4b: GitHub Actions setup (Workload Identity Federation — keyless)"
   if [[ -z "$GITHUB_REPO" ]] && command -v gh >/dev/null 2>&1; then
     GITHUB_REPO="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
   fi
-  setup_github_secrets "$PROJECT_ID" "$DEPLOY_KEY" "$GITHUB_REPO"
+  if setup_github_wif "$PROJECT_ID" "$GITHUB_REPO"; then
+    log "GitHub Actions WIF configured."
+  else
+    warn "WIF setup incomplete. You can finish later with:"
+    echo "  bash scripts/setup-github-ci.sh ${PROJECT_ID} OWNER/REPO"
+    echo "  Or deploy manually: bash scripts/deploy-cloudshell.sh ${PROJECT_ID} ${REGION}"
+  fi
 else
   log "Phase 4b: Skipped GitHub setup (--skip-github)"
 fi
@@ -363,5 +356,10 @@ echo "  Role expectations:"
 echo "    Super admins  — full mutations"
 echo "    Delegated admins — view only"
 echo ""
-echo "  Ongoing deploys: push to main or Actions → Deploy to Cloud Run"
+echo "  Ongoing deploys: push to main (GitHub Actions + WIF) or:"
+echo "    bash scripts/deploy-cloudshell.sh ${PROJECT_ID} ${REGION}"
+echo ""
+echo "  Optional production env (set before deploy or as GitHub Actions variables):"
+echo "    GWS_PROTECTED_USERS=admin@your-domain.com,backup@your-domain.com"
+echo "    SIGNATURE_TEMPLATE_BUCKET=your-project-signature-templates"
 echo "=============================================="

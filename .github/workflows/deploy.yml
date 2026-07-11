@@ -10,7 +10,6 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: us-central1
   SERVICE_NAME: workspace-admin
-  SCAN_JOB: workspace-admin-scan
   REPO: workspace-admin-repo
   # secrets can't be referenced in `if:` directly, so derive a boolean here.
   HAS_WIF: ${{ secrets.GCP_WIF_PROVIDER != '' }}
@@ -29,9 +28,10 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-fund --no-audit
 
-      - name: Type-check and security tests
+      - name: Type-check, scopes, security tests
         run: |
           npm run type-check
+          npm run type-check:frontend
           npm run check:scopes
           npm run test:security
 
@@ -39,10 +39,7 @@ jobs:
         continue-on-error: true
         run: npm run lint:ci
 
-      # Keyless auth via Workload Identity Federation (preferred). Works even
-      # when org policy blocks SA key creation (iam.disableServiceAccountKeyCreation),
-      # which is the same constraint that made runtime DWD keyless. Set the
-      # GCP_WIF_PROVIDER + GCP_DEPLOY_SA secrets via scripts/setup-github-ci.sh.
+      # Keyless auth via Workload Identity Federation (preferred).
       - name: Authenticate to Google Cloud (Workload Identity Federation)
         if: env.HAS_WIF == 'true'
         uses: google-github-actions/auth@v3
@@ -62,17 +59,13 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v3
 
-      # Keep the enabled API set in sync on every deploy so new API deps (e.g. the
-      # Cloud Identity Policy API for the Security Audit) ship without a manual
-      # step. scripts/lib/scopes.sh is the single source of truth for GCP_APIS.
-      # Best-effort: a fork whose deploy SA lacks serviceusage.serviceUsageAdmin
-      # will no-op here (APIs are then enabled by the owner-run bootstrap/deploy).
+      # Keep the enabled API set in sync. scripts/lib/scopes.sh is the single source of truth.
       - name: Enable required Google APIs
         run: |
           # shellcheck source=scripts/lib/scopes.sh
           source scripts/lib/scopes.sh
           gcloud services enable "${GCP_APIS[@]}" --project="${{ env.PROJECT_ID }}" --quiet 2>/dev/null \
-            || echo "NOTE: could not enable APIs from CI (deploy SA lacks serviceusage.serviceUsageAdmin?). Run scripts/setup-github-ci.sh to grant it, or enable via bootstrap-tenant.sh. Continuing."
+            || echo "NOTE: could not enable APIs from CI (deploy SA lacks serviceusage.serviceUsageAdmin?). Run scripts/setup-github-ci.sh to grant it. Continuing."
 
       - name: Configure project and Docker
         run: |
@@ -90,70 +83,14 @@ jobs:
           docker push "${IMAGE}:${GITHUB_SHA}"
           docker push "${IMAGE}:latest"
 
-      - name: Deploy to Cloud Run
+      # Shared post-image deploy (service, redirect pin, CORS, scan job, health, DWD hint).
+      # Same code path as deploy-cloudshell.sh / deploy.sh after the image exists.
+      - name: Deploy Cloud Run service + scan job
+        env:
+          # Optional: set repo variable SIGNATURE_TEMPLATE_BUCKET for durable signature templates.
+          SIGNATURE_TEMPLATE_BUCKET: ${{ vars.SIGNATURE_TEMPLATE_BUCKET }}
+          GWS_PROTECTED_USERS: ${{ vars.GWS_PROTECTED_USERS }}
+          DWD_ADMIN_EMAIL: ${{ vars.DWD_ADMIN_EMAIL }}
         run: |
           IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:${GITHUB_SHA}"
-          gcloud run deploy "${{ env.SERVICE_NAME }}" \
-            --image "$IMAGE" \
-            --platform managed \
-            --region "${{ env.REGION }}" \
-            --memory 1Gi \
-            --cpu 1 \
-            --cpu-boost \
-            --min-instances 0 \
-            --max-instances 2 \
-            --timeout 300 \
-            --service-account "workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com" \
-            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com,SCAN_BUCKET=${{ env.PROJECT_ID }}-workspace-admin-scans,SCAN_JOB_NAME=${{ env.SCAN_JOB }},SCAN_REGION=${{ env.REGION }}" \
-            --set-secrets "GOOGLE_CLIENT_ID=oauth-client-id:latest,GOOGLE_CLIENT_SECRET=oauth-client-secret:latest,GOOGLE_REDIRECT_URI=oauth-redirect-uri:latest,JWT_SECRET=app-jwt-secret:latest,WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
-            --allow-unauthenticated \
-            --no-invoker-iam-check \
-            --quiet
-
-      - name: Update CORS and OAuth redirect URI
-        run: |
-          SERVICE_URL=$(gcloud run services describe "${{ env.SERVICE_NAME }}" --region "${{ env.REGION }}" --format='value(status.url)')
-          REDIRECT_URI="${SERVICE_URL}/api/auth/callback"
-          gcloud run services update "${{ env.SERVICE_NAME }}" \
-            --region "${{ env.REGION }}" \
-            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com,CORS_ORIGIN=${SERVICE_URL},SCAN_BUCKET=${{ env.PROJECT_ID }}-workspace-admin-scans,SCAN_JOB_NAME=${{ env.SCAN_JOB }},SCAN_REGION=${{ env.REGION }}" \
-            --no-invoker-iam-check \
-            --quiet
-          echo -n "$REDIRECT_URI" | gcloud secrets versions add oauth-redirect-uri --data-file=- --quiet
-          echo "Service URL: $SERVICE_URL"
-          echo "Redirect URI: $REDIRECT_URI"
-          echo "Ensure this redirect URI is registered on your OAuth Web client if the URL changed."
-
-      - name: Configure external-sharing scan (bucket + Cloud Run Job)
-        run: |
-          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO }}/${{ env.SERVICE_NAME }}:${GITHUB_SHA}"
-          SCAN_BUCKET="${{ env.PROJECT_ID }}-workspace-admin-scans"
-          RUNTIME_SA="workspace-admin-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com"
-          # The scan bucket + IAM bindings are one-time provisioning owned by the
-          # owner-run bootstrap-tenant.sh / deploy-cloudshell.sh. The CI deploy SA is
-          # least-privilege and cannot create buckets or edit project IAM, so treat
-          # these as best-effort; only the job deploy below must succeed.
-          # stderr is silenced on the best-effort commands: a least-privilege CI SA
-          # will (expectedly) be denied create / get-iam-policy, and those denials are
-          # not failures — the bucket + bindings are provisioned once by the owner.
-          if ! gcloud storage buckets describe "gs://${SCAN_BUCKET}" &>/dev/null; then
-            gcloud storage buckets create "gs://${SCAN_BUCKET}" --project="${{ env.PROJECT_ID }}" --location="${{ env.REGION }}" --uniform-bucket-level-access --quiet 2>/dev/null \
-              || echo "NOTE: scan bucket not managed by CI (least-privilege); provisioned by owner-run bootstrap-tenant.sh / deploy-cloudshell.sh. Continuing."
-          fi
-          gcloud storage buckets add-iam-policy-binding "gs://${SCAN_BUCKET}" \
-            --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin" --quiet 2>/dev/null || true
-          gcloud projects add-iam-policy-binding "${{ env.PROJECT_ID }}" \
-            --member="serviceAccount:${RUNTIME_SA}" --role="roles/run.developer" --quiet 2>/dev/null || true
-          gcloud run jobs deploy "${{ env.SCAN_JOB }}" \
-            --image "$IMAGE" \
-            --region "${{ env.REGION }}" \
-            --service-account "${RUNTIME_SA}" \
-            --command node \
-            --args backend/dist/jobs/externalScan.js \
-            --max-retries 1 \
-            --task-timeout 3600 \
-            --memory 1Gi \
-            --cpu 1 \
-            --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${{ env.PROJECT_ID }},SERVICE_ACCOUNT_EMAIL=${RUNTIME_SA},SCAN_BUCKET=${SCAN_BUCKET},SCAN_USER_CONCURRENCY=15" \
-            --set-secrets "WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
-            --quiet
+          bash scripts/deploy-from-image.sh "${{ env.PROJECT_ID }}" "${{ env.REGION }}" "$IMAGE"

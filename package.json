@@ -1,7 +1,7 @@
 {
-  "name": "google-workspace-admin-ui",
+  "name": "gws-admin-assist",
   "version": "1.0.0",
-  "description": "Google Workspace Admin Management UI - GAM alternative with web interface",
+  "description": "Google Workspace Admin Assist — web console for Workspace admins and MSPs",
   "private": true,
   "workspaces": [
     "frontend",
@@ -33,7 +33,9 @@
     "check:scopes": "tsx scripts/check-scopes.ts",
     "lint": "cd backend && npm run lint",
     "lint:ci": "cd backend && npm run lint:ci",
-    "type-check": "cd backend && npm run type-check"
+    "type-check": "cd backend && npm run type-check",
+    "type-check:frontend": "cd frontend && npm run type-check",
+    "type-check:all": "npm run type-check && npm run type-check:frontend"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

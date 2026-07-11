@@ -1,143 +1,52 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Cloud Run deployment via local Docker build + Artifact Registry.
-# Prefer GitHub Actions instead: push to main or run "Deploy to Cloud Run" workflow
-# (see docs/DEPLOY.md) — no local Docker required.
+# Prefer GitHub Actions or Cloud Shell (see docs/DEPLOY.md).
+# Uses the same post-image deploy steps as every other path.
 
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "${SCRIPT_DIR}/scripts/lib/common.sh"
+# shellcheck source=scripts/lib/scopes.sh
+source "${SCRIPT_DIR}/scripts/lib/scopes.sh"
+# shellcheck source=scripts/lib/gcp-provision.sh
+source "${SCRIPT_DIR}/scripts/lib/gcp-provision.sh"
 
 PROJECT_ID="${1:-${PROJECT_ID:-${GCP_PROJECT_ID:-}}}"
-REGION="${2:-us-central1}"
-SERVICE_NAME="workspace-admin"
-SCAN_JOB_NAME="workspace-admin-scan"
-IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/workspace-admin-repo/${SERVICE_NAME}:latest"
-SCAN_BUCKET="${SCAN_BUCKET:-${PROJECT_ID}-workspace-admin-scans}"
-SCAN_USER_CONCURRENCY="${SCAN_USER_CONCURRENCY:-15}"
+REGION="${2:-${REGION:-$DEFAULT_REGION}}"
+SERVICE_NAME="$CLOUD_RUN_SERVICE"
+IMAGE_BASE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/${SERVICE_NAME}"
 
-if [ -z "$PROJECT_ID" ]; then
-  echo "❌ Error: PROJECT_ID is required"
-  echo "Usage: ./deploy.sh [PROJECT_ID] [REGION]"
-  exit 1
+if [[ -z "$PROJECT_ID" ]]; then
+  die "Usage: ./deploy.sh [PROJECT_ID] [REGION]"
 fi
 
-echo "=== Google Workspace Admin Assist - FULLY AUTOMATED Deployment ==="
-echo "Project: $PROJECT_ID"
-echo "Region: $REGION"
-echo "Service: $SERVICE_NAME"
-echo "Image: $IMAGE_NAME"
+echo "=== Google Workspace Admin Assist — local Docker deploy ==="
+echo "Project: $PROJECT_ID  Region: $REGION"
 echo ""
 
 gcloud config set project "$PROJECT_ID" --quiet
 
-echo "Running pre-flight checks..."
 if ! gcloud secrets describe app-jwt-secret --project="${PROJECT_ID}" &>/dev/null; then
-  echo "❌ ERROR: App secrets not found. Run bootstrap-tenant.sh (or setup-secrets.sh) first."
-  exit 1
+  die "App secrets not found. Run bootstrap-tenant.sh first."
 fi
-echo "✅ Secrets and service account verified."
 
-echo "Ensuring Cloud Run service account can write audit logs..."
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/logging.logWriter" \
-  --quiet >/dev/null 2>&1 || echo "⚠️ Could not auto-grant roles/logging.logWriter. Grant it manually if audit logs fail."
+require_cmd docker
 
-# Setup Artifact Registry if not exists
-echo "Setting up Artifact Registry..."
-gcloud artifacts repositories create workspace-admin-repo --repository-format=docker \
-  --location="$REGION" --quiet 2>/dev/null || true
+provision_apis "$PROJECT_ID"
+provision_artifact_registry "$PROJECT_ID" "$REGION"
 
-# Configure Docker auth for Artifact Registry
-gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
-echo "Building Docker image locally for linux/amd64 (Cloud Run architecture)..."
-# Build for amd64 to match Cloud Run runtime (fixes exec format error on Apple Silicon)
-docker build --platform linux/amd64 -t "$IMAGE_NAME" .
+GIT_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo latest)"
+DEPLOY_IMAGE="${IMAGE_BASE}:${GIT_SHA}"
 
-echo "Pushing image to Artifact Registry..."
-docker push "$IMAGE_NAME"
+log "Building Docker image for linux/amd64 (Cloud Run architecture)..."
+docker build --platform linux/amd64 -t "$DEPLOY_IMAGE" -t "${IMAGE_BASE}:latest" .
 
-echo "Deploying to Cloud Run..."
-# --no-invoker-iam-check: required when org policy blocks allUsers (iam.allowedPolicyMemberDomains).
-# See: https://cloud.google.com/run/docs/securing/managing-access#invoker_check
-gcloud run deploy "$SERVICE_NAME" \
-  --image "$IMAGE_NAME" \
-  --platform managed \
-  --region "$REGION" \
-  --memory 1Gi \
-  --cpu 1 \
-  --cpu-boost \
-  --min-instances 0 \
-  --max-instances 2 \
-  --timeout 300 \
-  --service-account "workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com,SCAN_BUCKET=${SCAN_BUCKET},SCAN_JOB_NAME=${SCAN_JOB_NAME},SCAN_REGION=${REGION}" \
-  --set-secrets "GOOGLE_CLIENT_ID=oauth-client-id:latest,GOOGLE_CLIENT_SECRET=oauth-client-secret:latest,GOOGLE_REDIRECT_URI=oauth-redirect-uri:latest,JWT_SECRET=app-jwt-secret:latest,WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
-  --allow-unauthenticated \
-  --no-invoker-iam-check \
-  --quiet
+log "Pushing image to Artifact Registry..."
+docker push "$DEPLOY_IMAGE"
+docker push "${IMAGE_BASE}:latest"
 
-SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" --region "$REGION" --format='value(status.url)')
-REDIRECT_URI="${SERVICE_URL}/api/auth/callback"
-
-echo "Updating configuration with full environment variables..."
-# Persist the real redirect URI first, then roll one revision that reads it.
-# Pin the explicit version so the rollout is not skipped as a no-op, which would
-# leave the running revision stuck on the placeholder redirect URI.
-echo -n "$REDIRECT_URI" | gcloud secrets versions add oauth-redirect-uri --data-file=- --quiet
-REDIRECT_VER="$(gcloud secrets versions list oauth-redirect-uri --filter='state:enabled' --sort-by=~createTime --format='value(name)' --limit=1)"
-
-# Must include ALL critical vars - --set-env-vars replaces previous ones
-gcloud run services update "$SERVICE_NAME" \
-  --region "$REGION" \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com,CORS_ORIGIN=${SERVICE_URL},SCAN_BUCKET=${SCAN_BUCKET},SCAN_JOB_NAME=${SCAN_JOB_NAME},SCAN_REGION=${REGION}" \
-  --update-secrets "GOOGLE_REDIRECT_URI=oauth-redirect-uri:${REDIRECT_VER}" \
-  --no-invoker-iam-check \
-  --quiet
-
-# External-sharing scan: GCS bucket + IAM + on-demand Cloud Run Job (same image).
-echo "Configuring external-sharing scan (bucket + Cloud Run Job)..."
-gcloud storage buckets describe "gs://${SCAN_BUCKET}" &>/dev/null \
-  || gcloud storage buckets create "gs://${SCAN_BUCKET}" --project="$PROJECT_ID" --location="$REGION" --uniform-bucket-level-access --quiet
-gcloud storage buckets add-iam-policy-binding "gs://${SCAN_BUCKET}" \
-  --member="serviceAccount:workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/storage.objectAdmin" --quiet >/dev/null 2>&1 || echo "⚠️ Could not grant objectAdmin on gs://${SCAN_BUCKET}"
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/run.developer" --quiet >/dev/null 2>&1 || echo "⚠️ Could not grant roles/run.developer"
-gcloud run jobs deploy "$SCAN_JOB_NAME" \
-  --image "$IMAGE_NAME" \
-  --region "$REGION" \
-  --service-account "workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --command node \
-  --args backend/dist/jobs/externalScan.js \
-  --max-retries 1 \
-  --task-timeout 3600 \
-  --memory 1Gi \
-  --cpu 1 \
-  --set-env-vars "NODE_ENV=production,GCP_PROJECT_ID=${PROJECT_ID},SERVICE_ACCOUNT_EMAIL=workspace-admin-sa@${PROJECT_ID}.iam.gserviceaccount.com,SCAN_BUCKET=${SCAN_BUCKET},SCAN_USER_CONCURRENCY=${SCAN_USER_CONCURRENCY}" \
-  --set-secrets "WORKSPACE_DOMAIN=app-workspace-domain:latest,GWS_ALLOWED_DOMAINS=app-allowed-domains:latest" \
-  --quiet || echo "⚠️ Could not deploy Cloud Run Job ${SCAN_JOB_NAME}; external-sharing scans will be unavailable until it exists."
-
-echo "Public browser access: --no-invoker-iam-check (org iam.allowedPolicyMemberDomains blocks allUsers IAM binding)."
-echo "If a redeploy drops it: gcloud run services update $SERVICE_NAME --region=$REGION --project=$PROJECT_ID --no-invoker-iam-check"
-
-echo ""
-echo "✅ FULLY DEPLOYED SUCCESSFULLY!"
-echo "Service URL: $SERVICE_URL"
-echo "Redirect URI: $REDIRECT_URI"
-echo ""
-echo "NEXT STEPS:"
-echo "1. Go to https://console.cloud.google.com/apis/credentials?project=$PROJECT_ID"
-echo "   Add EXACTLY this redirect URI to your OAuth client:"
-echo "   ${REDIRECT_URI}"
-echo "2. Test the app:"
-echo "   curl -I ${SERVICE_URL}/health"
-echo "3. Open $SERVICE_URL in your browser"
-echo "4. Check logs with: gcloud beta run services logs tail $SERVICE_NAME --region=$REGION"
-echo "   (or: gcloud run services logs read $SERVICE_NAME --region=$REGION --limit=200)"
-echo ""
-echo "Service account created, all permissions granted, secrets configured, app deployed."
-echo "Everything is done. The app should be live."
-echo ""
-echo "To redeploy: ./deploy.sh $PROJECT_ID $REGION"
-echo "See docs/DEPLOY.md for details."
+bash "${SCRIPT_DIR}/scripts/deploy-from-image.sh" "$PROJECT_ID" "$REGION" "$DEPLOY_IMAGE"

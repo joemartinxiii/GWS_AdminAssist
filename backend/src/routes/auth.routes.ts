@@ -13,6 +13,7 @@ import {
   clearCookieOptions,
   oauthStateCookieOptions,
 } from '../utils/sessionCookie';
+import { getProtectedUserEmails } from '../utils/protectedUsers';
 
 const router = Router();
 
@@ -115,6 +116,8 @@ router.get('/me', authenticateSession, async (req: AuthRequest, res: Response) =
       name: req.user?.name,
       picture: req.user?.picture,
       allowedDomains,
+      /** Emails that cannot be permanently deleted (from GWS_PROTECTED_USERS). */
+      protectedUsers: getProtectedUserEmails(),
     });
   } catch (error) {
     console.error('Error getting user info:', error);

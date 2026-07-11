@@ -16,6 +16,7 @@ GCP_APIS=(
   cloudbuild.googleapis.com
   artifactregistry.googleapis.com
   iamcredentials.googleapis.com
+  storage.googleapis.com
   admin.googleapis.com
   drive.googleapis.com
   gmail.googleapis.com

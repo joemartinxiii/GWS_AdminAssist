@@ -10,7 +10,7 @@ Runs on **GCP Cloud Run** with free-tier-friendly design (no always-on servers, 
 
 | Area | What you get |
 |------|----------------|
-| **People** | Directory users, OU, status, 2FA overview, edit, suspend, delete (with protected accounts) |
+| **People** | Directory users, OU, status, 2FA overview, edit, suspend, delete (optional protected accounts via `GWS_PROTECTED_USERS`) |
 | **Groups** | Create, membership, roles |
 | **Drive** | Org search, trash, external/public sharing audit, file permissions |
 | **Shared drives** | Inventory, sharing risk, members |
@@ -34,7 +34,7 @@ cd GWS_AdminAssist
 bash scripts/bootstrap-tenant.sh
 ```
 
-That provisions GCP, walks OAuth + domain-wide delegation, and deploys. Ongoing updates: push to `main` (GitHub Actions) or re-run the deploy path in the deploy guide.
+That provisions GCP, walks OAuth + domain-wide delegation, and deploys. Ongoing updates: push to `main` (GitHub Actions + Workload Identity Federation) or `bash scripts/deploy-cloudshell.sh <PROJECT_ID>`.
 
 ### Local development
 
@@ -43,7 +43,9 @@ See **[docs/LOCAL_DEV.md](docs/LOCAL_DEV.md)** (mock UI with MSW, or full stack 
 ### Before you go live
 
 1. Read **[SECURITY.md](SECURITY.md)** (OAuth, domain-wide delegation, scopes).
-2. Run `npm install && npm run test:security`.
+2. Follow the **go-live checklist** in **[docs/DEPLOY.md](docs/DEPLOY.md#go-live-checklist-hand-to-a-coworker)**.
+3. Run `npm install && npm run test:security && npm run type-check:all`.
+4. Set optional production env: `GWS_PROTECTED_USERS`, `SIGNATURE_TEMPLATE_BUCKET` (see deploy guide).
 
 ---
 

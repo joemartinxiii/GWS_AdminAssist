@@ -94,7 +94,17 @@ provision_deploy_sa() {
 
   # serviceusage.serviceUsageAdmin lets the CI deploy path keep the enabled API
   # set in sync (gcloud services enable) so new API deps ship without a manual step.
-  for role in roles/run.admin roles/artifactregistry.writer roles/iam.serviceAccountUser roles/secretmanager.secretAccessor roles/serviceusage.serviceUsageAdmin; do
+  # secretVersionAdder: CI must add oauth-redirect-uri versions after each deploy.
+  # secretAccessor: read secrets if needed during deploy tooling.
+  # serviceUsageAdmin: keep GCP_APIS in sync on every CI deploy.
+  for role in \
+    roles/run.admin \
+    roles/artifactregistry.writer \
+    roles/iam.serviceAccountUser \
+    roles/secretmanager.secretAccessor \
+    roles/secretmanager.secretVersionAdder \
+    roles/serviceusage.serviceUsageAdmin
+  do
     gcloud projects add-iam-policy-binding "$project_id" \
       --member="serviceAccount:${sa_email}" \
       --role="$role" --quiet >/dev/null 2>&1 || true
@@ -196,9 +206,11 @@ provision_secrets() {
   local client_secret="${3:-}"
   local workspace_domain="${4:-}"
   local allowed_domains="${5:-}"
-  local sa_key_path="${6:-}"
+  # Positional 6 reserved (was SA key path; runtime is keyless).
+  local _unused_key_path="${6:-}"
   local jwt_secret="${7:-}"
   local redirect_uri="${8:-https://PLACEHOLDER.run.app/api/auth/callback}"
+  unset _unused_key_path
 
   gcloud config set project "$project_id" --quiet
 
@@ -319,24 +331,16 @@ try_create_sa_key() {
     --iam-account="$sa_email" --project="$project_id" --quiet 2>/dev/null
 }
 
+# Keyless GCP provision (APIs, SAs, secrets, Artifact Registry). No SA keys.
+# Prefer scripts/bootstrap-tenant.sh for guided greenfield setup.
 provision_gcp_full() {
   local project_id="$1"
   local region="${2:-$DEFAULT_REGION}"
   local workspace_domain="$3"
-  local tmp_dir="${4:-/tmp/gws-admin-bootstrap-$$}"
-  mkdir -p "$tmp_dir"
-
-  local runtime_key="${tmp_dir}/workspace-admin-sa-key.json"
-  local deploy_key="${tmp_dir}/github-deploy-sa-key.json"
 
   provision_apis "$project_id"
   provision_runtime_sa "$project_id"
   provision_deploy_sa "$project_id"
-  create_sa_key "$project_id" "$RUNTIME_SA" "$runtime_key"
-  create_sa_key "$project_id" "$DEPLOY_SA" "$deploy_key"
-  provision_secrets "$project_id" "" "" "$workspace_domain" "$workspace_domain" "$runtime_key"
+  provision_secrets "$project_id" "" "" "$workspace_domain" "$workspace_domain" ""
   provision_artifact_registry "$project_id" "$region"
-
-  echo "$runtime_key"
-  echo "$deploy_key"
 }

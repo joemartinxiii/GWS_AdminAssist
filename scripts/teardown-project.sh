@@ -42,7 +42,8 @@ Removes:
 Manual steps still required (documented in docs/DEPLOY.md):
   - Remove DWD entry in admin.google.com
   - Remove or reset OAuth Web client in GCP Console
-  - Update or remove GitHub Actions secrets (GCP_SA_KEY)
+  - Clear GitHub Actions secrets (GCP_PROJECT_ID, GCP_WIF_PROVIDER, GCP_DEPLOY_SA;
+    and GCP_SA_KEY if you used the key fallback)
 EOF
 }
 
@@ -136,7 +137,8 @@ echo "2. GCP OAuth — remove or archive Web client:"
 echo "   https://console.cloud.google.com/apis/credentials?project=${PROJECT_ID}"
 echo ""
 echo "3. GitHub — remove or update Actions secrets:"
-echo "   GCP_PROJECT_ID, GCP_SA_KEY"
+echo "   GCP_PROJECT_ID, GCP_WIF_PROVIDER, GCP_DEPLOY_SA"
+echo "   (and GCP_SA_KEY only if you used the key fallback)"
 echo "   https://github.com/<owner>/<repo>/settings/secrets/actions"
 echo ""
 echo "4. Rebuild from scratch:"
