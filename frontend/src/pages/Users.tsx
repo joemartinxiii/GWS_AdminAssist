@@ -730,7 +730,7 @@ export function Users() {
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 400, gap: 2, opacity: appeared ? 1 : 0, transition: 'opacity 0.4s ease' }}>
         <CircularProgress size={28} thickness={4} sx={{ color: T.accent }} />
-        <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>Loading your people\u2026</Typography>
+        <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>Loading your people…</Typography>
       </Box>
     );
   }
