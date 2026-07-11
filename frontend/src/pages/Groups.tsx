@@ -51,7 +51,6 @@ import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogLis
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { PageHeader } from '../components/ui/PageHeader';
 import { FilterToken } from '../components/ui/FilterToken';
-import { ExternalChip } from '../components/StatusDot';
 import { useTheme } from '@mui/material/styles';
 import { useConfirm } from '../hooks/useConfirm';
 
@@ -125,11 +124,11 @@ export function Groups() {
     { name: 200, email: 260, description: 240, directMembersCount: 88, creationTime: 120 },
     { name: 120, email: 160, description: 120, directMembersCount: 56, creationTime: 88 }
   );
-  // Member takes remaining width; role/type stay compact (mock ~90 / ~70). minWidth 0 → no H-scroll in narrow modal.
+  // Name · Email · Role — Type dropped (External lives under the name). No H-scroll in narrow modal.
   const memberCols = useResizableColumns(
-    'groups-members-v3',
-    { member: 400, role: 90, type: 70 },
-    { member: 0, role: 0, type: 0 }
+    'groups-members-v4',
+    { name: 180, email: 240, role: 100 },
+    { name: 0, email: 0, role: 0 }
   );
   const pickerCols = useResizableColumns(
     'groups-user-picker',
@@ -1261,9 +1260,9 @@ export function Groups() {
                     />
                   ) : null}
                 </Box>
-                <ColumnHeader label="Member" columnId="mb" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('member')} />
+                <ColumnHeader label="Name" columnId="mb" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('name')} />
+                <ColumnHeader label="Email" columnId="em" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('email')} />
                 <ColumnHeader label="Role" columnId="rl" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('role')} />
-                <ColumnHeader label="Type" columnId="ty" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('type')} />
               </ListHeaderRow>
               {members.length === 0 && !addMemberInlineOpen && (
                 <Box sx={{ py: 4, textAlign: 'center' }}>
@@ -1283,20 +1282,17 @@ export function Groups() {
                 const directoryUser = users.find(
                   (u) => u.primaryEmail.toLowerCase() === member.email.toLowerCase()
                 );
-                const hasName = Boolean(directoryUser?.name?.fullName);
-                const displayName = directoryUser?.name?.fullName || member.email;
-                // Mock: name + email under; external email-only gets “External” under the address.
-                const secondaryLine = hasName ? member.email : external ? 'External' : null;
+                const displayName = directoryUser?.name?.fullName || null;
                 return (
                 <ListDataRow key={member.id} last={globalMidx === filteredMembersForDialog.length - 1 && !addMemberInlineOpen}>
                   <Box sx={listCheckboxSx}>
                     <Checkbox size="small" checked={selectedMembers.includes(member.email)} onChange={() => handleSelectMember(member.email)} sx={{ p: 0.25 }} />
                   </Box>
-                  <Box sx={memberCols.cellSx('member')}>
+                  <Box sx={memberCols.cellSx('name')}>
                     <Typography
                       sx={{
-                        fontFamily: hasName ? T.font : T.mono,
-                        fontSize: hasName ? '0.8125rem' : '0.75rem',
+                        fontFamily: T.font,
+                        fontSize: '0.8125rem',
                         fontWeight: 500,
                         color: (t) => pick(t, T.text, '#fafafa'),
                         whiteSpace: 'nowrap',
@@ -1305,14 +1301,14 @@ export function Groups() {
                         lineHeight: 1.3,
                       }}
                     >
-                      {displayName}
+                      {displayName || '—'}
                     </Typography>
-                    {secondaryLine && (
+                    {external && (
                       <Typography
                         sx={{
-                          fontFamily: T.mono,
+                          fontFamily: T.font,
                           fontSize: '0.75rem',
-                          color: !hasName && external ? T.warning : (t) => textTertiary(t),
+                          color: T.warning,
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -1320,23 +1316,28 @@ export function Groups() {
                           mt: 0.15,
                         }}
                       >
-                        {secondaryLine}
+                        External
                       </Typography>
                     )}
+                  </Box>
+                  <Box sx={memberCols.cellSx('email')}>
+                    <Typography
+                      sx={{
+                        fontFamily: T.mono,
+                        fontSize: '0.75rem',
+                        color: (t) => textSecondary(t),
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {member.email}
+                    </Typography>
                   </Box>
                   <Box sx={memberCols.cellSx('role')}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
                       {roleLabel}
                     </Typography>
-                  </Box>
-                  <Box sx={memberCols.cellSx('type')}>
-                    {external ? (
-                      <ExternalChip />
-                    ) : (
-                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t) }}>
-                        {member.type === 'GROUP' ? 'Group' : member.type === 'CUSTOMER' ? 'Customer' : 'User'}
-                      </Typography>
-                    )}
                   </Box>
                 </ListDataRow>
               );
@@ -1367,7 +1368,13 @@ export function Groups() {
                   })}
                 >
                   <Box sx={listCheckboxSx} />
-                  <Box sx={memberCols.cellSx('member')}>
+                  <Box
+                    sx={{
+                      flex: `${memberCols.widthOf('name') + memberCols.widthOf('email')} 1 0px`,
+                      minWidth: 0,
+                      overflow: 'hidden',
+                    }}
+                  >
                     <Autocomplete
                       freeSolo
                       options={directorySuggestions}
@@ -1386,23 +1393,38 @@ export function Groups() {
                           {...params}
                           autoFocus
                           size="small"
-                          placeholder="Type name/email (e.g. joe)"
-                          sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
+                          placeholder="Name or email"
+                          sx={{
+                            fontFamily: T.font,
+                            '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', height: 30 },
+                            '& .MuiInputBase-input': { py: 0.5 },
+                          }}
                         />
                       )}
                       fullWidth
                     />
                   </Box>
                   <Box sx={memberCols.cellSx('role')}>
-                    <FormControl size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0.5 } } }}>
-                      <Select value={addMemberRole} onChange={(e) => setAddMemberRole(e.target.value as 'MEMBER' | 'MANAGER' | 'OWNER')}>
+                    <FormControl size="small" fullWidth>
+                      <Select
+                        value={addMemberRole}
+                        onChange={(e) => setAddMemberRole(e.target.value as 'MEMBER' | 'MANAGER' | 'OWNER')}
+                        MenuProps={selectMenuProps}
+                        sx={{
+                          width: '100%',
+                          height: 30,
+                          fontSize: '0.8125rem',
+                          fontFamily: T.font,
+                          '& .MuiSelect-select': { py: 0.5, minHeight: 'auto' },
+                        }}
+                      >
                         <MenuItem value="MEMBER">Member</MenuItem>
                         <MenuItem value="MANAGER">Manager</MenuItem>
                         <MenuItem value="OWNER">Owner</MenuItem>
                       </Select>
                     </FormControl>
                   </Box>
-                  <Box sx={{ ...memberCols.cellSx('type'), display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
+                  <Box sx={{ ...listActionsSx, width: 64, minWidth: 64, flex: '0 0 64px', gap: 0.25 }}>
                     <Tooltip title="Cancel">
                       <IconButton size="small" onClick={() => { setAddMemberInlineOpen(false); setAddMemberEmail(''); setAddMemberRole('MEMBER'); }} aria-label="Cancel">
                         <X size={18} strokeWidth={1.75} />

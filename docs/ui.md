@@ -139,7 +139,7 @@ Use shared **`FlyoutSearch`** (`frontend/src/components/ui/FlyoutSearch.tsx`) on
 - Put **Run scan** / **Run audit** in the **page header** next to tabs/export — not a full-width slab.
 - Keep **run context** under the title: current state (`Running now` / `Scanning now · N%`) and **date/time of last (or previous) run**, plus who triggered when available.
 - Progress while running: short determinate bar under the meta (Drive) or full-page spinner during audit evaluation — not a page-wide empty control strip.
-- Security score summary uses **`ScoreRing`** (`frontend/src/components/ui/ScoreRing.tsx`) — primary compliance ring + status mini-rings (pass / warning / fail). Content-width card, not a stretched hero bar.
+- Security score summary uses **`ScoreRing`** (`frontend/src/components/ui/ScoreRing.tsx`) — primary compliance ring + status mini-rings (pass / warning / fail). Full-width panel under a filter row (tabs sit with the list, not top-right beside the title), rings left-packed with info/manual counts on the right — not a content-width island that leaves dead space.
 
 **Reference:** `Drive.tsx` (audit tabs), `SecurityAudit.tsx`.
 

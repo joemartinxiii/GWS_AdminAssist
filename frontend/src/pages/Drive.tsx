@@ -47,7 +47,7 @@ import { ActionTooltip } from '../components/ActionTooltip';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx, TOOLBAR_ICON } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow, listCheckboxSx } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listCheckboxSx, listActionsSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
@@ -253,10 +253,11 @@ export function Drive() {
   const [filtersVisible, setFiltersVisible] = useState(false);
 
   // v2: no Actions column — role is an inline select; delete via checkbox bulk.
+  // Type weight keeps the add-row Select readable ("User") without crowding email.
   const permCols = useResizableColumns(
-    'drive-file-perms-v2',
-    { type: 72, name: 140, email: 200, access: 96, role: 120 },
-    { type: 56, name: 90, email: 120, access: 72, role: 100 }
+    'drive-file-perms-v3',
+    { type: 100, name: 140, email: 200, access: 96, role: 128 },
+    { type: 0, name: 0, email: 0, access: 0, role: 0 }
   );
   const searchCols = useResizableColumns(
     'drive-search',
@@ -1959,31 +1960,51 @@ export function Drive() {
                       gap: 1.5,
                       px: 2,
                       py: 1.25,
+                      minWidth: 0,
+                      width: '100%',
+                      boxSizing: 'border-box',
                       borderTop: `1px solid ${pick(t, T.borderSubtle, '#27272a')}`,
                       bgcolor: pick(t, T.surfaceHover, '#27272a'),
                     })}
                   >
-                    <Box sx={{ width: 42, flexShrink: 0 }} />
-                    <Box sx={{ width: 72, flexShrink: 0 }}>
-                      <FormControl size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0.5 } } }}>
-                        <Select value={newPermissionType} onChange={(e) => setNewPermissionType(e.target.value as 'user' | 'domain' | 'anyone')} displayEmpty>
+                    <Box sx={listCheckboxSx} />
+                    <Box sx={{ flex: '0 0 100px', width: 100, minWidth: 100, overflow: 'hidden' }}>
+                      <FormControl size="small" fullWidth>
+                        <Select
+                          value={newPermissionType}
+                          onChange={(e) => setNewPermissionType(e.target.value as 'user' | 'domain' | 'anyone')}
+                          displayEmpty
+                          MenuProps={selectMenuProps}
+                          sx={{
+                            width: '100%',
+                            height: 30,
+                            fontSize: '0.8125rem',
+                            fontFamily: T.font,
+                            '& .MuiSelect-select': { py: 0.5, minHeight: 'auto', pr: '28px !important' },
+                            '& .MuiSelect-icon': { right: 4 },
+                          }}
+                        >
                           <MenuItem value="user">User</MenuItem>
                           <MenuItem value="domain">Domain</MenuItem>
-                          <MenuItem value="anyone">Anyone with link</MenuItem>
+                          <MenuItem value="anyone">Anyone</MenuItem>
                         </Select>
                       </FormControl>
                     </Box>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                    {/* Spans name + email + access so the identity field can breathe */}
+                    <Box sx={{ flex: '1 1 0px', minWidth: 0, overflow: 'hidden' }}>
                       {newPermissionType === 'anyone' ? (
-                        <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>Anyone</Typography>
+                        <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                          Anyone with the link
+                        </Typography>
                       ) : newPermissionType === 'domain' ? (
                         <TextField
+                          autoFocus
                           size="small"
                           placeholder="domain.com"
                           value={newPermissionDomain}
                           onChange={(e) => setNewPermissionDomain(e.target.value)}
                           fullWidth
-                          sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
+                          sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', height: 30 }, '& .MuiInputBase-input': { py: 0.5 } }}
                         />
                       ) : (
                         <Autocomplete
@@ -2005,23 +2026,38 @@ export function Drive() {
                               {...params}
                               autoFocus
                               size="small"
-                              placeholder="Type name/email (e.g. ops)"
-                              sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
+                              placeholder="Type name or email"
+                              sx={{
+                                fontFamily: T.font,
+                                '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', height: 30 },
+                                '& .MuiInputBase-input': { py: 0.5 },
+                              }}
                             />
                           )}
                         />
                       )}
                     </Box>
-                    <Box sx={{ width: '28%', minWidth: 140 }}>
-                      <FormControl size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0.5 } } }}>
-                        <Select value={newPermissionRole} onChange={(e) => setNewPermissionRole(e.target.value as 'reader' | 'commenter' | 'writer')}>
+                    <Box sx={{ flex: '0 0 128px', width: 128, minWidth: 120, overflow: 'hidden' }}>
+                      <FormControl size="small" fullWidth>
+                        <Select
+                          value={newPermissionRole}
+                          onChange={(e) => setNewPermissionRole(e.target.value as 'reader' | 'commenter' | 'writer')}
+                          MenuProps={selectMenuProps}
+                          sx={{
+                            width: '100%',
+                            height: 30,
+                            fontSize: '0.8125rem',
+                            fontFamily: T.font,
+                            '& .MuiSelect-select': { py: 0.5, minHeight: 'auto' },
+                          }}
+                        >
                           <MenuItem value="reader">Viewer</MenuItem>
                           <MenuItem value="commenter">Commenter</MenuItem>
                           <MenuItem value="writer">Editor</MenuItem>
                         </Select>
                       </FormControl>
                     </Box>
-                    <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center', gap: 0.5 }}>
+                    <Box sx={{ ...listActionsSx, width: 64, minWidth: 64, flex: '0 0 64px', gap: 0.25 }}>
                       <ActionTooltip title="Cancel">
                         <IconButton size="small" onClick={() => { setAddPermissionDialogOpen(false); setNewPermissionEmail(''); setNewPermissionDomain(''); }} aria-label="Cancel">
                           <X size={18} strokeWidth={1.75} />

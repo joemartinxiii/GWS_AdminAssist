@@ -90,11 +90,10 @@ interface UserFilters {
 type SortKey = 'name' | 'email' | 'status' | '2fa' | 'role' | 'adminType' | 'ou' | 'created' | 'lastLogin';
 type SortDir = 'asc' | 'desc';
 
-/** Leaf OU name for table (full path on tooltip). */
-function orgUnitLeaf(path?: string): string {
-  if (!path || path === '/') return '/';
-  const parts = path.split('/').filter(Boolean);
-  return parts[parts.length - 1] || path;
+/** Display label for an OU path; root `/` uses the workspace domain name. */
+function formatOrgUnitLabel(path: string | undefined, rootDomain: string): string {
+  if (!path || path === '/') return rootDomain || '/';
+  return path.startsWith('/') ? path : `/${path}`;
 }
 
 /** Populated from /auth/me → protectedUsers (server GWS_PROTECTED_USERS). Empty by default. */
@@ -223,18 +222,19 @@ export function Users() {
   const isAdminsTab = tab === 1;
   const [protectedUserEmails, setProtectedUserEmails] = useState<Set<string>>(new Set());
 
-  // v3: name stacks OU under full name (no separate OU column / initials).
+  // v4: OU is its own column (root shows workspace domain, not "/").
   const cols = useResizableColumns(
-    'users-people-v3',
+    'users-people-v4',
     {
-      name: 220,
-      email: 240,
+      name: 180,
+      email: 220,
+      ou: 140,
       status: 96,
       twofa: 72,
       role: 110,
       lastLogin: 100,
     },
-    { name: 140, email: 160, status: 80, twofa: 56, role: 72, lastLogin: 80 }
+    { name: 0, email: 0, ou: 0, status: 0, twofa: 0, role: 0, lastLogin: 0 }
   );
 
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: AlertColor; action?: React.ReactNode }>({
@@ -352,6 +352,14 @@ export function Users() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Root OU `/` displays as the workspace domain (from Directory OU list, else email domain). */
+  const rootDomainLabel = useMemo(() => {
+    const fromOu = organizationalUnits.find((o) => o.orgUnitPath === '/')?.name?.trim();
+    if (fromOu && fromOu !== '/') return fromOu;
+    const fromUser = users.find((u) => u.primaryEmail.includes('@'))?.primaryEmail.split('@')[1];
+    return fromUser || 'Workspace';
+  }, [organizationalUnits, users]);
+
   // -------------------------------------------------------------------------
   // Filtering & sorting
   // -------------------------------------------------------------------------
@@ -374,10 +382,11 @@ export function Users() {
         return true;
       });
     }
-    if (filters.orgUnit && filters.orgUnit !== '/') {
+    if (filters.orgUnit) {
       const ou = filters.orgUnit;
       f = f.filter((u) => {
         const path = u.orgUnitPath || '/';
+        if (ou === '/') return path === '/';
         return path === ou || path.startsWith(`${ou}/`);
       });
     }
@@ -406,12 +415,18 @@ export function Users() {
     if (filters.twoFA) tokens.push({ label: filters.twoFA === 'enrolled' ? '2FA enrolled' : filters.twoFA === 'enforced' ? '2FA enforced' : 'No 2FA', key: 'twoFA' });
     if (filters.orgUnit) {
       const ou = organizationalUnits.find((o) => o.orgUnitPath === filters.orgUnit);
-      tokens.push({ label: ou ? `OU: ${ou.displayName}` : `OU: ${filters.orgUnit}`, key: 'orgUnit' });
+      const label =
+        filters.orgUnit === '/'
+          ? rootDomainLabel
+          : ou
+            ? ou.displayName
+            : filters.orgUnit;
+      tokens.push({ label: `OU: ${label}`, key: 'orgUnit' });
     }
     if (filters.createdFrom) tokens.push({ label: `Created ${filters.createdFrom}${filters.createdTo && filters.createdTo !== filters.createdFrom ? ` \u2013 ${filters.createdTo}` : ''}`, key: 'createdFrom' });
     if (filters.lastLoginFrom) tokens.push({ label: `Login ${filters.lastLoginFrom}${filters.lastLoginTo && filters.lastLoginTo !== filters.lastLoginFrom ? ` \u2013 ${filters.lastLoginTo}` : ''}`, key: 'lastLoginFrom' });
     return tokens;
-  }, [filters, organizationalUnits]);
+  }, [filters, organizationalUnits, rootDomainLabel]);
 
   const getSortValue = (u: User, key: SortKey): string | number => {
     switch (key) {
@@ -950,6 +965,7 @@ export function Users() {
                     disabled={loadingOrgUnits}
                     renderValue={(v) => {
                       if (!v) return 'Org unit';
+                      if (v === '/') return rootDomainLabel;
                       const ou = organizationalUnits.find((o) => o.orgUnitPath === v);
                       return ou ? ou.displayName : v;
                     }}
@@ -958,13 +974,13 @@ export function Users() {
                     sx={{ fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }}
                   >
                     <MenuItem value="">Any</MenuItem>
-                    {organizationalUnits
-                      .filter((ou) => ou.orgUnitPath !== '/')
-                      .map((ou) => (
-                        <MenuItem key={ou.orgUnitPath} value={ou.orgUnitPath}>
-                          <Box sx={{ pl: Math.min(ou.level, 4) * 1.5 }}>{ou.displayName}</Box>
-                        </MenuItem>
-                      ))}
+                    {organizationalUnits.map((ou) => (
+                      <MenuItem key={ou.orgUnitPath} value={ou.orgUnitPath}>
+                        <Box sx={{ pl: Math.min(ou.level, 4) * 1.5 }}>
+                          {ou.orgUnitPath === '/' ? rootDomainLabel : ou.displayName}
+                        </Box>
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -1077,6 +1093,13 @@ export function Users() {
                   {...cols.headerProps('email')}
                 />
                 <ColumnHeader
+                  label="OU"
+                  columnId="ou"
+                  sortConfig={{ key: effectiveSortKey, direction: sortDir }}
+                  onSort={(id) => handleSort(id as SortKey)}
+                  {...cols.headerProps('ou')}
+                />
+                <ColumnHeader
                   label="Status"
                   columnId="status"
                   sortConfig={{ key: effectiveSortKey, direction: sortDir }}
@@ -1165,37 +1188,32 @@ export function Users() {
                             color: (theme) => pick(theme, T.text, '#fafafa'),
                             textDecoration: user.suspended ? 'line-through' : 'none',
                             opacity: user.suspended ? 0.5 : 1,
-                            lineHeight: 1.3,
                           }}
                         >
                           {user.name.fullName}
                         </Typography>
-                        <Tooltip title={user.orgUnitPath || '/'} placement="top">
-                          <Typography
-                            sx={{
-                              fontFamily: T.font,
-                              fontSize: '0.75rem',
-                              color: (t) => textTertiary(t),
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              lineHeight: 1.3,
-                              mt: 0.15,
-                              opacity: user.suspended ? 0.5 : 1,
-                            }}
-                          >
-                            {user.orgUnitPath && user.orgUnitPath !== '/'
-                              ? user.orgUnitPath.startsWith('/')
-                                ? user.orgUnitPath
-                                : `/${orgUnitLeaf(user.orgUnitPath)}`
-                              : '/'}
-                          </Typography>
-                        </Tooltip>
                       </Box>
                       <Box sx={cols.cellSx('email')}>
                         <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {user.primaryEmail}
                         </Typography>
+                      </Box>
+                      <Box sx={cols.cellSx('ou')}>
+                        <Tooltip title={user.orgUnitPath || '/'} placement="top">
+                          <Typography
+                            sx={{
+                              fontFamily: T.font,
+                              fontSize: '0.8125rem',
+                              color: (t) => textSecondary(t),
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              opacity: user.suspended ? 0.5 : 1,
+                            }}
+                          >
+                            {formatOrgUnitLabel(user.orgUnitPath, rootDomainLabel)}
+                          </Typography>
+                        </Tooltip>
                       </Box>
                       <Box sx={cols.cellSx('status')}>
                         <DotLabel
@@ -1439,7 +1457,7 @@ export function Users() {
                           </Box>
                           <Box sx={{ width: 120, overflow: 'hidden' }}>
                             <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {user.orgUnitPath || '/'}
+                              {formatOrgUnitLabel(user.orgUnitPath, rootDomainLabel)}
                             </Typography>
                           </Box>
                           <Box sx={{ width: 100 }}>

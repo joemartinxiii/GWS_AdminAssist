@@ -43,7 +43,7 @@ import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarBut
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
-import { ListShell, ListHeaderRow, ListDataRow, listCheckboxSx } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listCheckboxSx, listActionsSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
 import { FlyoutSearch } from '../components/ui/FlyoutSearch';
 import { useResizableColumns } from '../hooks/useResizableColumns';
@@ -255,11 +255,11 @@ export function SharedDrives() {
     { name: 260, hidden: 100, createdTime: 120, sharing: 100, members: 88 },
     { name: 140, hidden: 80, createdTime: 88, sharing: 80, members: 64 }
   );
-  // v2: no Actions column (bulk remove via checkbox) — keeps modal within md width.
+  // Compact member stack (name + email) so the 560px dialog stays dense — no H-scroll.
   const permCols = useResizableColumns(
-    'shared-drives-perms-v2',
-    { type: 72, name: 140, email: 200, access: 96, role: 110 },
-    { type: 56, name: 90, email: 120, access: 72, role: 80 }
+    'shared-drives-perms-v4',
+    { type: 120, member: 300, access: 90, role: 130 },
+    { type: 0, member: 0, access: 0, role: 0 }
   );
 
   useEffect(() => {
@@ -900,9 +900,16 @@ export function SharedDrives() {
       <Dialog
         open={permissionsDialogOpen}
         onClose={handleClosePermissionsDialog}
-        maxWidth="md"
+        maxWidth={false}
         fullWidth
-        PaperProps={{ sx: (th) => dialogPaperSx(th) }}
+        PaperProps={{
+          sx: (th) => ({
+            ...dialogPaperSx(th),
+            width: '100%',
+            maxWidth: 560,
+            overflowX: 'hidden',
+          }),
+        }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -1018,8 +1025,7 @@ export function SharedDrives() {
                     ) : null}
                   </Box>
                   <ColumnHeader label="Type" columnId="pt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('type')} />
-                  <ColumnHeader label="Name" columnId="pn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('name')} />
-                  <ColumnHeader label="Email" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('email')} />
+                  <ColumnHeader label="Member" columnId="pm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('member')} />
                   <ColumnHeader label="Access" columnId="px" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('access')} />
                   <ColumnHeader label="Role" columnId="pr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('role')} />
                 </ListHeaderRow>
@@ -1030,6 +1036,16 @@ export function SharedDrives() {
                 )}
                 {pagedSharedDrivePermissions.map((permission, pidx) => {
                   const globalPidx = sdPermPageSafe * sdPermissionsRowsPerPage + pidx;
+                  const memberPrimary =
+                    permission.type === 'anyone'
+                      ? 'Anyone with link'
+                      : permission.displayName || permission.emailAddress || permission.domain || permission.id || '—';
+                  const memberSecondary =
+                    permission.type === 'anyone'
+                      ? null
+                      : permission.displayName
+                        ? permission.emailAddress || permission.domain || null
+                        : null;
                   return (
                   <ListDataRow key={permission.id} last={globalPidx === permissions.length - 1 && addPermissionDialogOpen} selected={selectedPermissionIds.has(permission.id)}>
                     <Box sx={listCheckboxSx}>
@@ -1045,17 +1061,37 @@ export function SharedDrives() {
                         {getTypeLabel(permission.type)}
                       </Typography>
                     </Box>
-                    <Box sx={permCols.cellSx('name')}>
-                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {permission.type === 'anyone' ? 'Anyone with link' : permission.displayName || '—'}
+                    <Box sx={permCols.cellSx('member')}>
+                      <Typography
+                        sx={{
+                          fontFamily: T.font,
+                          fontSize: '0.8125rem',
+                          fontWeight: 500,
+                          color: (t) => pick(t, T.text, '#fafafa'),
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          lineHeight: 1.3,
+                        }}
+                      >
+                        {memberPrimary}
                       </Typography>
-                    </Box>
-                    <Box sx={permCols.cellSx('email')}>
-                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {permission.type === 'anyone'
-                          ? 'Anyone with link'
-                          : permission.emailAddress || permission.domain || permission.id || '—'}
-                      </Typography>
+                      {memberSecondary && (
+                        <Typography
+                          sx={{
+                            fontFamily: T.mono,
+                            fontSize: '0.75rem',
+                            color: (t) => textTertiary(t),
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            lineHeight: 1.3,
+                            mt: 0.15,
+                          }}
+                        >
+                          {memberSecondary}
+                        </Typography>
+                      )}
                     </Box>
                     <Box sx={permCols.cellSx('access')}>
                       {isPermissionExternal(permission) ? (
@@ -1088,21 +1124,38 @@ export function SharedDrives() {
                       gap: 1.5,
                       px: 2,
                       py: 1.25,
+                      minWidth: 0,
+                      width: '100%',
+                      boxSizing: 'border-box',
                       borderTop: `1px solid ${pick(t, T.borderSubtle, '#27272a')}`,
                       bgcolor: pick(t, T.surfaceHover, '#27272a'),
                     })}
                   >
-                    <Box sx={{ width: 34, flexShrink: 0 }} />
-                    <Box sx={{ width: 88, flexShrink: 0 }}>
-                      <FormControl size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0.5 } } }}>
-                        <Select value={newPermissionType} onChange={(e) => setNewPermissionType(e.target.value as 'user' | 'group' | 'domain')} displayEmpty>
+                    <Box sx={listCheckboxSx} />
+                    <Box sx={permCols.cellSx('type')}>
+                      <FormControl size="small" fullWidth>
+                        <Select
+                          value={newPermissionType}
+                          onChange={(e) => setNewPermissionType(e.target.value as 'user' | 'group' | 'domain')}
+                          displayEmpty
+                          MenuProps={selectMenuProps}
+                          sx={{
+                            width: '100%',
+                            height: 30,
+                            fontSize: '0.8125rem',
+                            fontFamily: T.font,
+                            '& .MuiOutlinedInput-notchedOutline': { borderColor: (t) => pick(t, T.border, '#3f3f46') },
+                            '& .MuiSelect-select': { py: 0.5, pl: 1, minHeight: 'auto', pr: '24px !important' },
+                            '& .MuiSelect-icon': { right: 2 },
+                          }}
+                        >
                           <MenuItem value="user">User</MenuItem>
                           <MenuItem value="group">Group</MenuItem>
                           <MenuItem value="domain">Domain</MenuItem>
                         </Select>
                       </FormControl>
                     </Box>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={permCols.cellSx('member')}>
                       {newPermissionType === 'domain' ? (
                         <TextField
                           autoFocus
@@ -1111,7 +1164,7 @@ export function SharedDrives() {
                           value={newPermissionDomain}
                           onChange={(e) => setNewPermissionDomain(e.target.value)}
                           fullWidth
-                          sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
+                          sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', height: 30 }, '& .MuiInputBase-input': { py: 0.5 } }}
                         />
                       ) : (
                         <Autocomplete
@@ -1133,25 +1186,41 @@ export function SharedDrives() {
                               {...params}
                               autoFocus
                               size="small"
-                              placeholder="Type name/email (e.g. ops)"
-                              sx={{ fontFamily: T.font, '& .MuiOutlinedInput-root': { fontSize: '0.8125rem' }, '& .MuiInputBase-input': { py: 0.5 } }}
+                              placeholder="Name or email"
+                              sx={{
+                                fontFamily: T.font,
+                                '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', height: 30 },
+                                '& .MuiInputBase-input': { py: 0.5 },
+                              }}
                             />
                           )}
                         />
                       )}
                     </Box>
-                    <Box sx={{ width: 120, flexShrink: 0 }}>
-                      <FormControl size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0.5 } } }}>
-                        <Select value={newPermissionRole} onChange={(e) => setNewPermissionRole(e.target.value as any)}>
+                    <Box sx={permCols.cellSx('access')} />
+                    <Box sx={permCols.cellSx('role')}>
+                      <FormControl size="small" fullWidth>
+                        <Select
+                          value={newPermissionRole}
+                          onChange={(e) => setNewPermissionRole(e.target.value as any)}
+                          MenuProps={selectMenuProps}
+                          sx={{
+                            width: '100%',
+                            height: 30,
+                            fontSize: '0.8125rem',
+                            fontFamily: T.font,
+                            '& .MuiSelect-select': { py: 0.5, minHeight: 'auto' },
+                          }}
+                        >
                           <MenuItem value="reader">Reader</MenuItem>
                           <MenuItem value="commenter">Commenter</MenuItem>
                           <MenuItem value="writer">Writer</MenuItem>
-                          <MenuItem value="fileOrganizer">File Organizer</MenuItem>
+                          <MenuItem value="fileOrganizer">File organizer</MenuItem>
                           <MenuItem value="organizer">Organizer</MenuItem>
                         </Select>
                       </FormControl>
                     </Box>
-                    <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'center', gap: 0.5 }}>
+                    <Box sx={{ ...listActionsSx, width: 64, minWidth: 64, flex: '0 0 64px', gap: 0.25 }}>
                       <ActionTooltip title="Cancel">
                         <IconButton size="small" onClick={() => { setAddPermissionDialogOpen(false); setNewPermissionEmail(''); setNewPermissionDomain(''); }} aria-label="Cancel">
                           <X size={18} strokeWidth={1.75} />
