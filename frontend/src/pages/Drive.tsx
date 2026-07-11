@@ -25,7 +25,6 @@ import {
   Link,
   Divider,
   useMediaQuery,
-  InputAdornment,
 } from '@mui/material';
 import {
   Search,
@@ -58,6 +57,7 @@ import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogLis
 import { DotLabel, ExternalChip } from '../components/StatusDot';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
+import { FlyoutSearch, type FlyoutSearchHandle } from '../components/ui/FlyoutSearch';
 import { useTheme } from '@mui/material/styles';
 
 const DRIVE_STATIC_SORT = { key: '_', direction: 'asc' as const };
@@ -283,7 +283,7 @@ export function Drive() {
     usersScanned?: number; usersTotal?: number; sharedDrivesScanned?: number; durationMs: number;
   } | null>(null);
   const [sharedDrivesList, setSharedDrivesList] = useState<Array<{ id: string; name: string }>>([]);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchFlyoutRef = useRef<FlyoutSearchHandle>(null);
   const exportCSVRef = useRef<() => void | Promise<void>>(() => {});
   const exportSelectedCSVRef = useRef<() => void | Promise<void>>(() => {});
   const exportExternalSharingRef = useRef<() => void | Promise<void>>(() => {});
@@ -468,7 +468,7 @@ export function Drive() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        searchInputRef.current?.focus();
+        searchFlyoutRef.current?.focus();
       }
       if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault();
@@ -1144,12 +1144,12 @@ export function Drive() {
     return allFilePerms.slice(start, start + filePermissionsRowsPerPage);
   }, [allFilePerms, fpPageSafe, filePermissionsRowsPerPage]);
 
-  const lastScanLabel = useMemo(() => {
-    if (!scanStatus || scanStatus.status === 'never-scanned' || !scanStatus.lastScan) return 'Never scanned';
+  const lastScanAtLabel = useMemo(() => {
+    if (!scanStatus || scanStatus.status === 'never-scanned' || !scanStatus.lastScan) return null;
     try {
-      return `Last scan: ${new Date(scanStatus.lastScan).toLocaleString()}`;
+      return new Date(scanStatus.lastScan).toLocaleString();
     } catch {
-      return 'Last scan: unknown';
+      return null;
     }
   }, [scanStatus]);
 
@@ -1168,86 +1168,98 @@ export function Drive() {
   return (
     <Box sx={{ width: '100%', overflowY: 'auto', overflowX: 'hidden', fontFamily: T.font }}>
       {/* PAGE HEADER */}
-      <Box sx={{ mb: 3, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { md: 'center' }, justifyContent: 'space-between' }}>
-        <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (th) => pick(th, T.text, '#fafafa') }}>
-          Drive
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
-          <SegmentedControl value={tabValue} options={['External Shares', 'Public Links', 'Drive Search']} onChange={(v) => { setTabValue(v); setSelectedFiles(new Set()); setPage(0); }} />
-        </Box>
-      </Box>
-
-      {/* Scan controls (audit tabs) */}
-      {isAuditTab && (
-        <Box sx={(theme: any) => ({
-          display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap', mb: 2,
-          p: 1.5, borderRadius: T.radius, border: `1px solid ${pick(theme, T.border, '#3f3f46')}`, bgcolor: pick(theme, T.surface, '#27272a'),
-        })}>
-          <Button
-            size="small"
-            variant="contained"
-            onClick={handleTriggerScan}
-            disabled={scanTriggering || scanRunning}
-            startIcon={scanTriggering || scanRunning ? <CircularProgress size={14} color="inherit" /> : <Play size={15} strokeWidth={1.75} />}
-            sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 32, px: 2, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
-          >
-            {scanRunning ? 'Scanning…' : 'Run scan'}
-          </Button>
-          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
-            {scanRunning
-              ? `Scanning… ${scanStatus?.coverage ? `${scanStatus.coverage.usersDone}/${scanStatus.coverage.usersTotal || '?'} users` : ''}`
-              : lastScanLabel}
+      <Box sx={{ mb: 3, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { md: 'flex-start' }, justifyContent: 'space-between' }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (th) => pick(th, T.text, '#fafafa') }}>
+            Drive
           </Typography>
-          {typeof reportCounts.total === 'number' && !scanRunning && scanStatus?.status !== 'never-scanned' && (
-            <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
-              {reportCounts.external} external · {reportCounts.public} public
-            </Typography>
-          )}
-          {scanRunning && (
-            <Box sx={{ flex: 1, minWidth: 160, maxWidth: 300 }}>
-              <LinearProgress variant={scanProgress == null ? 'indeterminate' : 'determinate'} value={scanProgress ?? undefined} />
+          {isAuditTab && (
+            <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.5, maxWidth: 420 }}>
+              <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), lineHeight: 1.4 }}>
+                {scanRunning ? (
+                  <>
+                    <Box component="span" sx={{ color: T.accent, fontWeight: 600 }}>
+                      Scanning now
+                      {scanProgress != null ? ` · ${scanProgress}%` : '…'}
+                    </Box>
+                    {scanStatus?.coverage?.usersTotal
+                      ? ` · ${scanStatus.coverage.usersDone}/${scanStatus.coverage.usersTotal} users`
+                      : null}
+                    {lastScanAtLabel ? (
+                      <Box component="span" sx={{ color: (t) => textTertiary(t) }}>
+                        {` · Previous: ${lastScanAtLabel}`}
+                      </Box>
+                    ) : null}
+                  </>
+                ) : lastScanAtLabel ? (
+                  <>Last scan: {lastScanAtLabel}</>
+                ) : (
+                  'Never scanned'
+                )}
+              </Typography>
+              {typeof reportCounts.total === 'number' && !scanRunning && scanStatus?.status !== 'never-scanned' && (
+                <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
+                  {reportCounts.external} external · {reportCounts.public} public
+                </Typography>
+              )}
+              {scanRunning && (
+                <LinearProgress
+                  variant={scanProgress == null ? 'indeterminate' : 'determinate'}
+                  value={scanProgress ?? undefined}
+                  sx={(th) => ({
+                    mt: 0.25,
+                    height: 3,
+                    borderRadius: 2,
+                    maxWidth: 280,
+                    bgcolor: pick(th, '#e8e8e4', '#27272a'),
+                    '& .MuiLinearProgress-bar': { borderRadius: 2, bgcolor: T.accent },
+                  })}
+                />
+              )}
             </Box>
           )}
         </Box>
-      )}
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
+          <SegmentedControl value={tabValue} options={['External Shares', 'Public Links', 'Drive Search']} onChange={(v) => { setTabValue(v); setSelectedFiles(new Set()); setPage(0); }} />
+          {isAuditTab && (
+            <Button
+              size="small"
+              variant="contained"
+              onClick={handleTriggerScan}
+              disabled={scanTriggering || scanRunning}
+              startIcon={scanTriggering || scanRunning ? <CircularProgress size={14} color="inherit" /> : <Play size={15} strokeWidth={1.75} />}
+              sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, height: 32, px: 2, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover } }}
+            >
+              {scanRunning ? 'Scanning…' : 'Run scan'}
+            </Button>
+          )}
+        </Box>
+      </Box>
 
       {/* Toolbar: search + filters + export */}
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <TextField
-          inputRef={searchInputRef}
-          size="small"
-          placeholder={isAuditTab ? (auditCategory === 'public' ? 'Search public links…' : 'Search external shares…') : 'Search all Drives by file name… (press Enter)'}
+        <FlyoutSearch
+          ref={searchFlyoutRef}
           value={isAuditTab ? externalSearchTerm : filters.nameContains}
-          onChange={(e) => isAuditTab ? setExternalSearchTerm(e.target.value) : handleFilterChange('nameContains', e.target.value)}
-          onKeyDown={(e) => { if (!isAuditTab && e.key === 'Enter') { e.preventDefault(); void runDriveSearch(); } }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Box component="span" sx={{ display: 'flex', color: (t: any) => textTertiary(t) }}>
-                  <Search size={18} strokeWidth={1.75} />
-                </Box>
-              </InputAdornment>
-            ),
-            ...((isAuditTab ? externalSearchTerm : filters.nameContains) ? { endAdornment: (
-              <InputAdornment position="end">
-                <Box component="span" onClick={() => isAuditTab ? setExternalSearchTerm('') : handleFilterChange('nameContains', '')} sx={{ display: 'flex', cursor: 'pointer', color: (t: any) => textTertiary(t) }}>
-                  <X size={16} strokeWidth={2} />
-                </Box>
-              </InputAdornment>
-            ) } : {}),
-          }}
-          sx={(theme: any) => ({
-            flex: '1 1 240px',
-            maxWidth: 360,
-            '& .MuiOutlinedInput-root': {
-              fontFamily: T.font,
-              fontSize: '0.8125rem',
-              borderRadius: T.radius,
-              bgcolor: pick(theme, T.surface, '#27272a'),
-              '& fieldset': { borderColor: pick(theme, T.border, '#3f3f46') },
-              '&:hover fieldset': { borderColor: pick(theme, T.textTertiary, '#52525b') },
-            },
-          })}
+          onChange={(v) => (isAuditTab ? setExternalSearchTerm(v) : handleFilterChange('nameContains', v))}
+          placeholder={
+            isAuditTab
+              ? auditCategory === 'public'
+                ? 'Search public links…'
+                : 'Search external shares…'
+              : 'Search by file name… (Enter)'
+          }
+          tooltip={isAuditTab ? (auditCategory === 'public' ? 'Search public links' : 'Search external shares') : 'Search files'}
+          onKeyDown={
+            isFilesTab
+              ? (e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void runDriveSearch();
+                  }
+                }
+              : undefined
+          }
         />
 
         {isFilesTab && (

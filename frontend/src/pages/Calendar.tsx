@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -20,7 +20,6 @@ import {
   MenuItem,
   Autocomplete,
   TablePagination,
-  InputAdornment,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import {
@@ -51,7 +50,7 @@ import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
-import { FlyoutSearch } from '../components/ui/FlyoutSearch';
+import { FlyoutSearch, FLYOUT_SEARCH_WIDTH } from '../components/ui/FlyoutSearch';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 
@@ -119,7 +118,10 @@ export function Calendar() {
   const [calendarView, setCalendarView] = useState<View>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [userEmail, setUserEmail] = useState('');
+  const [userSearchOpen, setUserSearchOpen] = useState(false);
+  const userSearchContainerRef = useRef<HTMLDivElement>(null);
   const selectedCalendarId = 'primary';
+  const userSearchExpanded = userSearchOpen || !!userEmail.trim();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
@@ -180,8 +182,28 @@ export function Calendar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Collapse user picker flyout when empty (Escape / click outside).
+  useEffect(() => {
+    if (!userSearchExpanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !userEmail.trim()) setUserSearchOpen(false);
+    };
+    const onPointer = (e: MouseEvent) => {
+      if (userSearchContainerRef.current && !userSearchContainerRef.current.contains(e.target as Node)) {
+        if (!userEmail.trim()) setUserSearchOpen(false);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onPointer);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onPointer);
+    };
+  }, [userSearchExpanded, userEmail]);
+
   const handleClearUserSearch = () => {
     setUserEmail('');
+    setUserSearchOpen(false);
     setEvents([]);
     setFilteredEvents([]);
   };
@@ -835,142 +857,170 @@ export function Calendar() {
         )}
       </Box>
       <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Autocomplete
-          size="small"
-          freeSolo
-          disableClearable
-          options={users}
-          getOptionLabel={(option) =>
-            typeof option === 'string' ? option : (option.name?.fullName ? `${option.name.fullName} (${option.primaryEmail})` : option.primaryEmail)
-          }
-          value={users.find((u) => u.primaryEmail === normalizedUserEmail)}
-          inputValue={userEmail}
-          onInputChange={(_, v) => setUserEmail(v)}
-          onChange={(_, newValue) => {
-            setUserEmail(newValue ? (typeof newValue === 'string' ? newValue : newValue.primaryEmail) : '');
-          }}
-          filterOptions={(opts, { inputValue }) => {
-            if (!inputValue.trim()) return opts;
-            const search = inputValue.toLowerCase().trim();
-            return opts.filter(
-              (u) =>
-                u.primaryEmail.toLowerCase().includes(search) ||
-                (u.name?.fullName && u.name.fullName.toLowerCase().includes(search))
-            );
-          }}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              placeholder="Search user…"
-              InputProps={{
-                ...params.InputProps,
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Box component="span" sx={{ display: 'flex', color: (t: any) => textTertiary(t) }}>
-                      <Search size={18} strokeWidth={1.75} />
-                    </Box>
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <>
-                    {userEmail ? (
-                      <InputAdornment position="end">
-                        <IconButton
-                          size="small"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={handleClearUserSearch}
-                          aria-label="Clear user search"
-                          sx={{ p: 0.5, color: (t: any) => textTertiary(t) }}
-                        >
-                          <X size={16} strokeWidth={2} />
-                        </IconButton>
-                      </InputAdornment>
-                    ) : null}
-                    {params.InputProps.endAdornment}
-                  </>
-                ),
+        <Box ref={userSearchContainerRef} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+          <ActionTooltip title="Search user">
+            <IconButton
+              size="small"
+              onClick={() => setUserSearchOpen((o) => !o)}
+              aria-label="Search user"
+              aria-expanded={userSearchExpanded}
+              sx={(th) => ({
+                p: 0.5,
+                color: userSearchExpanded || userEmail ? T.accent : textSecondary(th),
+                bgcolor: userSearchExpanded ? pick(th, T.accentSoft, 'rgba(26, 115, 232, 0.2)') : 'transparent',
+                borderRadius: T.radiusSm,
+                '&:hover': { bgcolor: pick(th, T.accentSoft, 'rgba(26, 115, 232, 0.2)') },
+              })}
+            >
+              <Search size={18} strokeWidth={1.75} />
+            </IconButton>
+          </ActionTooltip>
+          <Box
+            sx={{
+              overflow: 'hidden',
+              width: userSearchExpanded ? FLYOUT_SEARCH_WIDTH : 0,
+              transition: 'width 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <Autocomplete
+              size="small"
+              freeSolo
+              disableClearable
+              openOnFocus
+              options={users}
+              getOptionLabel={(option) =>
+                typeof option === 'string' ? option : (option.name?.fullName ? `${option.name.fullName} (${option.primaryEmail})` : option.primaryEmail)
+              }
+              value={users.find((u) => u.primaryEmail === normalizedUserEmail)}
+              inputValue={userEmail}
+              onInputChange={(_, v) => setUserEmail(v)}
+              onChange={(_, newValue) => {
+                setUserEmail(newValue ? (typeof newValue === 'string' ? newValue : newValue.primaryEmail) : '');
               }}
+              filterOptions={(opts, { inputValue }) => {
+                if (!inputValue.trim()) return opts;
+                const search = inputValue.toLowerCase().trim();
+                return opts.filter(
+                  (u) =>
+                    u.primaryEmail.toLowerCase().includes(search) ||
+                    (u.name?.fullName && u.name.fullName.toLowerCase().includes(search))
+                );
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  placeholder="Search user…"
+                  autoFocus={userSearchExpanded && !userEmail}
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {userEmail ? (
+                          <Box
+                            component="span"
+                            role="button"
+                            tabIndex={0}
+                            aria-label="Clear user search"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={handleClearUserSearch}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') handleClearUserSearch();
+                            }}
+                            sx={{ display: 'flex', cursor: 'pointer', color: (t) => textTertiary(t), mr: 0.5 }}
+                          >
+                            <X size={16} strokeWidth={2} />
+                          </Box>
+                        ) : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
+              renderOption={(props, option) => {
+                const u = option as { primaryEmail: string; name?: { fullName: string } };
+                return (
+                  <Box
+                    component="li"
+                    {...props}
+                    key={u.primaryEmail}
+                    sx={{
+                      fontFamily: T.font,
+                      fontSize: '0.8125rem',
+                      px: 1.5,
+                      py: 0.75,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'flex-start !important',
+                      gap: '1px',
+                    }}
+                  >
+                    {u.name?.fullName && (
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (t) => pick(t, T.text, '#fafafa'), lineHeight: 1.3 }}>
+                        {u.name.fullName}
+                      </Typography>
+                    )}
+                    <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), lineHeight: 1.3 }}>
+                      {u.primaryEmail}
+                    </Typography>
+                  </Box>
+                );
+              }}
+              componentsProps={{
+                paper: {
+                  sx: (th: any) => ({
+                    mt: 0.5,
+                    borderRadius: T.radius,
+                    border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
+                    bgcolor: pick(th, T.surface, '#18181b'),
+                    boxShadow: th.palette.mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.35)' : T.shadowLg,
+                    backgroundImage: 'none',
+                    '& .MuiAutocomplete-listbox': {
+                      fontFamily: T.font,
+                      fontSize: '0.8125rem',
+                      p: '4px',
+                      '& .MuiAutocomplete-option': {
+                        borderRadius: T.radiusSm,
+                        '&[aria-selected="true"]': {
+                          bgcolor: pick(th, T.accentSoft, 'rgba(26, 115, 232, 0.2)'),
+                        },
+                        '&.Mui-focused': {
+                          bgcolor: pick(th, T.surfaceHover, '#27272a'),
+                        },
+                        '&[aria-selected="true"].Mui-focused': {
+                          bgcolor: pick(th, T.accentSoft, 'rgba(26, 115, 232, 0.2)'),
+                        },
+                      },
+                    },
+                    '& .MuiAutocomplete-noOptions': {
+                      fontFamily: T.font,
+                      fontSize: '0.8125rem',
+                      color: textSecondary(th),
+                    },
+                  }),
+                },
+              }}
+              sx={(th: any) => ({
+                width: FLYOUT_SEARCH_WIDTH,
+                minWidth: FLYOUT_SEARCH_WIDTH,
+                '& .MuiOutlinedInput-root': {
+                  fontFamily: T.font,
+                  fontSize: '0.8125rem',
+                  borderRadius: T.radius,
+                  bgcolor: pick(th, T.surface, '#27272a'),
+                  '& fieldset': { borderColor: pick(th, T.border, '#3f3f46') },
+                  '&:hover fieldset': { borderColor: pick(th, T.textTertiary, '#52525b') },
+                  '&.Mui-focused fieldset': { borderColor: T.accent },
+                },
+                '& .MuiInputBase-input': { fontFamily: T.font, fontSize: '0.8125rem' },
+                '& label': { display: 'none' },
+                '& .MuiInputLabel-root': { display: 'none' },
+              })}
             />
-          )}
-          renderOption={(props, option) => {
-            const u = option as { primaryEmail: string; name?: { fullName: string } };
-            return (
-              <Box
-                component="li"
-                {...props}
-                key={u.primaryEmail}
-                sx={{
-                  fontFamily: T.font,
-                  fontSize: '0.8125rem',
-                  px: 1.5,
-                  py: 0.75,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start !important',
-                  gap: '1px',
-                }}
-              >
-                {u.name?.fullName && (
-                  <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (t) => pick(t, T.text, '#fafafa'), lineHeight: 1.3 }}>
-                    {u.name.fullName}
-                  </Typography>
-                )}
-                <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), lineHeight: 1.3 }}>
-                  {u.primaryEmail}
-                </Typography>
-              </Box>
-            );
-          }}
-          componentsProps={{
-            paper: {
-              sx: (theme: any) => ({
-                mt: 0.5,
-                borderRadius: T.radius,
-                border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
-                bgcolor: pick(theme, T.surface, '#18181b'),
-                boxShadow: theme.palette.mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.35)' : T.shadowLg,
-                backgroundImage: 'none',
-                '& .MuiAutocomplete-listbox': {
-                  fontFamily: T.font,
-                  fontSize: '0.8125rem',
-                  p: '4px',
-                  '& .MuiAutocomplete-option': {
-                    borderRadius: T.radiusSm,
-                    '&[aria-selected="true"]': {
-                      bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)'),
-                    },
-                    '&.Mui-focused': {
-                      bgcolor: pick(theme, T.surfaceHover, '#27272a'),
-                    },
-                    '&[aria-selected="true"].Mui-focused': {
-                      bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)'),
-                    },
-                  },
-                },
-                '& .MuiAutocomplete-noOptions': {
-                  fontFamily: T.font,
-                  fontSize: '0.8125rem',
-                  color: (theme: any) => textSecondary(theme),
-                },
-              }),
-            },
-          }}
-          sx={(theme: any) => ({
-            width: 280,
-            '& .MuiOutlinedInput-root': {
-              fontFamily: T.font,
-              fontSize: '0.8125rem',
-              borderRadius: T.radius,
-              bgcolor: pick(theme, T.surface, '#27272a'),
-              '& fieldset': { borderColor: pick(theme, T.border, '#3f3f46') },
-              '&:hover fieldset': { borderColor: pick(theme, T.textTertiary, '#52525b') },
-              '&.Mui-focused fieldset': { borderColor: T.accent },
-            },
-            '& .MuiInputBase-input': { fontFamily: T.font, fontSize: '0.8125rem' },
-            '& label': { display: 'none' },
-            '& .MuiInputLabel-root': { display: 'none' },
-          })}
-        />
+          </Box>
+        </Box>
         <ActionTooltip title="Refresh data">
           <span>
             <IconButton

@@ -3,7 +3,6 @@ import {
   Box,
   Typography,
   CircularProgress,
-  LinearProgress,
   Button,
   Menu,
   IconButton,
@@ -42,6 +41,7 @@ import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
 import { DotLabel } from '../components/StatusDot';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { ScoreRing } from '../components/ui/ScoreRing';
 import { usePermissions } from '../hooks/usePermissions';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 
@@ -671,12 +671,14 @@ export function SecurityAudit() {
     }
   };
 
-  const lastRunLabel = useMemo(() => {
-    if (running) return 'Checking Google connectivity, then evaluating checks…';
-    if (!lastRunAt) return 'Not run yet — results are saved to the organization after each run';
-    const who = triggeredBy ? ` · ${triggeredBy}` : '';
-    return `Last run: ${lastRunAt.toLocaleString()}${who}`;
-  }, [running, lastRunAt, triggeredBy]);
+  const lastRunAtLabel = useMemo(() => {
+    if (!lastRunAt) return null;
+    try {
+      return lastRunAt.toLocaleString();
+    } catch {
+      return null;
+    }
+  }, [lastRunAt]);
 
   const openDetail = useCallback(
     (checkId: string) => {
@@ -938,11 +940,11 @@ export function SecurityAudit() {
             display: 'flex',
             flexDirection: { xs: 'column', md: 'row' },
             gap: 2,
-            alignItems: { md: 'center' },
+            alignItems: { md: 'flex-start' },
             justifyContent: 'space-between',
           }}
         >
-          <Box>
+          <Box sx={{ minWidth: 0, maxWidth: 560 }}>
             <Typography
               sx={{
                 fontFamily: T.font,
@@ -958,9 +960,67 @@ export function SecurityAudit() {
               Workspace hardening baseline — on-demand snapshot for client reviews. Score excludes waived, info, and
               manual items.
             </Typography>
+            <Typography
+              sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mt: 0.75, lineHeight: 1.4 }}
+            >
+              {running ? (
+                <>
+                  <Box component="span" sx={{ color: T.accent, fontWeight: 600 }}>
+                    Running now
+                  </Box>
+                  <Box component="span" sx={{ color: (t) => textTertiary(t) }}>
+                    {' '}
+                    · Checking Google connectivity, then evaluating checks
+                  </Box>
+                  {lastRunAtLabel ? (
+                    <Box component="span" sx={{ color: (t) => textTertiary(t) }}>
+                      {` · Previous: ${lastRunAtLabel}`}
+                      {triggeredBy ? ` · ${triggeredBy}` : ''}
+                    </Box>
+                  ) : null}
+                </>
+              ) : lastRunAtLabel ? (
+                <>
+                  Last run: {lastRunAtLabel}
+                  {triggeredBy ? (
+                    <Box component="span" sx={{ color: (t) => textTertiary(t) }}>
+                      {` · ${triggeredBy}`}
+                    </Box>
+                  ) : null}
+                </>
+              ) : (
+                'Not run yet — results save to the organization after each run'
+              )}
+            </Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
             <SegmentedControl value={auditTab} options={[...AUDIT_TABS]} onChange={setAuditTab} />
+            <ActionTooltip title={canTakeAction ? 'Re-evaluate all checks and save for the organization' : 'Super admin only'}>
+              <span>
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={runAudit}
+                  disabled={running || bootLoading || !canTakeAction}
+                  startIcon={
+                    running ? <CircularProgress size={14} color="inherit" /> : <Play size={15} strokeWidth={1.75} />
+                  }
+                  sx={{
+                    fontFamily: T.font,
+                    textTransform: 'none',
+                    borderRadius: T.radius,
+                    fontSize: '0.8125rem',
+                    fontWeight: 500,
+                    height: 32,
+                    px: 2,
+                    bgcolor: T.accent,
+                    '&:hover': { bgcolor: T.accentHover },
+                  }}
+                >
+                  {running ? 'Running…' : 'Run audit'}
+                </Button>
+              </span>
+            </ActionTooltip>
             {!running && hardeningData && (
               <>
                 <ActionTooltip title="Export last saved audit (CSV, PDF, or Drive)">
@@ -1022,50 +1082,6 @@ export function SecurityAudit() {
           </Box>
         </Box>
 
-        <Box
-          sx={(th) => ({
-            display: 'flex',
-            gap: 1.5,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            mb: 2,
-            p: 1.5,
-            borderRadius: T.radius,
-            border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
-            bgcolor: pick(th, T.surface, '#27272a'),
-          })}
-        >
-          <ActionTooltip title={canTakeAction ? 'Re-evaluate all checks and save for the organization' : 'Super admin only'}>
-            <span>
-              <Button
-                size="small"
-                variant="contained"
-                onClick={runAudit}
-                disabled={running || bootLoading || !canTakeAction}
-                startIcon={
-                  running ? <CircularProgress size={14} color="inherit" /> : <Play size={15} strokeWidth={1.75} />
-                }
-                sx={{
-                  fontFamily: T.font,
-                  textTransform: 'none',
-                  borderRadius: T.radius,
-                  fontSize: '0.8125rem',
-                  fontWeight: 500,
-                  height: 32,
-                  px: 2,
-                  bgcolor: T.accent,
-                  '&:hover': { bgcolor: T.accentHover },
-                }}
-              >
-                {running ? 'Running…' : 'Run audit'}
-              </Button>
-            </span>
-          </ActionTooltip>
-          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
-            {lastRunLabel}
-          </Typography>
-        </Box>
-
         {policyBanner && !running && (
           <Alert severity="warning" sx={{ mb: 2 }}>
             {policyBanner}
@@ -1090,81 +1106,82 @@ export function SecurityAudit() {
                 const denom = s.pass + s.warning + s.fail;
                 const pctPass = denom === 0 ? 0 : Math.round((s.pass / denom) * 100);
                 const headlineColor = pctPass >= 80 ? T.success : pctPass >= 50 ? T.accent : T.warning;
+                const pctOfGraded = (n: number) => (denom === 0 ? 0 : Math.round((n / denom) * 100));
                 return (
                   <Box
                     sx={(th) => ({
+                      display: 'inline-flex',
+                      flexDirection: 'column',
+                      gap: 2,
                       border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
                       borderRadius: T.radiusLg,
-                      p: 2,
-                      mb: 2,
+                      p: 2.25,
+                      mb: 2.5,
                       bgcolor: pick(th, T.surface, '#18181b'),
+                      maxWidth: '100%',
                     })}
                   >
                     <Box
                       sx={{
                         display: 'flex',
-                        alignItems: 'baseline',
-                        justifyContent: 'space-between',
-                        mb: 1.25,
+                        alignItems: 'center',
                         flexWrap: 'wrap',
-                        gap: 1.5,
+                        gap: { xs: 2.5, sm: 3.5 },
                       }}
                     >
-                      <Box>
-                        <Typography
-                          sx={{
-                            fontFamily: T.font,
-                            fontWeight: 700,
-                            fontSize: '2rem',
-                            letterSpacing: '-0.03em',
-                            color: headlineColor,
-                            lineHeight: 1,
-                          }}
-                        >
-                          {pctPass}%
-                        </Typography>
-                        <Typography
-                          sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mt: 0.5 }}
-                        >
-                          of graded checks pass automated verification (info &amp; manual excluded)
-                        </Typography>
-                        {ignoredCount > 0 && (
-                          <Typography
-                            sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t), mt: 0.75 }}
-                          >
-                            {ignoredCount} waived — client-accepted risk, excluded from this score.{' '}
-                            <Box
-                              component="button"
-                              type="button"
-                              onClick={() => setAuditTab(3)}
-                              sx={{
-                                p: 0,
-                                border: 'none',
-                                background: 'none',
-                                cursor: 'pointer',
-                                font: 'inherit',
-                                color: T.accent,
-                                textDecoration: 'underline',
-                                '&:hover': { opacity: 0.9 },
-                              }}
-                            >
-                              View waived
-                            </Box>
-                          </Typography>
-                        )}
+                      <ScoreRing
+                        value={pctPass}
+                        color={headlineColor}
+                        caption="Compliance"
+                        sizeVariant="lg"
+                      />
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          flexWrap: 'wrap',
+                          gap: { xs: 2, sm: 2.5 },
+                        }}
+                      >
+                        <ScoreRing
+                          value={pctOfGraded(s.pass)}
+                          centerLabel={String(s.pass)}
+                          color={T.success}
+                          caption="Pass"
+                          sizeVariant="sm"
+                        />
+                        <ScoreRing
+                          value={pctOfGraded(s.warning)}
+                          centerLabel={String(s.warning)}
+                          color={T.warning}
+                          caption="Warning"
+                          sizeVariant="sm"
+                        />
+                        <ScoreRing
+                          value={pctOfGraded(s.fail)}
+                          centerLabel={String(s.fail)}
+                          color={T.danger}
+                          caption="Fail"
+                          sizeVariant="sm"
+                        />
                       </Box>
-                      <Box sx={{ display: 'flex', gap: 3, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 1,
+                          pl: { sm: 0.5 },
+                          minWidth: 100,
+                        }}
+                      >
                         {(
                           [
-                            ['Pass', s.pass, T.success],
-                            ['Warning', s.warning, T.warning],
-                            ['Fail', s.fail, T.danger],
                             ['Info', s.info, T.accent],
                             ['Manual', s.manual, textTertiary(theme)],
                           ] as const
                         ).map(([label, n, color]) => (
-                          <Box key={label} sx={{ textAlign: 'right' }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '1.25rem', fontWeight: 600, color }}>
+                          <Box key={label} sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+                            <Typography sx={{ fontFamily: T.font, fontSize: '1.125rem', fontWeight: 600, color, minWidth: 28 }}>
                               {n}
                             </Typography>
                             <Typography
@@ -1182,20 +1199,35 @@ export function SecurityAudit() {
                         ))}
                       </Box>
                     </Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={pctPass}
-                      sx={(th) => ({
-                        height: 6,
-                        borderRadius: 3,
-                        bgcolor: pick(th, '#e8e8e4', '#27272a'),
-                        '& .MuiLinearProgress-bar': {
-                          borderRadius: 3,
-                          bgcolor: pctPass >= 80 ? T.success : pctPass >= 50 ? T.accent : T.warning,
-                          transition: 'transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
-                        },
-                      })}
-                    />
+                    <Box>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                        Graded checks only — info and manual excluded from the compliance score.
+                      </Typography>
+                      {ignoredCount > 0 && (
+                        <Typography
+                          sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t), mt: 0.5 }}
+                        >
+                          {ignoredCount} waived — client-accepted risk, excluded from this score.{' '}
+                          <Box
+                            component="button"
+                            type="button"
+                            onClick={() => setAuditTab(3)}
+                            sx={{
+                              p: 0,
+                              border: 'none',
+                              background: 'none',
+                              cursor: 'pointer',
+                              font: 'inherit',
+                              color: T.accent,
+                              textDecoration: 'underline',
+                              '&:hover': { opacity: 0.9 },
+                            }}
+                          >
+                            View waived
+                          </Box>
+                        </Typography>
+                      )}
+                    </Box>
                   </Box>
                 );
               })()}

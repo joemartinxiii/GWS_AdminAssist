@@ -23,6 +23,8 @@ export interface FlyoutSearchProps {
   /** Keep expanded while value is non-empty */
   stayOpenWhenFilled?: boolean;
   disabled?: boolean;
+  /** e.g. Enter to run Drive Search */
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 }
 
 /**
@@ -37,6 +39,7 @@ export const FlyoutSearch = forwardRef<FlyoutSearchHandle, FlyoutSearchProps>(fu
     tooltip = 'Search',
     stayOpenWhenFilled = true,
     disabled = false,
+    onKeyDown,
   },
   ref
 ) {
@@ -124,6 +127,7 @@ export const FlyoutSearch = forwardRef<FlyoutSearchHandle, FlyoutSearchProps>(fu
           placeholder={placeholder}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
           disabled={disabled}
           inputRef={inputRef}
           InputProps={{

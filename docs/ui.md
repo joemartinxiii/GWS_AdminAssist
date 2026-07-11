@@ -92,11 +92,21 @@ Use shared **`FlyoutSearch`** (`frontend/src/components/ui/FlyoutSearch.tsx`) on
 
 - Search **icon** toggles a **280px** width-animated field (Groups member-search pattern).
 - Clear (X) when value is non-empty; Escape / click-outside collapses when empty.
-- Optional `ref.focus()` for shortcuts (e.g. ⌘K on People).
+- Optional `ref.focus()` for shortcuts (e.g. ⌘K on People / Drive).
+- Optional `onKeyDown` (e.g. Enter to run Drive Search).
 
-**Exception:** Drive’s primary org-wide **Drive Search** field stays always-visible (Enter to run). Do not replace with flyout.
+**Reference:** `Users.tsx`, `Groups.tsx`, `Drive.tsx`, `Calendar.tsx` (user picker + table search).
 
-**Reference:** `Users.tsx`, `Groups.tsx`, `Calendar.tsx` table search.
+---
+
+## 5b. Long-running actions (scan / audit)
+
+- Put **Run scan** / **Run audit** in the **page header** next to tabs/export — not a full-width slab.
+- Keep **run context** under the title: current state (`Running now` / `Scanning now · N%`) and **date/time of last (or previous) run**, plus who triggered when available.
+- Progress while running: short determinate bar under the meta (Drive) or full-page spinner during audit evaluation — not a page-wide empty control strip.
+- Security score summary uses **`ScoreRing`** (`frontend/src/components/ui/ScoreRing.tsx`) — primary compliance ring + status mini-rings (pass / warning / fail). Content-width card, not a stretched hero bar.
+
+**Reference:** `Drive.tsx` (audit tabs), `SecurityAudit.tsx`.
 
 ---
 
