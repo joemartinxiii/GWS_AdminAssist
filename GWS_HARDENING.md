@@ -1,209 +1,121 @@
-# Google Workspace Hardening Implementation
+# Security Audit (GWS hardening)
+
+What the **Security Audit** page (`/audit`) checks, how it stores results, and how to run it.
+
+Deploy and scopes: [docs/DEPLOY.md](docs/DEPLOY.md), [SECURITY.md](SECURITY.md).
+
+---
 
 ## Overview
 
-The GWS Hardening feature provides automated security checks based on your hardening checklist. It checks various Google Workspace security settings and DNS records to ensure your organization follows security best practices.
+The catalog mirrors a Workspace hardening checklist. Most non-DNS settings are read from the **Cloud Identity Policy API**; others are **manual** (Admin console link) when Google has no API.
 
-## Features
+Legend: **auto** (Policy API / DNS / user proxy / Chrome Policy) · **manual** (verify in console)
 
-The catalog mirrors the source hardening checklist 1:1. Most non-DNS settings are
-read automatically from the **Cloud Identity Policy API** (`policies.list`); the
-remainder are labelled **manual** with a direct Admin console link because Google
-does not expose them via API.
+When the Policy API is unavailable (API off, missing DWD scope, or caller not super admin), auto checks degrade to manual with a banner — the page still loads.
 
-Legend: ✅ auto (Policy API / DNS / user-proxy / Chrome Policy) · 📋 manual (verify in console)
+---
 
-1. **Authentication**
-   - ✅ 2-Step Verification (user enrollment rate proxy)
-   - ✅ Strong Password Policy (`security.password`)
-   - ✅ Advanced Protection Program (`security.advanced_protection_program`)
+## Check catalog
 
-2. **Email**
-   - ✅ SPF / DKIM / DMARC (DNS checks)
-   - 📋 Email Read Receipts (not in Policy API)
-   - ✅ Mail Delegation (`gmail.mail_delegation`)
-   - ✅ Confidential Mode (`gmail.confidential_mode`)
-   - ✅ Email Receiving Security / restrict delivery (`gmail.restrict_delivery`)
-   - 📋 Warn for External Recipients (not in Policy API)
-   - ✅ Enhanced Pre-Delivery Scanning (`gmail.enhanced_pre_delivery_message_scanning`)
-   - ✅ Spam Filter Bypass (`gmail.spam_override_lists`)
-   - ✅ Automatic Forwarding (`gmail.auto_forwarding`)
+### Authentication
+- **Auto** — 2-Step Verification (enrollment rate proxy)
+- **Auto** — Strong password policy (`security.password`)
+- **Auto** — Advanced Protection Program
 
-3. **Advanced Phishing & Malware**
-   - ✅ Attachments (`gmail.email_attachment_safety`)
-   - ✅ External Links & Images (`gmail.links_and_external_images`)
-   - ✅ Spoofing & Authentication (`gmail.spoofing_and_authentication`)
+### Email
+- **Auto** — SPF / DKIM / DMARC (DNS)
+- **Manual** — Email read receipts
+- **Auto** — Mail delegation, confidential mode, restrict delivery, enhanced pre-delivery scanning, spam override lists, auto-forwarding
+- **Manual** — Warn for external recipients
+- **Auto** — Attachment safety, links/images, spoofing & authentication
 
-4. **Calendar**
-   - ✅ Primary Calendar Sharing (`calendar.primary_calendar_max_allowed_external_sharing`)
-   - ✅ Secondary Calendar Sharing (`calendar.secondary_calendar_max_allowed_external_sharing`)
-   - ✅ External Invitation Warning (`calendar.external_invitations`)
+### Calendar
+- **Auto** — Primary/secondary external sharing max, external invitation warning
 
-5. **Google Drive**
-   - ✅ Link Sharing / external (`drive_and_docs.external_sharing`)
-   - ✅ General Access Default (`drive_and_docs.general_access_default`)
-   - ✅ Shared Drive Creation (`drive_and_docs.shared_drive_creation`)
-   - ✅ Sharing Suggestions — surfaced value, tradeoff (`drive_and_docs.external_sharing`)
-   - 📋 Offline Access (not in Policy API)
-   - ✅ Drive for Desktop (`drive_and_docs.drive_for_desktop`)
-   - 📋 Docs/Sheets Add-ons (not in Policy API)
-   - ✅ DLP — Enterprise (`rule.dlp`, pass if rules configured)
+### Drive
+- **Auto** — External sharing, general access default, shared drive creation, Drive for desktop, DLP (Enterprise if rules exist)
+- **Manual** — Offline access, Docs/Sheets add-ons
 
-6. **Chrome Managed Browsers**
-   - ✅ Browser Updates (Chrome Policy API)
-   - ✅ Company-Enforced Extensions (Chrome Policy API)
-   - 📋 Admin Alerts (alert-rule config not in Policy API)
+### Chrome managed browsers
+- **Auto** — Browser updates, company-enforced extensions (Chrome Policy API)
+- **Manual** — Admin alerts
 
-7. **Login Challenges**
-   - ✅ Additional Verification / employee ID (`security.login_challenges`)
-   - 📋 Post-SSO Verification (not in Policy API)
+### Login challenges & data download
+- **Auto** — Login challenges / employee ID, Google Takeout, less secure apps
+- **Manual** — Post-SSO verification
 
-8. **Data Download**
-   - ✅ Google Takeout (`takeout.service_status`)
-   - ✅ Less Secure Apps (`security.less_secure_apps`)
+### Apps control
+- **Manual** — Context-Aware Access, core apps, additional apps (per-OU decisions)
 
-9. **Apps Control**
-   - 📋 Context-Aware Access (Enterprise, context-specific)
-   - 📋 Core Apps (per-OU/service decision)
-   - 📋 Additional Apps (per-OU/service decision)
+---
 
-> When the Policy API is unavailable (not enabled, missing scope, or the caller is
-> not a super admin), every ✅ Policy-API check degrades gracefully to 📋 manual and
-> a single **Automated Policy Checks** warning explains how to turn it on.
+## How to use (UI)
 
-## API Endpoints
+1. Open **Security audit** (`/audit`).
+2. Page loads the **last saved org snapshot** (does not auto-run).
+3. **Run audit** (super admin) re-evaluates checks and writes `security-audit/latest.json`.
+4. Segments: **Overview**, **Passing**, **Failing**, **Waived**. Failing is sorted by severity.
+5. Each check has severity, rationale, and recommendation (for client walkthroughs).
+6. **Waive** (super admin) stores an optional reason in `security-audit/waivers.json` (survives re-runs).
+7. **Export** CSV/PDF/Drive uses the **cached** last run + waivers (no extra Policy API hit).
 
-### GET /api/audit/hardening
-Returns all hardening checks with status and recommendations.
+---
 
-**Response:**
-```json
-{
-  "checks": [
-    {
-      "id": "2fa-enforcement",
-      "category": "Authentication",
-      "name": "2FA Authentication",
-      "description": "Two-step verification enforcement",
-      "status": "pass",
-      "currentValue": "85% of users have 2FA enforced",
-      "recommendedValue": "Enforced for all users",
-      "recommendation": "Enforcement should be ON for all users",
-      "adminConsoleUrl": "https://admin.google.com/ac/security/2sv"
-    }
-  ],
-  "statistics": {
-    "total": 25,
-    "pass": 5,
-    "warning": 3,
-    "fail": 2,
-    "info": 4,
-    "manual": 15
-  }
-}
-```
+## Storage
 
-### GET /api/audit/hardening/export
-Exports hardening checks to CSV format.
+| Object | Purpose |
+|--------|---------|
+| `gs://<SCAN_BUCKET>/security-audit/latest.json` | Last successful run |
+| `gs://<SCAN_BUCKET>/security-audit/waivers.json` | Durable waivers |
 
-### POST /api/audit/hardening/export/drive
-Uploads the hardening export to Drive (requires backend + user session as implemented).
+Same free-tier GCS bucket as Drive external-sharing scans (`SCAN_BUCKET`, default `<project>-workspace-admin-scans`). Local disk under `backend/data/` when the bucket is unset (dev).
 
-## Status Types
+---
 
-- **pass**: ✅ Check passed (meets recommendation)
-- **warning**: ⚠️ Check has issues or couldn't be verified
-- **fail**: ❌ Check failed (doesn't meet recommendation)
-- **info**: ℹ️ Org-dependent setting with no universal "right" answer (e.g. mail
-  delegation, calendar sharing, sharing suggestions, optional login challenges).
-  Surfaced for awareness — "keep off unless there is a business need" — and
-  **not counted** in the compliance score.
-- **manual**: 📋 Requires manual verification in Admin Console
-
-The compliance percentage is computed over **graded** checks only
-(`pass` / (`pass` + `warning` + `fail`)); `info` and `manual` are neutral.
-
-## DNS Checks
-
-The DNS checking service validates:
-- **SPF**: Checks for `v=spf1` record and validates hard fail (`-all`)
-- **DKIM**: Checks for DKIM record and validates key size (prefers 2048-bit)
-- **DMARC**: Checks for `_dmarc` record and validates policy (p=none minimum)
-
-DNS checks use Node.js built-in `dns` module - no external dependencies required.
-
-## Cloud Identity Policy API
-
-Most Gmail/Drive/Calendar/Security settings are read from the Cloud Identity
-Policy API (`GET https://cloudidentity.googleapis.com/v1/policies`). The app calls
-the REST endpoint directly with a keyless delegated bearer token, so no client
-library upgrade is required. See `backend/src/services/policy.service.ts`.
-
-**Requirements:**
-- `cloudidentity.googleapis.com` enabled in GCP (added to `scripts/lib/scopes.sh`).
-- DWD scope `https://www.googleapis.com/auth/cloud-identity.policies.readonly` added to the service account.
-- The audit must run as a **super administrator** (the Policy API rejects non-super admins).
-
-## Chrome Policy API
-
-The Chrome Policy API integration checks browser update policies and
-company-enforced extensions. Requires `chromepolicy.googleapis.com` enabled and the
-`chrome.management.policy` DWD scope.
-
-## Setup Instructions
-
-### 1. Enable the APIs
-
-```bash
-gcloud services enable chromepolicy.googleapis.com cloudidentity.googleapis.com --project=YOUR_PROJECT_ID
-```
-
-(Both are already listed in `scripts/lib/scopes.sh` → `GCP_APIS` and enabled by the bootstrap/deploy scripts.)
-
-### 2. Update Domain-Wide Delegation
-
-In **admin.google.com → Security → API controls → Domain-wide delegation**, ensure the
-service account client ID is authorized for the full DWD scope list (run `npm run check:scopes`
-to confirm `google.config.ts` and `scopes.sh` agree). The two scopes relevant here:
-- `https://www.googleapis.com/auth/chrome.management.policy`
-- `https://www.googleapis.com/auth/cloud-identity.policies.readonly`
-
-### 3. Set Environment Variable
-
-Ensure `WORKSPACE_DOMAIN` is set in your environment (or it will be extracted from user email).
-
-## Usage (app UI)
-
-1. Open **Security audit** in the sidebar (**`/audit`**).
-2. The page loads the **last saved org snapshot** (GCS free tier / local disk) — it does **not** auto-run.
-3. **Run audit** (super admin) re-evaluates all checks synchronously and overwrites `security-audit/latest.json`.
-4. Segment control: **Overview**, **Passing**, **Failing**, **Waived**. **Failing** is sorted by **severity** (critical → low). `info` items stay on Overview only.
-5. Each check has **severity**, **rationale** (why it matters), and **recommendation** (what to do / when to bend) for MSP client walkthroughs.
-6. **Waive** (super admin) records client-accepted risk with an optional reason in `security-audit/waivers.json`. Waivers **outlive re-runs** and are shared across admins/devices.
-7. **Export** CSV/PDF/Drive uses the **cached last run** + waivers (never re-hits Policy API).
-8. If the Cloud Identity Policy API is unavailable, a **banner** explains why; policy-backed checks fall back to **manual** with stable copy (no synthetic 403 checklist rows).
-
-## API (hardening)
+## API
 
 | Method | Path | Who | Behavior |
 |--------|------|-----|----------|
 | GET | `/api/audit/hardening` or `/latest` | Any admin | Cached last run + waivers |
-| POST | `/api/audit/hardening/run` | Super admin | Sync evaluate + persist |
-| PUT/DELETE | `/api/audit/hardening/waivers/:checkId` | Super admin | Set / clear durable waiver |
+| POST | `/api/audit/hardening/run` | Super admin | Evaluate + persist |
+| PUT/DELETE | `/api/audit/hardening/waivers/:checkId` | Super admin | Set / clear waiver |
 | POST | `/api/audit/hardening/waivers/import` | Super admin | Merge browser-local waivers once |
 | GET | `/api/audit/hardening/export` | Any admin | CSV from cache |
-| POST | `/api/audit/hardening/export/drive` | Super admin | Drive CSV from cache |
+| POST | `/api/audit/hardening/export/drive` | Super admin | Drive upload from cache |
+
+### Status values
+
+| Status | Meaning |
+|--------|---------|
+| `pass` | Meets recommendation |
+| `warning` / `fail` | Issue or does not meet recommendation |
+| `info` | Org-dependent; not scored |
+| `manual` | Verify in Admin console |
+
+Compliance percentage uses graded checks only: `pass / (pass + warning + fail)`.
+
+---
+
+## Requirements
+
+Already handled by bootstrap/deploy for APIs. You still need DWD scopes (see [SECURITY.md](SECURITY.md)):
+
+- `https://www.googleapis.com/auth/cloud-identity.policies.readonly`
+- `https://www.googleapis.com/auth/chrome.management.policy` (Chrome checks)
+
+Run the audit as a Workspace **super admin**.
+
+---
 
 ## Limitations
 
-- Some settings require manual verification (marked as "manual" status)
-- DNS checks require network access to DNS servers
-- Chrome Policy API requires proper permissions and API enablement
-- Some Enterprise-only features (DLP, Context-Aware Access) may not be accessible
-- 2FA coverage is a Directory sample proxy, not a full org 2SV schedule read
+- Some settings are always manual (no Google API)
+- DNS checks need outbound DNS from the service
+- 2FA coverage is a Directory sample proxy, not the full org 2SV schedule
+- Enterprise-only features (DLP, CAA) may be unavailable on the SKU
 
 ## Cost
 
-- DNS checks: Free (uses Node.js DNS module)
-- Chrome Policy API: Free (within Google API quotas)
-- Last-run + waivers: free-tier GCS object storage (same `SCAN_BUCKET` as Drive external scan) or local disk in dev
+- Policy / Chrome / DNS checks: Google free quotas + free DNS lookups  
+- Last-run + waivers: free-tier GCS objects when using `SCAN_BUCKET`  

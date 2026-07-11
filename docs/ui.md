@@ -111,16 +111,14 @@ Data views use bordered flex lists (not legacy `Table`/`Paper` grids) for consis
 
 ---
 
-## 7. Tables (MUI `Table` where still used)
+## 7. Pagination and sorting data
 
-Some screens still use **`Table`** / **`useTable`** (e.g. Calendar, Email Delegation) or **`TablePagination`** next to flex lists. Prefer list primitives for new full-page data views.
+Full-page data views use **ListShell** rows (not MUI `Table`). Pagination is usually **`TablePagination`** under the list. Sorting goes through **`ColumnHeader`** + page-level sort state (or `useTable` for data only).
 
-- **`TableContainer`** + **`Paper`** (or `variant="outlined"`).
-- **`Table`** `size="small"`, density: e.g. `'& .MuiTableCell-root': { py: 0.75 }`, `minHeight: 40` rows.
-- Headers: `fontWeight: 600`. Checkbox column first when selecting; actions **`align="right"`**.
-- Status: **`Chip`** `size="small"`. Row actions: **`IconButton`** `size="small"` + **`Tooltip`** + **`aria-label`**.
+- Prefer **`useResizableColumns`** for column widths (see contract above).
+- Keep checkbox + actions columns fixed width.
 
-**Reference:** `frontend/src/hooks/useTable.tsx` (e.g. Email Delegation, Groups, Shared Drives); other pages mix **`TablePagination`** or list rows only.
+**Reference:** `Users.tsx`, `Groups.tsx`, `EmailDelegation.tsx`, `frontend/src/hooks/useTable.tsx` (data helpers).
 
 ---
 
@@ -157,7 +155,7 @@ Some screens still use **`Table`** / **`useTable`** (e.g. Calendar, Email Delega
 - [ ] Chrome matches Users (tabs + action bar, icon colors, tooltips).
 - [ ] Search: icon + slide-out if applicable.
 - [ ] Filters: toggled inline strip with `FilterToken` chips; right-aligned selects where used elsewhere.
-- [ ] Data: `ListShell` / `ColumnHeader` / `ListDataRow` OR table patterns above.
+- [ ] Data: `ListShell` / resizable `ColumnHeader` / `ListDataRow` + trailing actions.
 - [ ] Dialogs: single dismiss pattern; section headers consistent.
 - [ ] Tokens from `designTokens.ts`; Lucide icons; no one-off hex for core colors.
 

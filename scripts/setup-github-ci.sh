@@ -59,13 +59,17 @@ else
 fi
 
 # Least-privilege deploy roles. Steady-state deploys only need to: push images,
-# deploy the Cloud Run service + scan job, add the redirect-URI secret version,
-# and keep the enabled API set in sync (serviceUsageAdmin) so new API deps ship
-# without a manual step. The one-time bucket / project-IAM bindings in the
-# workflow are guarded with `|| true` (bootstrap already created them), so we
-# deliberately do NOT grant storage.admin or projectIamAdmin here.
+# deploy the Cloud Run service + scan job, describe secrets + add redirect-URI
+# versions, and keep APIs in sync. Bucket / project-IAM in the workflow are
+# best-effort (bootstrap already created them) — no storage.admin here.
 log "Granting deploy roles to ${DEPLOY_SA}..."
-for role in roles/run.admin roles/artifactregistry.writer roles/secretmanager.secretVersionAdder roles/serviceusage.serviceUsageAdmin; do
+for role in \
+  roles/run.admin \
+  roles/artifactregistry.writer \
+  roles/secretmanager.viewer \
+  roles/secretmanager.secretVersionAdder \
+  roles/serviceusage.serviceUsageAdmin
+do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role="$role" \
     --condition=None --quiet >/dev/null

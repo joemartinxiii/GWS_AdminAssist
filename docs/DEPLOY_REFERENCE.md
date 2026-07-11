@@ -135,7 +135,7 @@ bash scripts/setup-github-ci.sh <PROJECT_ID> <GITHUB_OWNER/REPO>
 | `GCP_WIF_PROVIDER` | `projects/…/workloadIdentityPools/github-pool/providers/github-provider` |
 | `GCP_DEPLOY_SA` | `github-deploy-sa@<project>.iam.gserviceaccount.com` |
 
-Deploy SA roles: `run.admin`, `artifactregistry.writer`, `secretmanager.secretVersionAdder`, `serviceusage.serviceUsageAdmin`, and `actAs` on the runtime SA. Runtime remains `workspace-admin-sa`.
+Deploy SA roles: `run.admin`, `artifactregistry.writer`, `secretmanager.viewer` (describe secrets for preflight), `secretmanager.secretVersionAdder`, `serviceusage.serviceUsageAdmin`, and `actAs` on the runtime SA. Runtime remains `workspace-admin-sa`.
 
 Key fallback (only if your org allows SA keys): set `GCP_SA_KEY` and omit `GCP_WIF_PROVIDER`. Prefer WIF.
 
@@ -187,6 +187,7 @@ Removes Cloud Run service, scan job + bucket, app secrets, service accounts, and
 | `redirect_uri_mismatch` | Secret `oauth-redirect-uri` must equal `https://<service-url>/api/auth/callback` and be registered on the OAuth client. Redeploy if the value is still a placeholder. |
 | OAuth login fails | Redirect URI must match exactly (scheme, host, path). |
 | CI auth failures | Confirm WIF secrets; re-run `setup-github-ci.sh`. |
+| `App secrets not found` / `Cannot read Secret Manager` in CI | Deploy SA needs `roles/secretmanager.viewer`. Re-run `bash scripts/setup-github-ci.sh <PROJECT> OWNER/REPO`, then re-run the workflow. |
 | Permission denied on deploy | Deploy SA roles listed above; re-run `setup-github-ci.sh` / bootstrap. |
 | Billing errors | Link a billing account (`--billing-account` or Console). |
 | Scope drift | `npm run check:scopes` |

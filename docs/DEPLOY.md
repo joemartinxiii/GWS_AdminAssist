@@ -143,12 +143,24 @@ Also remove the DWD entry in admin.google.com, the OAuth Web client if unused, a
 
 ---
 
+## If CI fails with “App secrets not found” / Secret Manager
+
+The deploy SA needs **`roles/secretmanager.viewer`** (metadata) plus **`secretVersionAdder`** (redirect URI updates). Grant and re-run:
+
+```bash
+bash scripts/setup-github-ci.sh <PROJECT_ID> <GITHUB_OWNER/REPO>
+```
+
+Then re-run **Actions → Deploy to Cloud Run**. Details: [DEPLOY_REFERENCE.md#troubleshooting](./DEPLOY_REFERENCE.md#troubleshooting).
+
+---
+
 ## More detail
 
 | Topic | Doc |
 |-------|-----|
-| Wizard flags, under-the-hood steps, multi-domain | [DEPLOY_REFERENCE.md](./DEPLOY_REFERENCE.md) |
-| OAuth, DWD scopes, app security model | [SECURITY.md](../SECURITY.md) |
-| Security Audit checks | [GWS_HARDENING.md](../GWS_HARDENING.md) |
+| Wizard flags, secrets map, infra | [DEPLOY_REFERENCE.md](./DEPLOY_REFERENCE.md) |
+| OAuth, DWD scopes, security model | [SECURITY.md](../SECURITY.md) |
+| Security Audit | [GWS_HARDENING.md](../GWS_HARDENING.md) |
 | Live / E2E testing | [STAGING_TEST_SETUP.md](./STAGING_TEST_SETUP.md) |
-| If something fails | [DEPLOY_REFERENCE.md#troubleshooting](./DEPLOY_REFERENCE.md#troubleshooting) |
+| All other failures | [DEPLOY_REFERENCE.md#troubleshooting](./DEPLOY_REFERENCE.md#troubleshooting) |

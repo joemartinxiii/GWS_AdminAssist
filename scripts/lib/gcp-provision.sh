@@ -92,16 +92,14 @@ provision_deploy_sa() {
     --display-name="GitHub Actions deploy" \
     --project="$project_id" --quiet 2>/dev/null || true
 
-  # serviceusage.serviceUsageAdmin lets the CI deploy path keep the enabled API
-  # set in sync (gcloud services enable) so new API deps ship without a manual step.
-  # secretVersionAdder: CI must add oauth-redirect-uri versions after each deploy.
-  # secretAccessor: read secrets if needed during deploy tooling.
+  # secretmanager.viewer: describe/list secrets (CI preflight + tooling).
+  # secretVersionAdder: add oauth-redirect-uri versions after each deploy.
   # serviceUsageAdmin: keep GCP_APIS in sync on every CI deploy.
   for role in \
     roles/run.admin \
     roles/artifactregistry.writer \
     roles/iam.serviceAccountUser \
-    roles/secretmanager.secretAccessor \
+    roles/secretmanager.viewer \
     roles/secretmanager.secretVersionAdder \
     roles/serviceusage.serviceUsageAdmin
   do

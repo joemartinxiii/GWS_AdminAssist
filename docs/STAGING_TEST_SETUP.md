@@ -68,11 +68,11 @@ In Cursor, say **"run tests"** or **"test and fix"**. See `.cursor/rules/test-an
 
 ## Post-deploy smoke
 
-After a GitHub Actions deploy (or `./deploy.sh`):
+After deploy ([DEPLOY.md](./DEPLOY.md) go-live checklist):
 
 ```bash
 curl -sf "https://YOUR_CLOUD_RUN_URL/health"
-npm run test:live:read   # confirms DWD + secrets against live tenant
+npm run test:live:read   # DWD + secrets against live tenant
 ```
 
 ## Troubleshooting

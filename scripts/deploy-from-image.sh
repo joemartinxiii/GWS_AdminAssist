@@ -26,8 +26,14 @@ DEPLOY_IMAGE="${3:-${DEPLOY_IMAGE:-}}"
 [[ -n "$PROJECT_ID" ]] || die "Usage: bash scripts/deploy-from-image.sh <PROJECT_ID> <REGION> <IMAGE_REF>"
 [[ -n "$DEPLOY_IMAGE" ]] || die "Image ref required (arg 3 or DEPLOY_IMAGE)"
 
+# Preflight: app secrets from bootstrap. `secrets describe` needs secrets.get
+# (roles/secretmanager.viewer). secretAccessor alone cannot describe secrets —
+# that used to make CI fail with a misleading "not found" after a successful image build.
 if ! gcloud secrets describe app-jwt-secret --project="$PROJECT_ID" &>/dev/null; then
-  die "App secrets not found. Run bootstrap-tenant.sh first."
+  if gcloud secrets list --project="$PROJECT_ID" --limit=1 --format='value(name)' &>/dev/null; then
+    die "Secret app-jwt-secret not found in project ${PROJECT_ID}. Run bootstrap-tenant.sh first."
+  fi
+  die "Cannot read Secret Manager in project ${PROJECT_ID} (need roles/secretmanager.viewer on the deploy SA). Re-run: bash scripts/setup-github-ci.sh ${PROJECT_ID} OWNER/REPO"
 fi
 
 gcloud config set project "$PROJECT_ID" --quiet

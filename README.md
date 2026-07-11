@@ -42,10 +42,10 @@ See **[docs/LOCAL_DEV.md](docs/LOCAL_DEV.md)** (mock UI with MSW, or full stack 
 
 ### Before you go live
 
-1. Read **[SECURITY.md](SECURITY.md)** (OAuth, domain-wide delegation, scopes).
-2. Follow the **go-live checklist** in **[docs/DEPLOY.md](docs/DEPLOY.md#go-live-checklist)**.
-3. Run `npm install && npm run test:security && npm run type-check:all`.
-4. Set optional production env: `GWS_PROTECTED_USERS`, `SIGNATURE_TEMPLATE_BUCKET` (see deploy guide).
+1. **[docs/DEPLOY.md](docs/DEPLOY.md)** go-live checklist.
+2. **[SECURITY.md](SECURITY.md)** — scopes and roles (copy-paste DWD block).
+3. `npm install && npm run test:security && npm run type-check:all`.
+4. Optional: `GWS_PROTECTED_USERS`, `SIGNATURE_TEMPLATE_BUCKET` (deploy guide).
 
 ---
 
