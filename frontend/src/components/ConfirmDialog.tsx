@@ -8,7 +8,6 @@ import {
   CircularProgress,
 } from '@mui/material';
 import {
-  pick,
   dialogPaperSx,
   dialogTitleSx,
   dialogActionsSx,
@@ -60,13 +59,7 @@ export function ConfirmDialog({
       fullWidth
       PaperProps={{ sx: (th) => dialogPaperSx(th) }}
     >
-      <DialogTitle
-        sx={(th) => ({
-          ...dialogTitleSx(th),
-          borderBottom: `1px solid ${pick(th, '#f0f0ec', '#27272a')}`,
-          pr: 3,
-        })}
-      >
+      <DialogTitle sx={(th) => dialogTitleSx(th)}>
         {title}
       </DialogTitle>
       {children && (

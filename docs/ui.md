@@ -122,25 +122,24 @@ Full-page data views use **ListShell** rows (not MUI `Table`). Pagination is usu
 
 ---
 
-## 8. Dialogs (canonical = Security Audit)
+## 8. Dialogs (canonical = app form modals)
 
-One surface for every modal — tokens in **`designTokens.ts`**:
+One surface for every modal — match **Edit user / Groups / Email** chrome, not a one-off Audit look. Tokens in **`designTokens.ts`**:
 
 | Token | Use |
 |-------|-----|
-| **`dialogPaperSx`** | `PaperProps={{ sx: (t) => dialogPaperSx(t) }}` |
-| **`dialogTitleSx`** | Bold title |
-| **`dialogActionsSx`** | Footer strip |
+| **`dialogPaperSx`** | `PaperProps={{ sx: (t) => dialogPaperSx(t) }}` — surface + border + radius |
+| **`dialogTitleSx`** | Bold title + **bottom border** |
+| **`dialogActionsSx`** | Footer + **top border** |
 | **`dialogPrimaryButtonSx`** | Contained Save / Confirm |
-| **`dialogSecondaryButtonSx`** | Waive, Open Admin console, etc. — **soft fill + border**, not ghost/transparent |
+| **`dialogSecondaryButtonSx`** | Waive, Open Admin console — **soft fill + border** (readable on dark) |
 | **`dialogCancelButtonSx`** | Quiet Cancel / Close |
 | **`dialogDangerButtonSx`** | Delete / Remove |
 
-- **Close affordance**: Prefer **one** clear dismiss path—header **X** *or* footer **Close**, not both doing the same thing when possible.
-- **Content**: `DialogContent dividers` (Audit style) or light top padding for form dialogs.
+- **Content**: `DialogContent` with `pt: '20px !important'` (avoid bare MUI `dividers` unless needed).
 - **Sections**: small caps / tracked labels for field groups.
 
-**Reference:** `SecurityAudit.tsx` detail dialog, `ConfirmDialog.tsx`.
+**Reference:** `EmailDelegation.tsx` add dialog, `ConfirmDialog.tsx`, `EditUserDialog.tsx`.
 
 ---
 

@@ -1471,7 +1471,9 @@ export function SecurityAudit() {
         {detailCheck && (
           <>
             <DialogTitle sx={(th) => dialogTitleSx(th)}>
-              {detailCheck.name}
+              <Box sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em' }}>
+                {detailCheck.name}
+              </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1, flexWrap: 'wrap' }}>
                 <DotLabel
                   dotColor={detailStatusColor(detailCheck.status)}
@@ -1500,7 +1502,7 @@ export function SecurityAudit() {
                 )}
               </Box>
             </DialogTitle>
-            <DialogContent dividers>
+            <DialogContent sx={{ pt: '20px !important' }}>
               {detailCheck.description && (
                 <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t), mb: 2.5 }}>
                   {detailCheck.description}

@@ -128,8 +128,8 @@ export const menuPaperProps: { PaperProps: { sx: SxProps<Theme> } } = {
 };
 
 /**
- * Canonical dialog paper — same surface as lists/shells (Security Audit baseline).
- * Use via `PaperProps={{ sx: dialogPaperSx }}`.
+ * Canonical dialog paper — list/shell surface + border (Edit user / Groups / Email style).
+ * Use via `PaperProps={{ sx: (t) => dialogPaperSx(t) }}`.
  */
 export function dialogPaperSx(theme: Theme): SystemStyleObject<Theme> {
   return {
@@ -146,7 +146,7 @@ export function dialogPaperSx(theme: Theme): SystemStyleObject<Theme> {
   };
 }
 
-/** Dialog title — bold, clear hierarchy (Security Audit style). */
+/** Dialog title — bold, bottom border (standard form/detail modals). */
 export function dialogTitleSx(theme: Theme): SystemStyleObject<Theme> {
   return {
     fontFamily: T.font,
@@ -154,8 +154,9 @@ export function dialogTitleSx(theme: Theme): SystemStyleObject<Theme> {
     fontSize: '1.125rem',
     letterSpacing: '-0.02em',
     color: pick(theme, T.text, '#fafafa'),
-    pr: 6,
+    pr: 3,
     pb: 1.5,
+    borderBottom: `1px solid ${pick(theme, T.borderSubtle, '#27272a')}`,
   };
 }
 
