@@ -22,7 +22,7 @@ export function ListShell({ children }: { children: React.ReactNode }) {
 const rowBase = {
   display: 'flex',
   alignItems: 'center',
-  gap: 1.25,
+  gap: 1.5,
   px: 2,
   width: '100%',
   boxSizing: 'border-box' as const,
@@ -35,8 +35,9 @@ export function ListHeaderRow({ children }: { children: React.ReactNode }) {
     <Box
       sx={(theme: Theme) => ({
         ...rowBase,
-        py: 1,
+        py: 1.125,
         borderBottom: `1px solid ${pick(theme, T.borderSubtle, '#27272a')}`,
+        bgcolor: pick(theme, T.surfaceHover, '#1f1f23'),
       })}
     >
       {children}
@@ -61,10 +62,11 @@ export function ListDataRow({
       onClick={onClick}
       sx={(theme: Theme) => ({
         ...rowBase,
-        py: 0.875,
+        py: 1.125,
         borderBottom: last ? 'none' : `1px solid ${pick(theme, T.borderSubtle, '#27272a')}`,
         cursor: onClick ? 'pointer' : 'default',
         bgcolor: selected ? pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.16)') : 'transparent',
+        transition: 'background-color 0.12s ease',
         '&:hover': {
           bgcolor: selected
             ? pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.16)')

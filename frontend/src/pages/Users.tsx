@@ -23,10 +23,10 @@ import {
   Mail,
   RefreshCw,
   Calendar,
-  ListFilter,
+  SlidersHorizontal,
   Trash2,
   Ban,
-  ExternalLink,
+
 } from 'lucide-react';
 import type { AxiosError } from 'axios';
 import { apiClient } from '../services/api.client';
@@ -38,7 +38,7 @@ import { useTheme } from '@mui/material/styles';
 import { ConfirmDialog, type ConfirmEntity } from '../components/ConfirmDialog';
 import { EditUserDialog } from '../components/EditUserDialog';
 import { DotLabel } from '../components/StatusDot';
-import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, TOOLBAR_ICON } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { shortcut } from '../utils/keyboard';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
@@ -828,13 +828,13 @@ export function Users() {
                     '&:hover': { bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)') },
                   })}
                 >
-                  <ListFilter size={18} strokeWidth={1.75} />
+                  <SlidersHorizontal size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />
                 </IconButton>
               </ActionTooltip>
 
               <ActionTooltip title="Refresh">
                 <IconButton size="small" onClick={fetchUsers} sx={{ color: (t) => textSecondary(t) }}>
-                  <RefreshCw size={18} strokeWidth={1.75} />
+                  <RefreshCw size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />
                 </IconButton>
               </ActionTooltip>
 
@@ -1072,16 +1072,6 @@ export function Users() {
                 )}
                 <ColumnHeader
                   label=""
-                  columnId="__admin"
-                  sortConfig={{ key: effectiveSortKey, direction: sortDir }}
-                  onSort={() => {}}
-                  width={36}
-                  align="center"
-                  sortable={false}
-                  pinEnd
-                />
-                <ColumnHeader
-                  label=""
                   columnId="__open"
                   sortConfig={{ key: effectiveSortKey, direction: sortDir }}
                   onSort={() => {}}
@@ -1226,24 +1216,6 @@ export function Users() {
                           </Typography>
                         </Box>
                       )}
-                      <Box
-                        sx={{ width: 36, flex: '0 0 36px', display: 'flex', justifyContent: 'center', opacity: 0.7 }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <ActionTooltip title="Open in Admin">
-                          <IconButton
-                            size="small"
-                            component="a"
-                            href={`https://admin.google.com/ac/users/${encodeURIComponent(user.primaryEmail)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            sx={{ color: (t) => textTertiary(t), p: 0.5 }}
-                            aria-label="Open in Admin"
-                          >
-                            <ExternalLink size={14} strokeWidth={1.75} />
-                          </IconButton>
-                        </ActionTooltip>
-                      </Box>
                       <Box sx={listActionsSx}>
                         <ListChevron />
                       </Box>
@@ -1330,7 +1302,7 @@ export function Users() {
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.75, flexWrap: 'wrap' }}>
                     <ActionTooltip title="Refresh">
                       <IconButton size="small" onClick={fetchUsersWithout2FA} sx={{ color: (t) => textSecondary(t) }}>
-                        <RefreshCw size={18} strokeWidth={1.75} />
+                        <RefreshCw size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />
                       </IconButton>
                     </ActionTooltip>
                     <Box sx={{ flex: 1 }} />
@@ -1404,7 +1376,6 @@ export function Users() {
                       <Typography sx={{ flex: 1.4, fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>Email</Typography>
                       <Typography sx={{ width: 120, fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>Org unit</Typography>
                       <Typography sx={{ width: 100, fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>Last login</Typography>
-                      <Box sx={{ width: 36 }} />
                       <Box sx={{ width: 28 }} />
                     </Box>
                     {/* Rows */}
@@ -1439,21 +1410,6 @@ export function Users() {
                             <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
                               {formatRelative(user.lastLoginTime)}
                             </Typography>
-                          </Box>
-                          <Box sx={{ width: 36, display: 'flex', justifyContent: 'center', opacity: 0.7 }} onClick={(e) => e.stopPropagation()}>
-                            <ActionTooltip title="Open in Admin">
-                              <IconButton
-                                size="small"
-                                component="a"
-                                href={`https://admin.google.com/ac/users/${encodeURIComponent(user.primaryEmail)}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                sx={{ color: (t) => textTertiary(t), p: 0.5 }}
-                                aria-label="Open in Admin"
-                              >
-                                <ExternalLink size={14} strokeWidth={1.75} />
-                              </IconButton>
-                            </ActionTooltip>
                           </Box>
                           <Box className="notify-action" sx={{ width: 28, display: 'flex', justifyContent: 'center', opacity: 0.5, transition: 'opacity 0.15s ease' }} onClick={(e) => e.stopPropagation()}>
                             <ActionTooltip title="Send reminder">

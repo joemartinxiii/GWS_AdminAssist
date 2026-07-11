@@ -22,15 +22,13 @@ import {
   Alert,
   Snackbar,
   TablePagination,
-  Link,
   Divider,
   useMediaQuery,
 } from '@mui/material';
 import {
   Search,
   Trash2,
-  Pencil,
-  ListFilter,
+  SlidersHorizontal,
   X,
   Ban,
   RefreshCw,
@@ -46,10 +44,10 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { ActionTooltip } from '../components/ActionTooltip';
-import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx } from '../theme/designTokens';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx, TOOLBAR_ICON } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx, listPinEndSx } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listCheckboxSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
 import { useResizableColumns } from '../hooks/useResizableColumns';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
@@ -183,11 +181,6 @@ const FILE_PERMISSION_ROLES: { value: string; label: string }[] = [
   { value: 'commenter', label: 'Commenter' },
   { value: 'writer', label: 'Editor' },
 ];
-const FILE_ROLE_LABEL: Record<string, string> = Object.fromEntries(FILE_PERMISSION_ROLES.map((r) => [r.value, r.label]));
-
-// Owner is not editable; show as-is.
-const getFileRoleLabel = (role: string) => (role === 'owner' ? 'Owner' : FILE_ROLE_LABEL[role] || role);
-
 // Classify a permission as external using the org's authoritative allowed-domain
 // list (sourced from /auth/me) rather than a hardcoded default. Owners are never
 // external, and when the domain list is unknown we don't flag (avoids labelling
@@ -259,10 +252,11 @@ export function Drive() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filtersVisible, setFiltersVisible] = useState(false);
 
+  // v2: no Actions column — role is an inline select; delete via checkbox bulk.
   const permCols = useResizableColumns(
-    'drive-file-perms',
-    { type: 72, name: 140, email: 200, access: 100, role: 88 },
-    { type: 56, name: 80, email: 120, access: 72, role: 64 }
+    'drive-file-perms-v2',
+    { type: 72, name: 140, email: 200, access: 96, role: 120 },
+    { type: 56, name: 90, email: 120, access: 72, role: 100 }
   );
   const searchCols = useResizableColumns(
     'drive-search',
@@ -294,8 +288,6 @@ export function Drive() {
   const [modifiedDateAnchor, setModifiedDateAnchor] = useState<HTMLElement | null>(null);
   const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<DriveFile | null>(null);
-  const [selectedPermission, setSelectedPermission] = useState<any>(null);
-  const [newRole, setNewRole] = useState<string>('reader');
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<Set<string>>(new Set());
   const [addPermissionDialogOpen, setAddPermissionDialogOpen] = useState(false);
   const [newPermissionType, setNewPermissionType] = useState<'user' | 'domain' | 'anyone'>('user');
@@ -708,7 +700,6 @@ export function Drive() {
         driveId: data.driveId,
       };
       setSelectedFile(file);
-      setSelectedPermission(null);
       setPermissionDialogOpen(true);
     } catch (err: any) {
       console.error(err);
@@ -788,11 +779,9 @@ export function Drive() {
     setSnackbar({ open: true, message: 'CSV downloading now.', severity: 'success' });
   };
 
-  const handleOpenPermissionDialog = async (file: DriveFile, permission?: any) => {
+  const handleOpenPermissionDialog = async (file: DriveFile) => {
     // Open immediately with list-state data so the modal feels instant
     setSelectedFile(file);
-    setSelectedPermission(permission || null);
-    if (permission) setNewRole(permission.role);
     setPermissionDialogOpen(true);
 
     // Then silently refresh with fresh data (correct path + up-to-date permissions)
@@ -804,53 +793,23 @@ export function Drive() {
     }
   };
 
-  const handleUpdatePermission = async () => {
-    if (!selectedFile || !selectedPermission) return;
+  const handleUpdatePermission = async (permissionId: string, role: string) => {
+    if (!selectedFile) return;
 
     try {
-      await apiClient.patch(
-        `/drive/files/${selectedFile.id}/permissions/${selectedPermission.id}`,
-        { role: newRole }
-      );
-      // Stay in the permissions dialog; update local role then refresh from API.
+      await apiClient.patch(`/drive/files/${selectedFile.id}/permissions/${permissionId}`, { role });
       setSelectedFile((prev) => {
         if (!prev || prev.id !== selectedFile.id) return prev;
         return {
           ...prev,
-          permissions: (prev.permissions ?? []).map((p) =>
-            p.id === selectedPermission.id ? { ...p, role: newRole } : p
-          ),
+          permissions: (prev.permissions ?? []).map((p) => (p.id === permissionId ? { ...p, role } : p)),
         };
       });
-      setSelectedPermission(null);
       await refreshCurrent();
       setSnackbar({ open: true, message: 'Role updated.', severity: 'success' });
     } catch (error) {
       console.error('Error updating permission:', error);
       setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to update permission. Please try again.'), severity: 'error' });
-    }
-  };
-
-  const handleDeletePermission = async (fileId: string, permissionId: string) => {
-    if (!confirm('Are you sure you want to remove this permission?')) return;
-
-    try {
-      const driveId = selectedFile?.driveId;
-      await apiClient.delete(`/drive/files/${fileId}/permissions/${permissionId}`, {
-        params: driveId ? { driveId } : undefined,
-      });
-      setSelectedFile((prev) =>
-        prev && prev.id === fileId ? { ...prev, permissions: (prev.permissions ?? []).filter((p) => p.id !== permissionId) } : prev
-      );
-      setSelectedPermissionIds((prev) => {
-        const next = new Set(prev);
-        next.delete(permissionId);
-        return next;
-      });
-      refreshCurrent();
-    } catch (error: any) {
-      console.error('Error deleting permission:', error);
-      setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to delete permission. Please try again.'), severity: 'error' });
     }
   };
 
@@ -1310,7 +1269,7 @@ export function Drive() {
                 '&:hover': { bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)') },
               })}
             >
-              <ListFilter size={18} strokeWidth={1.75} />
+              <SlidersHorizontal size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />
             </IconButton>
           </ActionTooltip>
         )}
@@ -1322,7 +1281,7 @@ export function Drive() {
             aria-label="Refresh data"
             sx={{ color: (t: any) => textSecondary(t) }}
           >
-            <RefreshCw size={18} strokeWidth={1.75} />
+            <RefreshCw size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />
           </IconButton>
         </ActionTooltip>
 
@@ -1559,8 +1518,7 @@ export function Drive() {
                   <Box sx={{ display: { xs: 'none', sm: 'flex' }, minWidth: 0 }}>
                     <ColumnHeader label="Location" columnId="loc" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...searchCols.headerProps('location')} />
                   </Box>
-                  <ColumnHeader label="Open" columnId="op" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={48} align="center" pinEnd />
-                  <ColumnHeader label="" columnId="__open" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={36} align="right" />
+                  <ColumnHeader label="" columnId="__open" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={36} align="right" pinEnd />
                 </ListHeaderRow>
               {files.length === 0 ? (
                 <Box sx={{ py: 6, textAlign: 'center', px: 2 }}>
@@ -1616,17 +1574,7 @@ export function Drive() {
                       <Box sx={{ ...searchCols.cellSx('location'), display: { xs: 'none', sm: 'block' } }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getFileLocationLabel(file)}</Typography>
                       </Box>
-                      <Box
-                        sx={{ ...listPinEndSx, width: 48, flex: '0 0 48px', display: 'flex', justifyContent: 'center' }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <ActionTooltip title="Open in Google Drive">
-                          <Link href={file.webViewLink} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
-                            <ExternalLink size={16} strokeWidth={1.75} />
-                          </Link>
-                        </ActionTooltip>
-                      </Box>
-                      <Box sx={{ width: 36, flex: '0 0 36px', display: 'flex', justifyContent: 'flex-end' }}>
+                      <Box sx={{ width: 36, flex: '0 0 36px', ml: 'auto', display: 'flex', justifyContent: 'flex-end' }}>
                         <ListChevron />
                       </Box>
                     </ListDataRow>
@@ -1707,8 +1655,7 @@ export function Drive() {
                 <Box sx={{ display: { xs: 'none', sm: 'flex' }, minWidth: 0 }}>
                   <ColumnHeader label="Location" columnId="eloc" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...auditCols.headerProps('location')} />
                 </Box>
-                <ColumnHeader label="Open" columnId="eop" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={48} align="center" pinEnd />
-                <ColumnHeader label="" columnId="__open" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={36} align="right" />
+                <ColumnHeader label="" columnId="__open" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={36} align="right" pinEnd />
               </ListHeaderRow>
               {reportRecords.length === 0 ? (
                 <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -1770,21 +1717,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box
-                        sx={{ ...listPinEndSx, width: 48, flex: '0 0 48px', display: 'flex', justifyContent: 'center' }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {f.webViewLink ? (
-                          <ActionTooltip title="Open in Google Drive">
-                            <Link href={f.webViewLink} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
-                              <ExternalLink size={16} strokeWidth={1.75} />
-                            </Link>
-                          </ActionTooltip>
-                        ) : (
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t) }}>—</Typography>
-                        )}
-                      </Box>
-                      <Box sx={{ width: 36, flex: '0 0 36px', display: 'flex', justifyContent: 'flex-end' }}>
+                      <Box sx={{ width: 36, flex: '0 0 36px', ml: 'auto', display: 'flex', justifyContent: 'flex-end' }}>
                         <ListChevron />
                       </Box>
                     </ListDataRow>
@@ -1825,13 +1758,38 @@ export function Drive() {
         fullWidth
         PaperProps={{ sx: (th) => dialogPaperSx(th) }}
       >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedFile?.name}</Typography>
             <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t), mt: 0.25 }}>Manage Permissions</Typography>
           </Box>
+          {selectedFile?.webViewLink && (
+            <Button
+              size="small"
+              component="a"
+              href={selectedFile.webViewLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              endIcon={<ExternalLink size={14} strokeWidth={1.75} />}
+              sx={(th) => ({
+                fontFamily: T.font,
+                textTransform: 'none',
+                borderRadius: T.radius,
+                fontSize: '0.75rem',
+                fontWeight: 500,
+                height: 28,
+                px: 1.25,
+                flexShrink: 0,
+                color: pick(th, T.text, '#e8eaed'),
+                border: `1px solid ${pick(th, T.border, '#5f6368')}`,
+                '&:hover': { borderColor: T.accent, bgcolor: pick(th, T.accentSoft, 'rgba(26, 115, 232, 0.12)') },
+              })}
+            >
+              Open in Drive
+            </Button>
+          )}
         </DialogTitle>
-        <DialogContent sx={{ pt: '20px !important' }}>
+        <DialogContent sx={{ pt: '20px !important', overflowX: 'hidden' }}>
           {selectedFile && (
             <Box>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 1.5, rowGap: 0.75 }}>
@@ -1897,7 +1855,6 @@ export function Drive() {
                   <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('email')} />
                   <ColumnHeader label="Access" columnId="dx" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('access')} />
                   <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('role')} />
-                  <ColumnHeader label="Actions" columnId="da" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} align="right" pinEnd />
                 </ListHeaderRow>
                 {(selectedFile.permissions ?? []).length === 0 && !addPermissionDialogOpen && (
                   <Box sx={{ py: 4, textAlign: 'center' }}>
@@ -1905,7 +1862,6 @@ export function Drive() {
                   </Box>
                 )}
                 {pagedFilePermissions.map((permission, idx) => {
-                  const isEditing = selectedPermission?.id === permission.id;
                   const isOwner = permission.role === 'owner';
                   const canSelect = !isOwner;
                   const isSelected = selectedPermissionIds.has(permission.id);
@@ -1914,7 +1870,7 @@ export function Drive() {
                   const isLastDataRow = globalIdx === allPerms.length - 1;
                   return (
                     <ListDataRow key={permission.id} last={isLastDataRow && addPermissionDialogOpen} selected={canSelect && isSelected}>
-                      <Box sx={listCheckboxSx}>
+                      <Box sx={listCheckboxSx} onClick={(e) => e.stopPropagation()}>
                         {canSelect ? (
                           <Checkbox size="small" checked={isSelected} onChange={() => togglePermissionSelected(permission.id, isOwner)} sx={{ p: 0.25 }} />
                         ) : null}
@@ -1933,7 +1889,7 @@ export function Drive() {
                       </Box>
                       <Box sx={permCols.cellSx('email')}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.emailAddress || permission.domain || '')} placement="top">
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
                               ? 'Anyone with link'
                               : permission.emailAddress || permission.domain || permission.id || '—'}
@@ -1949,15 +1905,23 @@ export function Drive() {
                           </Typography>
                         )}
                       </Box>
-                      <Box sx={permCols.cellSx('role')}>
-                        {isEditing ? (
+                      <Box sx={permCols.cellSx('role')} onClick={(e) => e.stopPropagation()}>
+                        {isOwner ? (
+                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                            Owner
+                          </Typography>
+                        ) : (
                           <Select
                             size="small"
-                            value={newRole}
-                            onChange={(e) => setNewRole(e.target.value)}
-                            autoFocus
+                            value={permission.role}
+                            onChange={(e) => {
+                              const role = e.target.value;
+                              if (role !== permission.role) void handleUpdatePermission(permission.id, role);
+                            }}
+                            MenuProps={selectMenuProps}
                             sx={{
                               width: '100%',
+                              maxWidth: 128,
                               height: 30,
                               fontSize: '0.8125rem',
                               fontFamily: T.font,
@@ -1970,43 +1934,6 @@ export function Drive() {
                               </MenuItem>
                             ))}
                           </Select>
-                        ) : (
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
-                            {getFileRoleLabel(permission.role)}
-                          </Typography>
-                        )}
-                      </Box>
-                      <Box sx={listActionsSx}>
-                        {isEditing ? (
-                          <>
-                            <ActionTooltip title="Save role">
-                              <IconButton size="small" onClick={handleUpdatePermission} sx={{ p: 0.5, color: T.accent }}>
-                                <Check size={16} strokeWidth={1.75} />
-                              </IconButton>
-                            </ActionTooltip>
-                            <ActionTooltip title="Cancel">
-                              <IconButton size="small" onClick={() => setSelectedPermission(null)} sx={{ p: 0.5, color: (t) => textTertiary(t) }}>
-                                <X size={16} strokeWidth={1.75} />
-                              </IconButton>
-                            </ActionTooltip>
-                          </>
-                        ) : (
-                          <>
-                            {!isOwner && (
-                              <ActionTooltip title="Change role">
-                                <IconButton size="small" onClick={() => handleOpenPermissionDialog(selectedFile, permission)} sx={{ p: 0.5, color: T.accent }}>
-                                  <Pencil size={16} strokeWidth={1.75} />
-                                </IconButton>
-                              </ActionTooltip>
-                            )}
-                            {!isOwner && (
-                              <ActionTooltip title="Remove">
-                                <IconButton size="small" color="error" onClick={() => handleDeletePermission(selectedFile.id, permission.id)} sx={{ p: 0.5 }}>
-                                  <Trash2 size={16} strokeWidth={1.75} />
-                                </IconButton>
-                              </ActionTooltip>
-                            )}
-                          </>
                         )}
                       </Box>
                     </ListDataRow>
@@ -2130,15 +2057,6 @@ export function Drive() {
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2, borderTop: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}`, gap: 1 }}>
-          {selectedPermission && (
-            <Button
-              variant="contained"
-              onClick={handleUpdatePermission}
-              sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover }, px: 2.5, mr: 'auto' }}
-            >
-              Update Role
-            </Button>
-          )}
           <Button onClick={() => { setPermissionDialogOpen(false); setSelectedPermissionIds(new Set()); }} sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, color: (t) => textSecondary(t), '&:hover': { bgcolor: (t) => pick(t, '#f0f0ec', '#27272a') } }}>
             Done
           </Button>

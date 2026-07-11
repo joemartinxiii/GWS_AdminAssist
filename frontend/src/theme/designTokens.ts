@@ -33,6 +33,9 @@ export const T = {
   shadowLg: '0 4px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)',
 } as const;
 
+/** Shared Lucide size/stroke for toolbar search, filter, refresh icons. */
+export const TOOLBAR_ICON = { size: 17, strokeWidth: 2 } as const;
+
 /** Brighter secondary/tertiary copy for dark surfaces (e.g. #18181b); use via textSecondary / textTertiary helpers */
 export const TDark = {
   textSecondary: '#d4d4d8',

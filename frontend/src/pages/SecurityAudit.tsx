@@ -802,6 +802,8 @@ export function SecurityAudit() {
 
   const ignoredCount = ignoredIds.size;
 
+  const titleCase = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s);
+
   const statusCell = (check: HardeningCheck, showWaivedBadge: boolean) => {
     const waived = ignoredIds.has(check.id);
     return (
@@ -818,9 +820,9 @@ export function SecurityAudit() {
                     ? T.accent
                     : textTertiary(theme)
           }
-          dotTooltip={check.status.toUpperCase()}
+          dotTooltip={titleCase(check.status)}
         >
-          {check.status.toUpperCase()}
+          {titleCase(check.status)}
         </DotLabel>
         {showWaivedBadge && waived && (
           <DotLabel dotColor={textTertiary(theme)} dotTooltip="Excluded from compliance score">
@@ -835,8 +837,8 @@ export function SecurityAudit() {
     const sev = check.severity || 'medium';
     return (
       <Box sx={auditCols.cellSx('severity')}>
-        <DotLabel dotColor={severityColor(sev)} dotTooltip={`Severity: ${sev}`}>
-          {sev.toUpperCase()}
+        <DotLabel dotColor={severityColor(sev)} dotTooltip={`Severity: ${titleCase(sev)}`}>
+          {titleCase(sev)}
         </DotLabel>
       </Box>
     );
@@ -857,9 +859,9 @@ export function SecurityAudit() {
                     ? T.accent
                     : textTertiary(theme)
           }
-          dotTooltip={check.status.toUpperCase()}
+          dotTooltip={titleCase(check.status)}
         >
-          {check.status.toUpperCase()}
+          {titleCase(check.status)}
         </DotLabel>
       </Box>
     );
@@ -869,8 +871,8 @@ export function SecurityAudit() {
     const sev = check.severity || 'medium';
     return (
       <Box sx={auditListCols.cellSx('severity')}>
-        <DotLabel dotColor={severityColor(sev)} dotTooltip={`Severity: ${sev}`}>
-          {sev.toUpperCase()}
+        <DotLabel dotColor={severityColor(sev)} dotTooltip={`Severity: ${titleCase(sev)}`}>
+          {titleCase(sev)}
         </DotLabel>
       </Box>
     );
@@ -879,7 +881,16 @@ export function SecurityAudit() {
   const recommendedTargetInline = (check: HardeningCheck) => {
     const target = check.recommendedValue != null ? String(check.recommendedValue).trim() : '';
     return (
-      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (th) => pick(th, T.text, '#fafafa') }}>
+      <Typography
+        sx={{
+          fontFamily: T.mono,
+          fontSize: '0.75rem',
+          color: (th) => pick(th, T.text, '#fafafa'),
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
         {target || '—'}
       </Typography>
     );
@@ -897,8 +908,9 @@ export function SecurityAudit() {
         sx={{
           fontFamily: T.font,
           fontSize: '0.8125rem',
-          fontWeight: 600,
+          fontWeight: 500,
           color: (th) => pick(th, T.text, '#fafafa'),
+          lineHeight: 1.35,
         }}
         noWrap
       >
@@ -1255,8 +1267,14 @@ export function SecurityAudit() {
                               {statusCell(check, true)}
                               <Box sx={auditCols.cellSx('current')}>
                                 <Typography
-                                  sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}
-                                  noWrap
+                                  sx={{
+                                    fontFamily: T.mono,
+                                    fontSize: '0.75rem',
+                                    color: (t) => textSecondary(t),
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                  }}
                                 >
                                   {String(check.currentValue ?? 'N/A')}
                                 </Typography>
@@ -1302,7 +1320,16 @@ export function SecurityAudit() {
                         {listSeverityCell(check)}
                         {listStatusCell(check)}
                         <Box sx={auditListCols.cellSx('current')}>
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>
+                          <Typography
+                            sx={{
+                              fontFamily: T.mono,
+                              fontSize: '0.75rem',
+                              color: (t) => textSecondary(t),
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
                             {String(check.currentValue ?? 'N/A')}
                           </Typography>
                         </Box>
@@ -1345,7 +1372,16 @@ export function SecurityAudit() {
                         {listSeverityCell(check)}
                         {listStatusCell(check)}
                         <Box sx={auditListCols.cellSx('current')}>
-                          <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>
+                          <Typography
+                            sx={{
+                              fontFamily: T.mono,
+                              fontSize: '0.75rem',
+                              color: (t) => textSecondary(t),
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
                             {String(check.currentValue ?? 'N/A')}
                           </Typography>
                         </Box>

@@ -21,13 +21,13 @@ import {
   Alert,
 } from '@mui/material';
 import type { AlertColor } from '@mui/material';
-import { Plus, Trash2, RefreshCw, ListFilter } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { ActionTooltip } from '../components/ActionTooltip';
 import { FilterToken } from '../components/ui/FilterToken';
-import { T, pick, textSecondary, textTertiary, exportToolbarButtonSx, selectMenuProps, dialogPaperSx } from '../theme/designTokens';
+import { T, pick, textSecondary, textTertiary, exportToolbarButtonSx, selectMenuProps, dialogPaperSx, TOOLBAR_ICON } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
@@ -433,14 +433,14 @@ export function EmailDelegation() {
               '&:hover': { bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)') },
             })}
           >
-            <ListFilter size={18} strokeWidth={1.75} />
+            <SlidersHorizontal size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />
           </IconButton>
         </ActionTooltip>
 
         <ActionTooltip title="Refresh data">
           <span>
             <IconButton size="small" onClick={fetchAllDelegations} disabled={loading} aria-label="Refresh data" sx={{ color: (t) => textSecondary(t) }}>
-              {loading ? <CircularProgress size={20} /> : <RefreshCw size={18} strokeWidth={1.75} />}
+              {loading ? <CircularProgress size={20} /> : <RefreshCw size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />}
             </IconButton>
           </span>
         </ActionTooltip>

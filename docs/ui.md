@@ -65,7 +65,7 @@ Data views use bordered flex lists (not legacy `Table`/`Paper` grids) for consis
 
 ## 3. Layout, theme, and icons
 
-- **Page frame (laptop-first):** `Layout` main content sits in a centered column (`maxWidth: 1440`) with **matching side and top padding** (and generous bottom). Prefer this global air over per-page hacks — Notion-style breathing room, not edge-to-edge chrome.
+- **Page frame (laptop-first):** `Layout` main content sits in a centered column (`maxWidth: 1440`) with **matching side and top padding** (`px`/`pt` scale `4→5→6→8`, generous bottom). Prefer this global air over per-page hacks — Notion-style breathing room, not edge-to-edge chrome. Do not shrink top padding relative to sides.
 - **`Layout`** loads **Plus Jakarta Sans** via **`FontLinks`** and uses the app **`ThemeProvider`** so portaled menus and selects inherit **`T.font`**.
 - **`FilterToken`** (`frontend/src/components/ui/FilterToken`) — inline filter chips used in the toggled filter strip (see §6).
 - **`ConfirmDialog`** — standard confirm/cancel typography. Prefer the **`useConfirm`** hook (`frontend/src/hooks/useConfirm.tsx`) over native `window.confirm()`.

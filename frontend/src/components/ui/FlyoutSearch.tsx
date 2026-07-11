@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { Box, IconButton, InputAdornment, TextField } from '@mui/material';
 import { Search, X } from 'lucide-react';
 import { ActionTooltip } from '../ActionTooltip';
-import { T, pick, textSecondary, textTertiary } from '../../theme/designTokens';
+import { T, pick, textSecondary, textTertiary, TOOLBAR_ICON } from '../../theme/designTokens';
 
 /** Expanded field width — matches Groups member search flyout. */
 export const FLYOUT_SEARCH_WIDTH = 280;
@@ -103,14 +103,16 @@ export const FlyoutSearch = forwardRef<FlyoutSearchHandle, FlyoutSearchProps>(fu
           aria-label={tooltip}
           aria-expanded={expanded}
           sx={(theme) => ({
-            p: 0.5,
+            p: 0.625,
+            width: 32,
+            height: 32,
             color: expanded || value ? T.accent : textSecondary(theme),
             bgcolor: expanded ? pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)') : 'transparent',
             borderRadius: T.radiusSm,
             '&:hover': { bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)') },
           })}
         >
-          <Search size={18} strokeWidth={1.75} />
+          <Search size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />
         </IconButton>
       </ActionTooltip>
       <Box

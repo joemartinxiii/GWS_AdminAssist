@@ -27,7 +27,7 @@ import {
 import {
   Trash2,
   UserPlus,
-  ListFilter,
+  SlidersHorizontal,
   RefreshCw,
   Calendar,
   X,
@@ -40,7 +40,7 @@ import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { ActionTooltip } from '../components/ActionTooltip';
-import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx, dialogDangerButtonSx, dialogActionsSx, dialogCancelButtonSx, dialogSecondaryButtonSx, dialogPrimaryButtonSx } from '../theme/designTokens';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx, dialogDangerButtonSx, dialogActionsSx, dialogCancelButtonSx, dialogSecondaryButtonSx, dialogPrimaryButtonSx, TOOLBAR_ICON } from '../theme/designTokens';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
@@ -841,7 +841,7 @@ export function Groups() {
                 '&:hover': { bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)') },
               })}
             >
-              <ListFilter size={18} strokeWidth={1.75} />
+              <SlidersHorizontal size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />
             </IconButton>
           </ActionTooltip>
         )}
@@ -862,7 +862,7 @@ export function Groups() {
             aria-label="Refresh data"
             sx={{ color: (t: any) => textSecondary(t) }}
           >
-            <RefreshCw size={18} strokeWidth={1.75} />
+            <RefreshCw size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />
           </IconButton>
         </ActionTooltip>
         <Box sx={{ flex: 1 }} />
@@ -1135,12 +1135,32 @@ export function Groups() {
       )}
 
       <Dialog open={editDialogOpen} onClose={handleCloseEditDialog} maxWidth="md" fullWidth PaperProps={{ sx: (th) => dialogPaperSx(th) }}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
+        <DialogTitle
+          sx={(th) => ({
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 1.5,
+            px: 2.5,
+            py: 2,
+            borderBottom: `1px solid ${pick(th, T.borderSubtle, '#27272a')}`,
+          })}
+        >
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>{selectedGroup?.name}</Typography>
+            <Typography
+              sx={{
+                fontFamily: T.font,
+                fontWeight: 700,
+                fontSize: '1.125rem',
+                letterSpacing: '-0.02em',
+                lineHeight: 1.25,
+                color: (t) => pick(t, T.text, '#fafafa'),
+              }}
+            >
+              {selectedGroup?.name}
+            </Typography>
             <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textTertiary(t), mt: 0.5 }}>
               {selectedGroup?.email}
-              {members.length > 0 || !loadingMembers ? ` · ${members.length} member${members.length === 1 ? '' : 's'}` : ''}
+              {!loadingMembers ? ` · ${members.length} member${members.length === 1 ? '' : 's'}` : ''}
             </Typography>
           </Box>
           {selectedGroup?.email && (
@@ -1151,17 +1171,17 @@ export function Groups() {
               target="_blank"
               rel="noopener noreferrer"
               endIcon={<ExternalLink size={14} strokeWidth={1.75} />}
-              sx={(th) => ({ ...dialogSecondaryButtonSx(th), height: 28, fontSize: '0.75rem', px: 1.25 })}
+              sx={(th) => ({ ...dialogSecondaryButtonSx(th), height: 28, fontSize: '0.75rem', px: 1.25, flexShrink: 0 })}
             >
               Open in Admin
             </Button>
           )}
-          <IconButton size="small" onClick={handleCloseEditDialog} aria-label="Close" sx={{ color: (t) => textTertiary(t) }}>
+          <IconButton size="small" onClick={handleCloseEditDialog} aria-label="Close" sx={{ color: (t) => textTertiary(t), flexShrink: 0 }}>
             <X size={16} strokeWidth={1.75} />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ pt: '20px !important' }}>
-          <Box display="flex" alignItems="center" gap={1} mb={1.5} flexWrap="wrap">
+        <DialogContent sx={{ pt: '16px !important', px: 2.5, pb: 1 }}>
+          <Box display="flex" alignItems="center" gap={1} mb={1.75} flexWrap="wrap">
             <FlyoutSearch
               value={memberSearchTerm}
               onChange={setMemberSearchTerm}
@@ -1173,8 +1193,8 @@ export function Groups() {
               size="small"
               variant="contained"
               onClick={() => setAddMemberInlineOpen(true)}
-              startIcon={<Plus size={15} strokeWidth={1.75} />}
-              sx={(th) => ({ ...dialogPrimaryButtonSx(th), height: 30, px: 1.5 })}
+              startIcon={<Plus size={15} strokeWidth={2} />}
+              sx={(th) => ({ ...dialogPrimaryButtonSx(th), height: 32, px: 1.5 })}
             >
               Add members
             </Button>
@@ -1232,14 +1252,23 @@ export function Groups() {
                 const external = member.type === 'EXTERNAL' || /external/i.test(String(member.status || ''));
                 const roleLabel =
                   member.role === 'OWNER' ? 'Owner' : member.role === 'MANAGER' ? 'Manager' : 'Member';
+                const directoryUser = users.find(
+                  (u) => u.primaryEmail.toLowerCase() === member.email.toLowerCase()
+                );
+                const displayName = directoryUser?.name?.fullName || member.email;
+                const secondaryLine = directoryUser?.name?.fullName
+                  ? member.email
+                  : external
+                    ? 'External'
+                    : null;
                 return (
                 <ListDataRow key={member.id} last={globalMidx === filteredMembersForDialog.length - 1 && !addMemberInlineOpen}>
                   <Checkbox size="small" checked={selectedMembers.includes(member.email)} onChange={() => handleSelectMember(member.email)} sx={{ p: 0.25, mr: 0.5 }} />
                   <Box sx={memberCols.cellSx('member')}>
                     <Typography
                       sx={{
-                        fontFamily: T.font,
-                        fontSize: '0.8125rem',
+                        fontFamily: directoryUser?.name?.fullName ? T.font : T.mono,
+                        fontSize: directoryUser?.name?.fullName ? '0.8125rem' : '0.75rem',
                         fontWeight: 500,
                         color: (t) => pick(t, T.text, '#fafafa'),
                         whiteSpace: 'nowrap',
@@ -1248,11 +1277,22 @@ export function Groups() {
                         lineHeight: 1.3,
                       }}
                     >
-                      {member.email}
+                      {displayName}
                     </Typography>
-                    {external && (
-                      <Typography sx={{ fontFamily: T.mono, fontSize: '0.6875rem', color: T.warning, lineHeight: 1.3, mt: 0.15 }}>
-                        External
+                    {secondaryLine && (
+                      <Typography
+                        sx={{
+                          fontFamily: T.mono,
+                          fontSize: '0.75rem',
+                          color: external && !directoryUser ? T.warning : (t) => textTertiary(t),
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          lineHeight: 1.3,
+                          mt: 0.15,
+                        }}
+                      >
+                        {secondaryLine}
                       </Typography>
                     )}
                   </Box>

@@ -666,8 +666,10 @@ export function Layout({ children }: LayoutProps) {
             maxWidth: 1440,
             mx: 'auto',
             boxSizing: 'border-box',
+            // Matching top + side padding (Notion-style frame). Top was reduced
+            // during shell work and lost the premium air under the app bar.
             px: { xs: 4, sm: 5, md: 6, lg: 8 },
-            pt: { xs: 3.5, sm: 4, md: 4.5 },
+            pt: { xs: 4, sm: 5, md: 6, lg: 8 },
             pb: { xs: 5, sm: 6, md: 8, lg: 10 },
           }}
         >

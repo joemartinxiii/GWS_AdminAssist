@@ -26,7 +26,7 @@ import {
   Pencil,
   UserPlus,
   Calendar as CalendarIcon,
-  ListFilter,
+  SlidersHorizontal,
   ArrowLeftRight,
   RefreshCw,
   Search,
@@ -45,7 +45,7 @@ import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { DateTimePicker } from '../components/DateTimePicker';
 import { ActionTooltip } from '../components/ActionTooltip';
 import { FilterToken } from '../components/ui/FilterToken';
-import { T, pick, textSecondary, textTertiary, dialogPaperSx } from '../theme/designTokens';
+import { T, pick, textSecondary, textTertiary, dialogPaperSx, TOOLBAR_ICON } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx } from '../components/ui/ListShell';
@@ -1030,7 +1030,7 @@ export function Calendar() {
               aria-label="Refresh data"
               sx={{ color: (t: any) => textSecondary(t) }}
             >
-              {loading ? <CircularProgress size={18} /> : <RefreshCw size={18} strokeWidth={1.75} />}
+              {loading ? <CircularProgress size={18} /> : <RefreshCw size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />}
             </IconButton>
           </span>
         </ActionTooltip>
@@ -1055,7 +1055,7 @@ export function Calendar() {
                 '&:hover': { bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)') },
               })}
             >
-              <ListFilter size={18} strokeWidth={1.75} />
+              <SlidersHorizontal size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />
             </IconButton>
           </ActionTooltip>
         )}

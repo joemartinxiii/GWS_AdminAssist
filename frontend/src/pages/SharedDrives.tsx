@@ -27,7 +27,7 @@ import {
   Trash2,
   Plus,
   RefreshCw,
-  ListFilter,
+  SlidersHorizontal,
   Calendar,
   ExternalLink,
   X,
@@ -39,11 +39,11 @@ import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { ActionTooltip } from '../components/ActionTooltip';
-import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx } from '../theme/designTokens';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx, TOOLBAR_ICON } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
-import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listCheckboxSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
 import { FlyoutSearch } from '../components/ui/FlyoutSearch';
 import { useResizableColumns } from '../hooks/useResizableColumns';
@@ -255,10 +255,11 @@ export function SharedDrives() {
     { name: 260, hidden: 100, createdTime: 120, sharing: 100, members: 88 },
     { name: 140, hidden: 80, createdTime: 88, sharing: 80, members: 64 }
   );
+  // v2: no Actions column (bulk remove via checkbox) — keeps modal within md width.
   const permCols = useResizableColumns(
-    'shared-drives-perms',
-    { type: 80, name: 160, email: 240, access: 100, role: 100 },
-    { type: 64, name: 100, email: 140, access: 80, role: 80 }
+    'shared-drives-perms-v2',
+    { type: 72, name: 140, email: 200, access: 96, role: 110 },
+    { type: 56, name: 90, email: 120, access: 72, role: 80 }
   );
 
   useEffect(() => {
@@ -554,29 +555,6 @@ export function SharedDrives() {
     }
   };
 
-  const handleRemovePermission = async (permissionId: string) => {
-    if (!selectedDrive) return;
-    if (!confirm('Are you sure you want to remove this permission?')) return;
-
-    try {
-      await apiClient.delete(`/drive/shared-drives/${selectedDrive.id}/permissions/${permissionId}`);
-      setPermissions((prev) => prev.filter((p) => p.id !== permissionId));
-      setSelectedPermissionIds((prev) => {
-        const next = new Set(prev);
-        next.delete(permissionId);
-        return next;
-      });
-      setSnackbar({ open: true, message: 'Permission removed successfully', severity: 'success' });
-    } catch (error: any) {
-      console.error('Error removing permission:', error);
-      setSnackbar({
-        open: true,
-        message: getApiErrorMessage(error, 'Failed to remove permission'),
-        severity: 'error',
-      });
-    }
-  };
-
   const handleBulkRemovePermissions = async () => {
     if (!selectedDrive || selectedPermissionIds.size === 0) return;
     const count = selectedPermissionIds.size;
@@ -690,13 +668,13 @@ export function SharedDrives() {
               '&:hover': { bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.2)') },
             })}
           >
-            <ListFilter size={18} strokeWidth={1.75} />
+            <SlidersHorizontal size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />
           </IconButton>
         </ActionTooltip>
 
         <ActionTooltip title="Refresh data">
           <IconButton size="small" onClick={fetchSharedDrives} aria-label="Refresh data" sx={{ color: (t: any) => textSecondary(t) }}>
-            <RefreshCw size={18} strokeWidth={1.75} />
+            <RefreshCw size={TOOLBAR_ICON.size} strokeWidth={TOOLBAR_ICON.strokeWidth} />
           </IconButton>
         </ActionTooltip>
 
@@ -840,8 +818,7 @@ export function SharedDrives() {
               <ColumnHeader label="Created" columnId="createdTime" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('createdTime')} />
               <ColumnHeader label="Sharing" columnId="sharing" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('sharing')} />
               <ColumnHeader label="Members" columnId="members" sortConfig={sortConfig} onSort={handleSort} align="right" {...cols.headerProps('members')} />
-              <ColumnHeader label="" columnId="op" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={40} align="center" pinEnd />
-              <ColumnHeader label="" columnId="__open" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={36} align="right" />
+              <ColumnHeader label="" columnId="__open" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={36} align="right" pinEnd />
             </ListHeaderRow>
             {tableData.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -892,22 +869,7 @@ export function SharedDrives() {
                         {typeof count === 'number' ? count : countsLoading ? '…' : '—'}
                       </Typography>
                     </Box>
-                    <Box
-                      sx={{ ...listActionsSx, width: 'auto', minWidth: 0, flex: '0 0 auto', gap: 0.25 }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <ActionTooltip title="Open in Google Drive">
-                        <IconButton
-                          size="small"
-                          onClick={() => window.open(getSharedDriveUrl(drive.id), '_blank', 'noopener,noreferrer')}
-                          sx={{ p: 0.5, color: T.accent }}
-                          aria-label="Open in Drive"
-                        >
-                          <ExternalLink size={16} strokeWidth={1.75} />
-                        </IconButton>
-                      </ActionTooltip>
-                    </Box>
-                    <Box sx={{ width: 36, flex: '0 0 36px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <Box sx={{ width: 36, flex: '0 0 36px', ml: 'auto', display: 'flex', justifyContent: 'flex-end' }}>
                       <ListChevron />
                     </Box>
                   </ListDataRow>
@@ -942,13 +904,38 @@ export function SharedDrives() {
         fullWidth
         PaperProps={{ sx: (th) => dialogPaperSx(th) }}
       >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>{selectedDrive?.name}</Typography>
             <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t), mt: 0.25 }}>Details & Permissions</Typography>
           </Box>
+          {selectedDrive?.id && (
+            <Button
+              size="small"
+              component="a"
+              href={getSharedDriveUrl(selectedDrive.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              endIcon={<ExternalLink size={14} strokeWidth={1.75} />}
+              sx={(th) => ({
+                fontFamily: T.font,
+                textTransform: 'none',
+                borderRadius: T.radius,
+                fontSize: '0.75rem',
+                fontWeight: 500,
+                height: 28,
+                px: 1.25,
+                flexShrink: 0,
+                color: pick(th, T.text, '#e8eaed'),
+                border: `1px solid ${pick(th, T.border, '#5f6368')}`,
+                '&:hover': { borderColor: T.accent, bgcolor: pick(th, T.accentSoft, 'rgba(26, 115, 232, 0.12)') },
+              })}
+            >
+              Open in Drive
+            </Button>
+          )}
         </DialogTitle>
-        <DialogContent sx={{ pt: '20px !important' }}>
+        <DialogContent sx={{ pt: '20px !important', overflowX: 'hidden' }}>
           {selectedDrive && (
             <Box sx={{ mb: 2 }}>
               <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1 }}>Drive details</Typography>
@@ -1035,7 +1022,6 @@ export function SharedDrives() {
                   <ColumnHeader label="Email" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('email')} />
                   <ColumnHeader label="Access" columnId="px" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('access')} />
                   <ColumnHeader label="Role" columnId="pr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('role')} />
-                  <ColumnHeader label="Actions" columnId="pa" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} align="right" pinEnd />
                 </ListHeaderRow>
                 {permissions.length === 0 && !addPermissionDialogOpen && (
                   <Box sx={{ py: 4, textAlign: 'center' }}>
@@ -1080,13 +1066,6 @@ export function SharedDrives() {
                     </Box>
                     <Box sx={permCols.cellSx('role')}>
                       <DotLabel dotColor={getRoleDotColor(permission.role)}>{permission.role}</DotLabel>
-                    </Box>
-                    <Box sx={listActionsSx}>
-                      <ActionTooltip title="Remove">
-                        <IconButton size="small" color="error" onClick={() => handleRemovePermission(permission.id)} sx={{ p: 0.5 }}>
-                          <Trash2 size={16} strokeWidth={1.75} />
-                        </IconButton>
-                      </ActionTooltip>
                     </Box>
                   </ListDataRow>
                   );
