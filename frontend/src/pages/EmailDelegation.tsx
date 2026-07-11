@@ -21,13 +21,26 @@ import {
   Alert,
 } from '@mui/material';
 import type { AlertColor } from '@mui/material';
-import { Plus, Trash2, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, SlidersHorizontal, X, ExternalLink } from 'lucide-react';
 import { apiClient } from '../services/api.client';
 import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { ActionTooltip } from '../components/ActionTooltip';
 import { FilterToken } from '../components/ui/FilterToken';
-import { T, pick, textSecondary, textTertiary, exportToolbarButtonSx, selectMenuProps, dialogPaperSx, TOOLBAR_ICON } from '../theme/designTokens';
+import {
+  T,
+  pick,
+  textSecondary,
+  textTertiary,
+  exportToolbarButtonSx,
+  selectMenuProps,
+  dialogPaperSx,
+  dialogActionsSx,
+  dialogCancelButtonSx,
+  dialogDangerButtonSx,
+  dialogSecondaryButtonSx,
+  TOOLBAR_ICON,
+} from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
@@ -38,6 +51,7 @@ import { useTheme } from '@mui/material/styles';
 import { DotLabel } from '../components/StatusDot';
 import { useConfirm } from '../hooks/useConfirm';
 import { getApiErrorMessage } from '../utils/apiError';
+import { usePermissions } from '../hooks/usePermissions';
 
 interface AllDelegation {
   userEmail: string;
@@ -70,11 +84,13 @@ export function EmailDelegation() {
   const muiTheme = useTheme();
   const isMdUp = useMediaQuery(muiTheme.breakpoints.up('md'));
   const { confirm, confirmDialog } = useConfirm();
+  const { canTakeAction, hasPermission } = usePermissions();
   const [allDelegations, setAllDelegations] = useState<AllDelegation[]>([]);
   const [coverage, setCoverage] = useState<DelegationCoverage | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [detailDelegation, setDetailDelegation] = useState<AllDelegation | null>(null);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newDelegateEmail, setNewDelegateEmail] = useState('');
   const [directorySuggestions, setDirectorySuggestions] = useState<string[]>([]);
@@ -285,6 +301,42 @@ export function EmailDelegation() {
     } catch (err: any) {
       console.error(err);
       showSnackbar(getApiErrorMessage(err, 'Failed to remove one or more delegations.'), 'error');
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const handleRemoveOne = async (d: AllDelegation) => {
+    if (!(await confirm({
+      title: 'Remove this delegation?',
+      message: (
+        <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
+          <Box component="span" sx={{ fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa') }}>{d.delegateEmail}</Box>
+          {' '}will lose access to{' '}
+          <Box component="span" sx={{ fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa') }}>{d.userEmail}</Box>
+          . This cannot be undone from AdminAssist.
+        </Typography>
+      ),
+      entities: [{ name: d.delegateEmail, detail: `→ ${d.userEmail}` }],
+      danger: true,
+      confirmLabel: 'Remove',
+    }))) return;
+    setRemoving(true);
+    try {
+      await apiClient.delete(
+        `/gmail/${encodeURIComponent(d.userEmail)}/delegations/${encodeURIComponent(d.delegateEmail)}`
+      );
+      setDetailDelegation(null);
+      setSelectedDelegations((prev) => {
+        const next = new Set(prev);
+        next.delete(delegationKey(d));
+        return next;
+      });
+      fetchAllDelegations();
+      showSnackbar('Delegation removed.', 'success');
+    } catch (err: any) {
+      console.error(err);
+      showSnackbar(getApiErrorMessage(err, 'Failed to remove delegation.'), 'error');
     } finally {
       setRemoving(false);
     }
@@ -586,8 +638,13 @@ export function EmailDelegation() {
               </Box>
             ) : (
               data.map((delegation, index) => (
-                <ListDataRow key={`${delegation.userEmail}-${delegation.delegateEmail}-${index}`} last={index === data.length - 1} selected={isSelected(delegation)}>
-                  <Box sx={listCheckboxSx}>
+                <ListDataRow
+                  key={`${delegation.userEmail}-${delegation.delegateEmail}-${index}`}
+                  last={index === data.length - 1}
+                  selected={isSelected(delegation)}
+                  onClick={() => setDetailDelegation(delegation)}
+                >
+                  <Box sx={listCheckboxSx} onClick={(e) => e.stopPropagation()}>
                     <Checkbox size="small" checked={isSelected(delegation)} onChange={() => handleSelectOne(delegation)} sx={{ p: 0.25 }} />
                   </Box>
                   <Box sx={cols.cellSx('userEmail')}>
@@ -630,6 +687,178 @@ export function EmailDelegation() {
           )}
         </>
       )}
+
+      <Dialog
+        open={Boolean(detailDelegation)}
+        onClose={() => setDetailDelegation(null)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: (th) => dialogPaperSx(th) }}
+      >
+        {detailDelegation && (
+          <>
+            <DialogTitle
+              sx={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 1.5,
+                pb: 1.5,
+                borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}`,
+              }}
+            >
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography
+                  sx={{
+                    fontFamily: T.font,
+                    fontWeight: 700,
+                    fontSize: '1.125rem',
+                    letterSpacing: '-0.02em',
+                    color: (t) => pick(t, T.text, '#fafafa'),
+                  }}
+                >
+                  Email delegation
+                </Typography>
+                <Typography
+                  sx={{
+                    fontFamily: T.mono,
+                    fontSize: '0.75rem',
+                    color: (t) => textTertiary(t),
+                    mt: 0.5,
+                  }}
+                >
+                  {detailDelegation.userEmail} → {detailDelegation.delegateEmail}
+                </Typography>
+              </Box>
+              <Button
+                size="small"
+                component="a"
+                href={`https://admin.google.com/ac/users/${encodeURIComponent(detailDelegation.userEmail)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                endIcon={<ExternalLink size={14} strokeWidth={1.75} />}
+                sx={(th) => ({ ...dialogSecondaryButtonSx(th), height: 28, fontSize: '0.75rem', px: 1.25 })}
+              >
+                Open in Admin
+              </Button>
+              <IconButton
+                size="small"
+                onClick={() => setDetailDelegation(null)}
+                aria-label="Close"
+                sx={{ color: (t) => textTertiary(t) }}
+              >
+                <X size={16} strokeWidth={1.75} />
+              </IconButton>
+            </DialogTitle>
+            <DialogContent sx={{ pt: '20px !important' }}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                  gap: 2,
+                  mb: 2,
+                }}
+              >
+                <Box>
+                  <Typography
+                    sx={{
+                      fontFamily: T.font,
+                      fontSize: '0.6875rem',
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      color: (t) => textTertiary(t),
+                      mb: 0.75,
+                    }}
+                  >
+                    Mailbox owner
+                  </Typography>
+                  <Typography sx={{ fontFamily: T.mono, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                    {detailDelegation.userEmail}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography
+                    sx={{
+                      fontFamily: T.font,
+                      fontSize: '0.6875rem',
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      color: (t) => textTertiary(t),
+                      mb: 0.75,
+                    }}
+                  >
+                    Delegate
+                  </Typography>
+                  <Typography sx={{ fontFamily: T.mono, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                    {detailDelegation.delegateEmail}
+                  </Typography>
+                </Box>
+              </Box>
+              <Box>
+                <Typography
+                  sx={{
+                    fontFamily: T.font,
+                    fontSize: '0.6875rem',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    color: (t) => textTertiary(t),
+                    mb: 0.75,
+                  }}
+                >
+                  Status
+                </Typography>
+                <DotLabel
+                  dotColor={
+                    detailDelegation.verificationStatus === 'accepted'
+                      ? T.success
+                      : detailDelegation.verificationStatus === 'rejected'
+                        ? T.danger
+                        : T.warning
+                  }
+                >
+                  {detailDelegation.verificationStatus}
+                </DotLabel>
+              </Box>
+              <Typography
+                sx={{
+                  fontFamily: T.font,
+                  fontSize: '0.8125rem',
+                  color: (t) => textSecondary(t),
+                  mt: 2.5,
+                  lineHeight: 1.5,
+                }}
+              >
+                The delegate can read and send mail as the mailbox owner. Remove the delegation here or manage it in
+                Google Admin Console.
+              </Typography>
+            </DialogContent>
+            <DialogActions sx={(th) => dialogActionsSx(th)}>
+              {canTakeAction && hasPermission('gmail.delegation.manage') && (
+                <Button
+                  onClick={() => void handleRemoveOne(detailDelegation)}
+                  disabled={removing}
+                  startIcon={removing ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={15} strokeWidth={1.75} />}
+                  sx={(th) => ({
+                    ...dialogDangerButtonSx(th),
+                    bgcolor: 'transparent',
+                    color: '#fca5a5',
+                    border: '1px solid rgba(220, 38, 38, 0.45)',
+                    '&:hover': { bgcolor: 'rgba(220, 38, 38, 0.12)', boxShadow: 'none' },
+                  })}
+                >
+                  Remove
+                </Button>
+              )}
+              <Box sx={{ flex: 1 }} />
+              <Button onClick={() => setDetailDelegation(null)} sx={(th) => dialogCancelButtonSx(th)}>
+                Close
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
 
       <Dialog
         open={dialogOpen}

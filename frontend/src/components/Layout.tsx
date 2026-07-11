@@ -669,7 +669,8 @@ export function Layout({ children }: LayoutProps) {
             mx: 'auto',
             boxSizing: 'border-box',
             px: { xs: 3, sm: 4, md: 5, lg: 6 },
-            pt: { xs: 3, sm: 4, md: 5, lg: 6 },
+            // Extra top air vs sides — content shouldn't sit under the AppBar.
+            pt: { xs: 4, sm: 5, md: 6, lg: 8 },
             pb: { xs: 5, sm: 6, md: 8, lg: 10 },
           }}
         >

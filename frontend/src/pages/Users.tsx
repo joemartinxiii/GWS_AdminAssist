@@ -80,6 +80,7 @@ interface UserFilters {
   status: string;
   role: string;
   twoFA: string;
+  orgUnit: string;
   createdFrom: string;
   createdTo: string;
   lastLoginFrom: string;
@@ -195,7 +196,7 @@ export function Users() {
   const [usersWithout2FAData, setUsersWithout2FAData] = useState<any>(null);
   const [usersWithout2FALoading, setUsersWithout2FALoading] = useState(false);
   const [filters, setFilters] = useState<UserFilters>({
-    search: '', status: '', role: '', twoFA: '',
+    search: '', status: '', role: '', twoFA: '', orgUnit: '',
     createdFrom: '', createdTo: '', lastLoginFrom: '', lastLoginTo: '',
   });
   const searchFlyoutRef = useRef<FlyoutSearchHandle>(null);
@@ -373,6 +374,13 @@ export function Users() {
         return true;
       });
     }
+    if (filters.orgUnit && filters.orgUnit !== '/') {
+      const ou = filters.orgUnit;
+      f = f.filter((u) => {
+        const path = u.orgUnitPath || '/';
+        return path === ou || path.startsWith(`${ou}/`);
+      });
+    }
     if (filters.createdFrom || filters.createdTo) {
       const s = new Date(filters.createdFrom || filters.createdTo); s.setHours(0, 0, 0, 0);
       const e = new Date(filters.createdTo || filters.createdFrom); e.setHours(23, 59, 59, 999);
@@ -388,7 +396,7 @@ export function Users() {
   };
 
   const handleFilterChange = (key: keyof UserFilters, value: string) => setFilters((p) => ({ ...p, [key]: value }));
-  const clearFilters = () => setFilters({ search: '', status: '', role: '', twoFA: '', createdFrom: '', createdTo: '', lastLoginFrom: '', lastLoginTo: '' });
+  const clearFilters = () => setFilters({ search: '', status: '', role: '', twoFA: '', orgUnit: '', createdFrom: '', createdTo: '', lastLoginFrom: '', lastLoginTo: '' });
   const hasActiveFilters = () => Object.entries(filters).some(([k, v]) => k !== 'search' && v && v.trim() !== '');
 
   const activeFilterLabels = useMemo(() => {
@@ -396,10 +404,14 @@ export function Users() {
     if (filters.status) tokens.push({ label: filters.status === 'active' ? 'Active' : 'Suspended', key: 'status' });
     if (filters.role) tokens.push({ label: filters.role === 'admin' ? 'Admins' : 'People', key: 'role' });
     if (filters.twoFA) tokens.push({ label: filters.twoFA === 'enrolled' ? '2FA enrolled' : filters.twoFA === 'enforced' ? '2FA enforced' : 'No 2FA', key: 'twoFA' });
+    if (filters.orgUnit) {
+      const ou = organizationalUnits.find((o) => o.orgUnitPath === filters.orgUnit);
+      tokens.push({ label: ou ? `OU: ${ou.displayName}` : `OU: ${filters.orgUnit}`, key: 'orgUnit' });
+    }
     if (filters.createdFrom) tokens.push({ label: `Created ${filters.createdFrom}${filters.createdTo && filters.createdTo !== filters.createdFrom ? ` \u2013 ${filters.createdTo}` : ''}`, key: 'createdFrom' });
     if (filters.lastLoginFrom) tokens.push({ label: `Login ${filters.lastLoginFrom}${filters.lastLoginTo && filters.lastLoginTo !== filters.lastLoginFrom ? ` \u2013 ${filters.lastLoginTo}` : ''}`, key: 'lastLoginFrom' });
     return tokens;
-  }, [filters]);
+  }, [filters, organizationalUnits]);
 
   const getSortValue = (u: User, key: SortKey): string | number => {
     switch (key) {
@@ -886,7 +898,7 @@ export function Users() {
             </Box>
 
             {/* Filter panel (collapsible) */}
-            <Box sx={{ overflow: 'hidden', maxHeight: filtersVisible ? 320 : 0, transition: 'max-height 0.25s ease, opacity 0.2s ease', opacity: filtersVisible ? 1 : 0, mb: filtersVisible ? 2 : 0 }}>
+            <Box sx={{ overflow: 'hidden', maxHeight: filtersVisible ? 400 : 0, transition: 'max-height 0.25s ease, opacity 0.2s ease', opacity: filtersVisible ? 1 : 0, mb: filtersVisible ? 2 : 0 }}>
               <Box sx={(theme) => ({
                 display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center',
                 p: 1.5, borderRadius: T.radius, border: `1px solid ${pick(theme, T.border, '#3f3f46')}`, bgcolor: pick(theme, T.surface, '#27272a'),
@@ -929,6 +941,30 @@ export function Users() {
                     <MenuItem value="enrolled">Enrolled</MenuItem>
                     <MenuItem value="enforced">Enforced</MenuItem>
                     <MenuItem value="none">Not enrolled</MenuItem>
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 180 }}>
+                  <Select
+                    value={filters.orgUnit}
+                    displayEmpty
+                    disabled={loadingOrgUnits}
+                    renderValue={(v) => {
+                      if (!v) return 'Org unit';
+                      const ou = organizationalUnits.find((o) => o.orgUnitPath === v);
+                      return ou ? ou.displayName : v;
+                    }}
+                    onChange={(e) => handleFilterChange('orgUnit', e.target.value)}
+                    MenuProps={selectMenuProps}
+                    sx={{ fontFamily: T.font, fontSize: '0.8125rem', borderRadius: T.radiusSm }}
+                  >
+                    <MenuItem value="">Any</MenuItem>
+                    {organizationalUnits
+                      .filter((ou) => ou.orgUnitPath !== '/')
+                      .map((ou) => (
+                        <MenuItem key={ou.orgUnitPath} value={ou.orgUnitPath}>
+                          <Box sx={{ pl: Math.min(ou.level, 4) * 1.5 }}>{ou.displayName}</Box>
+                        </MenuItem>
+                      ))}
                   </Select>
                 </FormControl>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>

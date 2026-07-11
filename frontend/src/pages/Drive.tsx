@@ -261,12 +261,14 @@ export function Drive() {
   const searchCols = useResizableColumns(
     'drive-search',
     { name: 240, owner: 180, created: 110, modified: 110, size: 88, location: 160 },
-    { name: 140, owner: 120, created: 80, modified: 80, size: 64, location: 100 }
+    { name: 140, owner: 120, created: 80, modified: 80, size: 64, location: 100 },
+    { resizableIds: ['name'] }
   );
   const auditCols = useResizableColumns(
     'drive-external',
     { name: 240, owner: 180, sharedWith: 220, modified: 110, location: 160 },
-    { name: 140, owner: 120, sharedWith: 140, modified: 80, location: 100 }
+    { name: 140, owner: 120, sharedWith: 140, modified: 80, location: 100 },
+    { resizableIds: ['name'] }
   );
 
   // Drive Search tab (org-wide, on-demand — no auto-load).
@@ -1754,9 +1756,9 @@ export function Drive() {
           setPermissionDialogOpen(false);
           setSelectedPermissionIds(new Set());
         }}
-        maxWidth="md"
+        maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: (th) => dialogPaperSx(th) }}
+        PaperProps={{ sx: (th) => ({ ...dialogPaperSx(th), maxWidth: 680 }) }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>

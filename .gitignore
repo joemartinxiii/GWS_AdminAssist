@@ -50,6 +50,10 @@ service-account*.json
 
 # Local scratch
 .tmp-origin-check/
+tmp-product-feel-*.html
+tmp-product-feel-*.md
+tmp-CURSOR-*.md
+tmp-shadcn-*.css
 
 # Session handoff (private — never commit or push)
 /todos.md

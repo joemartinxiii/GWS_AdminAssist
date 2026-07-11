@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-/** Bump when default widths change so users pick up new sensible defaults. */
-const STORAGE_PREFIX = 'gws-col-widths:v2:';
+/** Bump when default widths or resize policy change so stale local sizes are dropped. */
+const STORAGE_PREFIX = 'gws-col-widths:v3:';
 const DEFAULT_MIN = 64;
 
 function loadStored(tableId: string): Record<string, number> | null {
@@ -28,6 +28,14 @@ function saveStored(tableId: string, widths: Record<string, number>) {
   }
 }
 
+export type FixedColumnsOptions = {
+  /**
+   * Column ids that may be drag-resized. Default: none (all widths fixed).
+   * Drive file lists pass `['name']` so the file name can grow.
+   */
+  resizableIds?: readonly string[];
+};
+
 export type ResizableColumnsApi = {
   /** Current pixel width for a column id (falls back to defaults). */
   widthOf: (columnId: string) => number;
@@ -39,32 +47,47 @@ export type ResizableColumnsApi = {
     overflow: 'hidden';
     boxSizing: 'border-box';
   };
-  /** Props to spread onto ColumnHeader for a resizable column. */
+  /** Props to spread onto ColumnHeader (fixed unless id is in resizableIds). */
   headerProps: (columnId: string) => {
     width: number;
     minWidth: number;
     resizable: boolean;
-    onResizeStart: (e: React.MouseEvent) => void;
+    onResizeStart?: (e: React.MouseEvent) => void;
   };
   /** Reset to defaults and clear storage. */
   reset: () => void;
 };
 
 /**
- * Per-table column widths with drag-to-resize and localStorage persistence.
- * Use the same column ids on headers and cells.
+ * Per-table column widths. Columns are fixed by default.
+ * Pass `options.resizableIds` for the rare columns that should drag-resize
+ * (persisted under `gws-col-widths:v3:{tableId}`).
  */
 export function useResizableColumns(
   tableId: string,
   defaults: Record<string, number>,
-  minWidths: Record<string, number> = {}
+  minWidths: Record<string, number> = {},
+  options: FixedColumnsOptions = {}
 ): ResizableColumnsApi {
+  const resizableIds = options.resizableIds ?? [];
+  const canResizeAny = resizableIds.length > 0;
+  const resizableKey = resizableIds.join('\0');
+  const resizableSet = useMemo(() => new Set(resizableIds), [resizableKey]);
+
   const defaultsRef = useRef(defaults);
   defaultsRef.current = defaults;
 
   const [widths, setWidths] = useState<Record<string, number>>(() => {
+    if (!canResizeAny) return { ...defaults };
     const stored = loadStored(tableId);
-    return { ...defaults, ...(stored || {}) };
+    // Only restore widths for columns that are still resizable; others stay at defaults.
+    const merged = { ...defaults };
+    if (stored) {
+      for (const id of resizableIds) {
+        if (stored[id] != null) merged[id] = stored[id];
+      }
+    }
+    return merged;
   });
 
   // Keep newly added default keys available without wiping user sizes.
@@ -78,13 +101,32 @@ export function useResizableColumns(
           changed = true;
         }
       }
+      // Non-resizable columns always snap back to defaults (ignore stale sizes).
+      for (const [k, v] of Object.entries(defaults)) {
+        if (!resizableSet.has(k) && next[k] !== v) {
+          next[k] = v;
+          changed = true;
+        }
+      }
       return changed ? next : prev;
     });
-  }, [defaults, tableId]);
+  }, [defaults, tableId, resizableSet]);
 
   useEffect(() => {
-    saveStored(tableId, widths);
-  }, [tableId, widths]);
+    if (!canResizeAny) {
+      try {
+        localStorage.removeItem(STORAGE_PREFIX + tableId);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    const toStore: Record<string, number> = {};
+    for (const id of resizableIds) {
+      if (widths[id] != null) toStore[id] = widths[id];
+    }
+    saveStored(tableId, toStore);
+  }, [tableId, widths, canResizeAny, resizableIds]);
 
   const widthOf = useCallback(
     (columnId: string) => {
@@ -100,6 +142,7 @@ export function useResizableColumns(
 
   const startResize = useCallback(
     (columnId: string, e: React.MouseEvent) => {
+      if (!resizableSet.has(columnId)) return;
       e.preventDefault();
       e.stopPropagation();
       const startX = e.clientX;
@@ -124,7 +167,7 @@ export function useResizableColumns(
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     },
-    [widthOf, minOf]
+    [widthOf, minOf, resizableSet]
   );
 
   const cellSx = useCallback(
@@ -142,13 +185,16 @@ export function useResizableColumns(
   );
 
   const headerProps = useCallback(
-    (columnId: string) => ({
-      width: widthOf(columnId),
-      minWidth: minOf(columnId),
-      resizable: true as const,
-      onResizeStart: (e: React.MouseEvent) => startResize(columnId, e),
-    }),
-    [widthOf, minOf, startResize]
+    (columnId: string) => {
+      const resizable = resizableSet.has(columnId);
+      return {
+        width: widthOf(columnId),
+        minWidth: minOf(columnId),
+        resizable,
+        ...(resizable ? { onResizeStart: (e: React.MouseEvent) => startResize(columnId, e) } : {}),
+      };
+    },
+    [widthOf, minOf, startResize, resizableSet]
   );
 
   const reset = useCallback(() => {

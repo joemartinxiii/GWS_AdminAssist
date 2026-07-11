@@ -8,7 +8,7 @@ Canonical guide for visuals and interaction: Plus Jakarta Sans, Workspace-style 
 
 1. **`ListShell` → `ListHeaderRow` → `ListDataRow`** for every data table.
 2. **Row opens detail:** whole-row click opens the page’s modal/detail (not the checkbox). Trailing **`ListChevron`** matches Security Audit.
-3. **Resizable columns:** **`useResizableColumns`** + `headerProps` / `cellSx`. Persist under `gws-col-widths:v2:{tableId}`. Trailing Open-in-Google / chevron are fixed and **`pinEnd`**.
+3. **Fixed column widths:** **`useResizableColumns`** + `headerProps` / `cellSx` with static px defaults. Drag-resize is **off by default**. Opt in per column via `options.resizableIds` (Drive file lists: `name` only). Persist under `gws-col-widths:v3:{tableId}` only for resizable columns. Trailing chevron columns are fixed and **`pinEnd`**.
 4. **Checkboxes:** **`listCheckboxSx`**; `stopPropagation` so select ≠ open.
 5. **Destructive = bulk:** no per-row trash. Toolbar **Delete** when ≥1 selected. **Do not delete Workspace admins** from this app.
 6. **Open in Google** may stay on the row (quiet icon) *and* in the modal.
@@ -65,7 +65,7 @@ Data views use bordered flex lists (not legacy `Table`/`Paper` grids) for consis
 
 ## 3. Layout, theme, and icons
 
-- **Page frame (laptop-first):** `Layout` main content sits in a centered column (`PAGE_MAX_WIDTH` **1120** in `designTokens`) with **matching side and top padding** (`px`/`pt` scale `3→4→5→6`, generous bottom). Narrower max width = more side air. Prefer this global frame over per-page hacks.
+- **Page frame (laptop-first):** `Layout` main content sits in a centered column (`PAGE_MAX_WIDTH` **1120** in `designTokens`) with side padding `px` scale `3→4→5→6` and **slightly taller top** `pt` `4→5→6→8` (generous bottom). Narrower max width = more side air. Prefer this global frame over per-page hacks.
 - **`Layout`** loads **Plus Jakarta Sans** via **`FontLinks`** and uses the app **`ThemeProvider`** so portaled menus and selects inherit **`T.font`**.
 - **`FilterToken`** (`frontend/src/components/ui/FilterToken`) — inline filter chips used in the toggled filter strip (see §6).
 - **`ConfirmDialog`** — standard confirm/cancel typography. Prefer the **`useConfirm`** hook (`frontend/src/hooks/useConfirm.tsx`) over native `window.confirm()`.
@@ -160,7 +160,7 @@ Use shared **`FlyoutSearch`** (`frontend/src/components/ui/FlyoutSearch.tsx`) on
 
 Full-page data views use **ListShell** rows (not MUI `Table`). Pagination is usually **`TablePagination`** under the list. Sorting goes through **`ColumnHeader`** + page-level sort state (or `useTable` for data only).
 
-- Prefer **`useResizableColumns`** for column widths (see contract above).
+- Prefer **`useResizableColumns`** for column widths (see contract above). Columns are **fixed** unless `resizableIds` opts a column into drag-resize (Drive file name).
 - Keep checkbox + actions columns fixed width.
 
 **Reference:** `Users.tsx`, `Groups.tsx`, `EmailDelegation.tsx`, `frontend/src/hooks/useTable.tsx` (data helpers).
@@ -210,7 +210,7 @@ One surface for every modal — match **Edit user / Groups / Email** chrome, not
 - [ ] Chrome matches Users (tabs + action bar, icon colors, tooltips).
 - [ ] Search: icon + slide-out if applicable.
 - [ ] Filters: toggled inline strip with `FilterToken` chips; right-aligned selects where used elsewhere.
-- [ ] Data: `ListShell` / resizable `ColumnHeader` / `ListDataRow` + trailing actions.
+- [ ] Data: `ListShell` / fixed-width `ColumnHeader` / `ListDataRow` + trailing actions (Drive file name may opt into resize).
 - [ ] Dialogs: single dismiss pattern; section headers consistent.
 - [ ] Tokens from `designTokens.ts`; Lucide icons; no one-off hex for core colors.
 

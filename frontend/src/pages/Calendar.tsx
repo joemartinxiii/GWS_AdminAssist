@@ -32,6 +32,7 @@ import {
   Search,
   X,
   Move,
+  Trash2,
 } from 'lucide-react';
 import { Calendar as BigCalendar, dateFnsLocalizer, View, Event as CalendarEventType } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
@@ -45,7 +46,17 @@ import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { DateTimePicker } from '../components/DateTimePicker';
 import { ActionTooltip } from '../components/ActionTooltip';
 import { FilterToken } from '../components/ui/FilterToken';
-import { T, pick, textSecondary, textTertiary, dialogPaperSx, TOOLBAR_ICON } from '../theme/designTokens';
+import {
+  T,
+  pick,
+  textSecondary,
+  textTertiary,
+  dialogPaperSx,
+  dialogActionsSx,
+  dialogCancelButtonSx,
+  dialogPrimaryButtonSx,
+  TOOLBAR_ICON,
+} from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx } from '../components/ui/ListShell';
@@ -53,6 +64,8 @@ import { ListChevron } from '../components/ui/ListChevron';
 import { FlyoutSearch, FLYOUT_SEARCH_WIDTH } from '../components/ui/FlyoutSearch';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { useResizableColumns } from '../hooks/useResizableColumns';
+import { useConfirm } from '../hooks/useConfirm';
+import { usePermissions } from '../hooks/usePermissions';
 
 const CAL_STATIC_SORT = { key: '_', direction: 'asc' as const };
 const calNoopSort = () => {};
@@ -109,6 +122,8 @@ function extractEmailCandidate(raw: string): string {
 
 export function Calendar() {
   const theme = useTheme();
+  const { confirm, confirmDialog } = useConfirm();
+  const { canTakeAction, hasPermission } = usePermissions();
   const cols = useResizableColumns(
     'calendar-events',
     { event: 260, start: 150, end: 150, location: 160, attendees: 240 },
@@ -435,6 +450,35 @@ export function Calendar() {
     setMoveStartDateTime('');
     setMoveDurationMinutes(60);
     setMoveDateAnchor(null);
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!normalizedUserEmail || !selectedCalendarId || !selectedEvent) return;
+    if (!(await confirm({
+      title: 'Delete this event?',
+      message: (
+        <Typography sx={{ fontFamily: T.font, fontSize: '0.875rem', color: (t) => textSecondary(t) }}>
+          Permanently removes{' '}
+          <Box component="span" sx={{ fontWeight: 600, color: (th) => pick(th, T.text, '#fafafa') }}>
+            {selectedEvent.summary || 'this event'}
+          </Box>
+          {' '}from {normalizedUserEmail}&rsquo;s calendar. Attendees are notified.
+        </Typography>
+      ),
+      danger: true,
+      confirmLabel: 'Delete event',
+    }))) return;
+    try {
+      await apiClient.delete(
+        `/calendar/${encodeURIComponent(normalizedUserEmail)}/events/${encodeURIComponent(selectedEvent.id)}`,
+        { params: { calendarId: selectedCalendarId, sendUpdates: 'all' } }
+      );
+      setSnackbar({ open: true, message: 'Event deleted.', severity: 'success' });
+      handleCloseEventDialog();
+      fetchEvents();
+    } catch (error: any) {
+      setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to delete event.'), severity: 'error' });
+    }
   };
 
   const handleAddAttendee = () => {
@@ -1306,17 +1350,18 @@ export function Calendar() {
       <Dialog
         open={eventDialogOpen}
         onClose={handleCloseEventDialog}
-        maxWidth="md"
+        maxWidth="sm"
         fullWidth
         PaperProps={{
           sx: (th) => ({
             ...dialogPaperSx(th),
+            maxWidth: 520,
             '& .MuiDialogContent-root': { pt: '20px !important' },
           }),
         }}
       >
         <DialogTitle sx={{ p: 0, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, px: 3, pt: 2.5, pb: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, px: 2.5, pt: 2, pb: 1.5 }}>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>
                 {editMode === 'view' && 'Event details'}
@@ -1339,8 +1384,8 @@ export function Calendar() {
                 flexWrap: 'wrap',
                 alignItems: 'center',
                 gap: 1,
-                px: 3,
-                py: 1.5,
+                px: 2.5,
+                py: 1.25,
                 borderTop: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}`,
                 bgcolor: (t) => pick(t, T.bg, '#141414'),
               }}
@@ -1417,10 +1462,31 @@ export function Calendar() {
               >
                 Transfer
               </Button>
+              {canTakeAction && hasPermission('calendar.resources.manage') && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<Trash2 size={15} strokeWidth={1.75} />}
+                  onClick={() => void handleDeleteEvent()}
+                  sx={{
+                    fontFamily: T.font,
+                    textTransform: 'none',
+                    borderRadius: T.radius,
+                    fontSize: '0.8125rem',
+                    fontWeight: 500,
+                    borderColor: 'rgba(220, 38, 38, 0.45)',
+                    color: '#fca5a5',
+                    ml: 'auto',
+                    '&:hover': { borderColor: T.danger, bgcolor: 'rgba(220, 38, 38, 0.12)' },
+                  }}
+                >
+                  Delete
+                </Button>
+              )}
             </Box>
           )}
         </DialogTitle>
-        <DialogContent sx={{ px: 3, pb: 2.5 }}>
+        <DialogContent sx={{ px: 2.5, pb: 2 }}>
           {editMode === 'view' && selectedEvent && (
             <Box>
               <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1.25 }}>
@@ -1670,8 +1736,8 @@ export function Calendar() {
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2, borderTop: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}`, gap: 1, justifyContent: 'flex-end' }}>
-          <Button onClick={handleCloseEventDialog} sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, color: (t) => textSecondary(t), '&:hover': { bgcolor: (t) => pick(t, '#f0f0ec', '#27272a') } }}>
+        <DialogActions sx={(th) => ({ ...dialogActionsSx(th), justifyContent: 'flex-end' })}>
+          <Button onClick={handleCloseEventDialog} sx={(th) => dialogCancelButtonSx(th)}>
             {editMode === 'view' ? 'Close' : 'Cancel'}
           </Button>
           {editMode === 'transfer' && (
@@ -1687,13 +1753,15 @@ export function Calendar() {
             <Button
               variant="contained"
               onClick={handleSaveEvent}
-              sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover }, px: 2.5 }}
+              sx={(th) => dialogPrimaryButtonSx(th)}
             >
               Save Changes
             </Button>
           )}
         </DialogActions>
       </Dialog>
+
+      {confirmDialog}
 
       <Snackbar
         open={snackbar.open}
