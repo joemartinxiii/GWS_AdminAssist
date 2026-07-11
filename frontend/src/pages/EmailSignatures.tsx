@@ -233,7 +233,7 @@ export function EmailSignatures() {
   // Render
   // ==========================================================================
   return (
-    <Box sx={{ fontFamily: T.font, minHeight: '100vh' }}>
+    <Box sx={{ fontFamily: T.font }}>
 
       {/* Header */}
       <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>

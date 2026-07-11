@@ -402,28 +402,47 @@ export function Layout({ children }: LayoutProps) {
           height: '100vh',
           overflowY: 'auto',
           overflowX: 'hidden',
-          pt: 3,
-          pb: 4,
-          px: { xs: 3, sm: 5, md: 7 },
           width: { xs: '100%', sm: `calc(100% - ${drawerWidth}px)` },
-          transition: (th) => th.transitions.create(['margin', 'width'], { duration: th.transitions.duration.enteringScreen, easing: th.transitions.easing.sharp }),
+          transition: (th) =>
+            th.transitions.create(['margin', 'width'], {
+              duration: th.transitions.duration.enteringScreen,
+              easing: th.transitions.easing.sharp,
+            }),
         }}
       >
+        {/* Offset fixed AppBar only — page air lives on the content frame below. */}
         <Toolbar />
-        {permissions.error && (
-          <Alert
-            severity="warning"
-            sx={{ mx: 3, mt: 2 }}
-            action={
-              <MuiButton color="inherit" size="small" onClick={() => permissions.refresh()}>
-                Retry
-              </MuiButton>
-            }
-          >
-            Some permissions couldn't be loaded, so parts of the app may be hidden or disabled. {permissions.error}
-          </Alert>
-        )}
-        {children}
+        {/*
+          Notion-style content frame: equal side + top padding (laptop-first).
+          maxWidth keeps ultra-wide monitors from edge-to-edge tables.
+        */}
+        <Box
+          sx={{
+            width: '100%',
+            maxWidth: 1440,
+            mx: 'auto',
+            boxSizing: 'border-box',
+            px: { xs: 4, sm: 5, md: 6, lg: 8 },
+            pt: { xs: 4, sm: 5, md: 6, lg: 8 },
+            pb: { xs: 5, sm: 6, md: 8, lg: 10 },
+          }}
+        >
+          {permissions.error && (
+            <Alert
+              severity="warning"
+              sx={{ mb: 3 }}
+              action={
+                <MuiButton color="inherit" size="small" onClick={() => permissions.refresh()}>
+                  Retry
+                </MuiButton>
+              }
+            >
+              Some permissions couldn&apos;t be loaded, so parts of the app may be hidden or disabled.{' '}
+              {permissions.error}
+            </Alert>
+          )}
+          {children}
+        </Box>
       </Box>
     </Box>
   );

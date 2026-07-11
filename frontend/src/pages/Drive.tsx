@@ -1165,7 +1165,7 @@ export function Drive() {
   const bulkRemediateLabel = auditCategory === 'public' ? 'Remove public access' : 'Remove external access';
 
   return (
-    <Box sx={{ width: '100%', overflowY: 'auto', overflowX: 'hidden', fontFamily: T.font, minHeight: '100vh' }}>
+    <Box sx={{ width: '100%', overflowY: 'auto', overflowX: 'hidden', fontFamily: T.font }}>
       {/* PAGE HEADER */}
       <Box sx={{ mb: 3, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { md: 'center' }, justifyContent: 'space-between' }}>
         <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (th) => pick(th, T.text, '#fafafa') }}>

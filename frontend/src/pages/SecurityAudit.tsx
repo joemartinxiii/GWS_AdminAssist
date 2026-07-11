@@ -931,7 +931,7 @@ export function SecurityAudit() {
 
   return (
     <>
-      <Box sx={{ fontFamily: T.font, minHeight: '100vh' }}>
+      <Box sx={{ fontFamily: T.font }}>
         <Box
           sx={{
             mb: 3,

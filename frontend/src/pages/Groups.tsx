@@ -854,7 +854,7 @@ export function Groups() {
   }, [filters]);
 
   return (
-    <Box sx={{ fontFamily: T.font, minHeight: '100vh' }}>
+    <Box sx={{ fontFamily: T.font }}>
       <Box sx={{ mb: 3, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { md: 'center' }, justifyContent: 'space-between' }}>
         <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (theme) => pick(theme, T.text, '#fafafa') }}>
           Groups

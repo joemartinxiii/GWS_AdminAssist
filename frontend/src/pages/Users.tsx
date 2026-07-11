@@ -740,7 +740,7 @@ export function Users() {
   // =========================================================================
 
   return (
-    <Box sx={{ fontFamily: T.font, minHeight: '100vh' }}>
+    <Box sx={{ fontFamily: T.font }}>
 
       {/* ================================================================= */}
       {/* PAGE HEADER                                                        */}

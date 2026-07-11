@@ -394,7 +394,7 @@ export function EmailDelegation() {
   }, [selectedDelegations.size]);
 
   return (
-    <Box sx={{ fontFamily: T.font, minHeight: '100vh' }}>
+    <Box sx={{ fontFamily: T.font }}>
       <Box sx={{ mb: 3 }}>
         <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.5rem', letterSpacing: '-0.02em', color: (theme) => pick(theme, T.text, '#fafafa') }}>
           Email delegation
