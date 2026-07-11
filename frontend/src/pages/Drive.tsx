@@ -1792,16 +1792,32 @@ export function Drive() {
                 </Box>
               </Box>
               <Divider sx={{ my: 1.5 }} />
-              <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1 }}>Permissions</Typography>
-              {selectedPermissionIds.size > 0 && (
-                <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mb: 1.5 }}>
-                  <ActionTooltip title={`Remove selected (${selectedPermissionIds.size})`}>
-                    <IconButton size="small" color="error" onClick={handleBulkRemovePermissions} aria-label="Remove selected">
-                      <Trash2 size={16} strokeWidth={1.75} />
-                    </IconButton>
-                  </ActionTooltip>
-                </Box>
-              )}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1, minHeight: 32 }}>
+                <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>
+                  Permissions
+                </Typography>
+                <Box sx={{ flex: 1 }} />
+                {selectedPermissionIds.size > 0 && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="error"
+                    onClick={handleBulkRemovePermissions}
+                    startIcon={<Trash2 size={15} strokeWidth={1.75} />}
+                    sx={{
+                      fontFamily: T.font,
+                      textTransform: 'none',
+                      borderRadius: T.radius,
+                      fontSize: '0.8125rem',
+                      fontWeight: 500,
+                      height: 30,
+                      px: 1.5,
+                    }}
+                  >
+                    Remove {selectedPermissionIds.size} selected
+                  </Button>
+                )}
+              </Box>
               <ListShell>
                 <ListHeaderRow>
                   <Box sx={listCheckboxSx}>
