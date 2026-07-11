@@ -55,6 +55,7 @@ import {
   dialogActionsSx,
   dialogCancelButtonSx,
   dialogPrimaryButtonSx,
+  dialogDangerButtonSx,
   TOOLBAR_ICON,
 } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
@@ -1462,27 +1463,6 @@ export function Calendar() {
               >
                 Transfer
               </Button>
-              {canTakeAction && hasPermission('calendar.resources.manage') && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<Trash2 size={15} strokeWidth={1.75} />}
-                  onClick={() => void handleDeleteEvent()}
-                  sx={{
-                    fontFamily: T.font,
-                    textTransform: 'none',
-                    borderRadius: T.radius,
-                    fontSize: '0.8125rem',
-                    fontWeight: 500,
-                    borderColor: 'rgba(220, 38, 38, 0.45)',
-                    color: '#fca5a5',
-                    ml: 'auto',
-                    '&:hover': { borderColor: T.danger, bgcolor: 'rgba(220, 38, 38, 0.12)' },
-                  }}
-                >
-                  Delete
-                </Button>
-              )}
             </Box>
           )}
         </DialogTitle>
@@ -1736,7 +1716,24 @@ export function Calendar() {
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={(th) => ({ ...dialogActionsSx(th), justifyContent: 'flex-end' })}>
+        <DialogActions sx={(th) => dialogActionsSx(th)}>
+          {editMode === 'view' && canTakeAction && hasPermission('calendar.resources.manage') && (
+            <Button
+              size="small"
+              onClick={() => void handleDeleteEvent()}
+              startIcon={<Trash2 size={15} strokeWidth={1.75} />}
+              sx={(th) => ({
+                ...dialogDangerButtonSx(th),
+                bgcolor: 'transparent',
+                color: '#fca5a5',
+                border: '1px solid rgba(220, 38, 38, 0.45)',
+                '&:hover': { bgcolor: 'rgba(220, 38, 38, 0.12)', boxShadow: 'none' },
+              })}
+            >
+              Delete
+            </Button>
+          )}
+          <Box sx={{ flex: 1 }} />
           <Button onClick={handleCloseEventDialog} sx={(th) => dialogCancelButtonSx(th)}>
             {editMode === 'view' ? 'Close' : 'Cancel'}
           </Button>

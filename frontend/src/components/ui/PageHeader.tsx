@@ -8,15 +8,17 @@ export type PageHeaderProps = {
   lede?: ReactNode;
   /** Counts / last-run / live state under the lede. */
   status?: ReactNode;
-  /** Tabs + primary/secondary actions — top-right. */
+  /** CTAs under status (e.g. Run / Export on Audit). */
+  statusActions?: ReactNode;
+  /** Top-right, top-aligned with title (tabs/CTAs, or Audit score panel). */
   actions?: ReactNode;
 };
 
 /**
- * Shared page header recipe: title → lede → status | actions (tabs + CTA).
+ * Shared page header recipe: title → lede → status → statusActions | actions.
  * See docs/ui.md §4b and tmp-product-feel mock.
  */
-export function PageHeader({ title, lede, status, actions }: PageHeaderProps) {
+export function PageHeader({ title, lede, status, statusActions, actions }: PageHeaderProps) {
   return (
     <Box
       sx={{
@@ -77,9 +79,14 @@ export function PageHeader({ title, lede, status, actions }: PageHeaderProps) {
             {status}
           </Typography>
         )}
+        {statusActions != null && (
+          <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center', flexWrap: 'wrap', mt: 1.25 }}>
+            {statusActions}
+          </Box>
+        )}
       </Box>
       {actions != null && (
-        <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'center', flexWrap: 'wrap', flexShrink: 0 }}>
+        <Box sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start', flexWrap: 'wrap', flexShrink: 0 }}>
           {actions}
         </Box>
       )}

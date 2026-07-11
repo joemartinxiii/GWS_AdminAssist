@@ -89,15 +89,17 @@ Data views use bordered flex lists (not legacy `Table`/`Paper` grids) for consis
 Use shared **`PageHeader`** (`frontend/src/components/ui/PageHeader.tsx`) on main feature pages:
 
 ```
-[ Title                          ]  [ Segmented tabs ] [ Primary CTA ] [ Secondary ]
+[ Title                          ]  [ actions — top-aligned with title ]
 [ Lede (optional, one line)      ]
 [ Status: counts / last run / live ]
+[ statusActions — optional CTAs  ]
 ```
 
 - **Title:** 1.5rem / weight 700 / tight tracking.
 - **Lede:** 0.8125rem secondary, max ~520px — product one-liner.
 - **Status:** 0.8125rem; live state uses `.page-status-live` (accent + semibold); previous/meta uses `.page-status-faint`.
-- **Actions:** tabs + primary CTA top-right — no full-width bordered control bars.
+- **statusActions:** optional CTAs under status (Audit: Run + Export).
+- **Actions:** top-right, top-aligned with title — tabs/CTAs on most pages; Audit puts the compliance score panel here.
 
 **Reference:** `Users.tsx`, `Drive.tsx`, `SecurityAudit.tsx`, `Groups.tsx`.
 
@@ -136,10 +138,10 @@ Use shared **`FlyoutSearch`** (`frontend/src/components/ui/FlyoutSearch.tsx`) on
 
 ## 5b. Long-running actions (scan / audit)
 
-- Put **Run scan** / **Run audit** in the **page header** next to tabs/export — not a full-width slab.
+- Put **Run scan** in the **page header** next to tabs/export — not a full-width slab. **Security Audit** puts **Run audit** / **Export** under the last-run status (`statusActions`), with the compliance score top-right beside the title.
 - Keep **run context** under the title: current state (`Running now` / `Scanning now · N%`) and **date/time of last (or previous) run**, plus who triggered when available.
 - Progress while running: short determinate bar under the meta (Drive) or full-page spinner during audit evaluation — not a page-wide empty control strip.
-- Security score summary uses **`ScoreRing`** (`frontend/src/components/ui/ScoreRing.tsx`) — primary compliance ring + status mini-rings (pass / warning / fail). Content-width card, not a stretched hero bar.
+- Security score summary uses **`ScoreRing`** (`frontend/src/components/ui/ScoreRing.tsx`) — primary compliance ring + status mini-rings (pass / warning / fail). Content-width card in the page header (top-aligned with the title), not a stretched hero bar. Overview / Passing / Failing / Waived use underline **`dialogTab*`** tabs above the check lists (same feel as Edit user).
 
 **Reference:** `Drive.tsx` (audit tabs), `SecurityAudit.tsx`.
 
@@ -183,8 +185,9 @@ One surface for every modal — match **Edit user / Groups / Email** chrome, not
 - **Width:** Prefer **content-fit** custom widths (`maxWidth={false}` + `PaperProps.sx.maxWidth`, typically **~720** for detail/permission modals — matches the product mock `.modal.md`). Avoid default MUI `md` (~900) empty space and over-tight `sm` that clips columns. Lists inside must still flex/ellipsis — **no horizontal scroll**.
 - **Content**: `DialogContent` with `pt: '20px !important'` (avoid bare MUI `dividers` unless needed).
 - **Sections**: small caps / tracked labels for field groups.
+- **Edit group:** underline **`dialogTab*`** tabs — Details (name/description + Save) · Members (default) · Settings (meta + Admin link for access policies).
 
-**Reference:** `EmailDelegation.tsx` add dialog, `ConfirmDialog.tsx`, `EditUserDialog.tsx`.
+**Reference:** `EmailDelegation.tsx` add dialog, `ConfirmDialog.tsx`, `EditUserDialog.tsx`, `Groups.tsx`.
 
 ---
 

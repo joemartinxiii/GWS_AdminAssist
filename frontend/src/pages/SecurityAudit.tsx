@@ -33,6 +33,8 @@ import {
   dialogPrimaryButtonSx,
   dialogSecondaryButtonSx,
   dialogCancelButtonSx,
+  dialogTabRowSx,
+  dialogTabButtonSx,
 } from '../theme/designTokens';
 import { ExportMenuRow } from '../components/ExportButton';
 import { ActionTooltip } from '../components/ActionTooltip';
@@ -40,7 +42,6 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
 import { DotLabel } from '../components/StatusDot';
-import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { ScoreRing } from '../components/ui/ScoreRing';
 import { PageHeader } from '../components/ui/PageHeader';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -982,9 +983,8 @@ export function SecurityAudit() {
               </Box>
             )
           }
-          actions={
+          statusActions={
             <>
-              <SegmentedControl value={auditTab} options={[...AUDIT_TABS]} onChange={setAuditTab} />
               <ActionTooltip title={canTakeAction ? 'Re-evaluate all checks and save for the organization' : 'Super admin only'}>
                 <span>
                   <Button
@@ -1012,32 +1012,163 @@ export function SecurityAudit() {
                 </span>
               </ActionTooltip>
               {!running && hardeningData && (
-                <>
-                  <ActionTooltip title="Export last saved audit (CSV, PDF, or Drive)">
-                    <span>
-                      {isMdUp ? (
-                        <Button
-                          variant="outlined"
-                          endIcon={<ChevronDown size={20} strokeWidth={LU} />}
-                          onClick={(e) => setExportAnchorEl(e.currentTarget)}
-                          sx={exportToolbarButtonSx()}
-                        >
-                          Export
-                        </Button>
-                      ) : (
-                        <IconButton
-                          onClick={(e) => setExportAnchorEl(e.currentTarget)}
-                          aria-label="Export"
-                          sx={exportToolbarButtonSx()}
-                        >
-                          <ChevronDown size={20} strokeWidth={LU} />
-                        </IconButton>
-                      )}
-                    </span>
-                  </ActionTooltip>
-                </>
+                <ActionTooltip title="Export last saved audit (CSV, PDF, or Drive)">
+                  <span>
+                    {isMdUp ? (
+                      <Button
+                        variant="outlined"
+                        endIcon={<ChevronDown size={20} strokeWidth={LU} />}
+                        onClick={(e) => setExportAnchorEl(e.currentTarget)}
+                        sx={exportToolbarButtonSx()}
+                      >
+                        Export
+                      </Button>
+                    ) : (
+                      <IconButton
+                        onClick={(e) => setExportAnchorEl(e.currentTarget)}
+                        aria-label="Export"
+                        sx={exportToolbarButtonSx()}
+                      >
+                        <ChevronDown size={20} strokeWidth={LU} />
+                      </IconButton>
+                    )}
+                  </span>
+                </ActionTooltip>
               )}
             </>
+          }
+          actions={
+            !bootLoading && !running && hardeningData
+              ? (() => {
+                  const s = activeStats;
+                  const denom = s.pass + s.warning + s.fail;
+                  const pctPass = denom === 0 ? 0 : Math.round((s.pass / denom) * 100);
+                  const headlineColor = pctPass >= 80 ? T.success : pctPass >= 50 ? T.accent : T.warning;
+                  const pctOfGraded = (n: number) => (denom === 0 ? 0 : Math.round((n / denom) * 100));
+                  return (
+                    <Box
+                      sx={(th) => ({
+                        display: 'inline-flex',
+                        flexDirection: 'column',
+                        gap: 2,
+                        border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
+                        borderRadius: T.radiusLg,
+                        p: 2.25,
+                        bgcolor: pick(th, T.surface, '#18181b'),
+                        maxWidth: '100%',
+                      })}
+                    >
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: { xs: 2.5, sm: 3.5 },
+                        }}
+                      >
+                        <ScoreRing
+                          value={pctPass}
+                          color={headlineColor}
+                          caption="Compliance"
+                          sizeVariant="lg"
+                        />
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            flexWrap: 'wrap',
+                            gap: { xs: 2, sm: 2.5 },
+                          }}
+                        >
+                          <ScoreRing
+                            value={pctOfGraded(s.pass)}
+                            centerLabel={String(s.pass)}
+                            color={T.success}
+                            caption="Pass"
+                            sizeVariant="sm"
+                          />
+                          <ScoreRing
+                            value={pctOfGraded(s.warning)}
+                            centerLabel={String(s.warning)}
+                            color={T.warning}
+                            caption="Warning"
+                            sizeVariant="sm"
+                          />
+                          <ScoreRing
+                            value={pctOfGraded(s.fail)}
+                            centerLabel={String(s.fail)}
+                            color={T.danger}
+                            caption="Fail"
+                            sizeVariant="sm"
+                          />
+                        </Box>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 1,
+                            pl: { sm: 0.5 },
+                            minWidth: 100,
+                          }}
+                        >
+                          {(
+                            [
+                              ['Info', s.info, T.accent],
+                              ['Manual', s.manual, textTertiary(theme)],
+                            ] as const
+                          ).map(([label, n, color]) => (
+                            <Box key={label} sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+                              <Typography sx={{ fontFamily: T.font, fontSize: '1.125rem', fontWeight: 600, color, minWidth: 28 }}>
+                                {n}
+                              </Typography>
+                              <Typography
+                                sx={{
+                                  fontFamily: T.font,
+                                  fontSize: '0.6875rem',
+                                  color: (t) => textTertiary(t),
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.06em',
+                                }}
+                              >
+                                {label}
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Box>
+                      </Box>
+                      <Box>
+                        <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
+                          Graded checks only — info and manual excluded from the compliance score.
+                        </Typography>
+                        {ignoredCount > 0 && (
+                          <Typography
+                            sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t), mt: 0.5 }}
+                          >
+                            {ignoredCount} waived — client-accepted risk, excluded from this score.{' '}
+                            <Box
+                              component="button"
+                              type="button"
+                              onClick={() => setAuditTab(3)}
+                              sx={{
+                                p: 0,
+                                border: 'none',
+                                background: 'none',
+                                cursor: 'pointer',
+                                font: 'inherit',
+                                color: T.accent,
+                                textDecoration: 'underline',
+                                '&:hover': { opacity: 0.9 },
+                              }}
+                            >
+                              View waived
+                            </Box>
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  );
+                })()
+              : undefined
           }
         />
         {!running && hardeningData && (
@@ -1093,137 +1224,19 @@ export function SecurityAudit() {
           </Box>
         ) : hardeningData ? (
           <>
-            {auditTab === 0 &&
-              (() => {
-                const s = activeStats;
-                const denom = s.pass + s.warning + s.fail;
-                const pctPass = denom === 0 ? 0 : Math.round((s.pass / denom) * 100);
-                const headlineColor = pctPass >= 80 ? T.success : pctPass >= 50 ? T.accent : T.warning;
-                const pctOfGraded = (n: number) => (denom === 0 ? 0 : Math.round((n / denom) * 100));
-                return (
-                  <Box
-                    sx={(th) => ({
-                      display: 'inline-flex',
-                      flexDirection: 'column',
-                      gap: 2,
-                      border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
-                      borderRadius: T.radiusLg,
-                      p: 2.25,
-                      mb: 2.5,
-                      bgcolor: pick(th, T.surface, '#18181b'),
-                      maxWidth: '100%',
-                    })}
-                  >
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: { xs: 2.5, sm: 3.5 },
-                      }}
-                    >
-                      <ScoreRing
-                        value={pctPass}
-                        color={headlineColor}
-                        caption="Compliance"
-                        sizeVariant="lg"
-                      />
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          flexWrap: 'wrap',
-                          gap: { xs: 2, sm: 2.5 },
-                        }}
-                      >
-                        <ScoreRing
-                          value={pctOfGraded(s.pass)}
-                          centerLabel={String(s.pass)}
-                          color={T.success}
-                          caption="Pass"
-                          sizeVariant="sm"
-                        />
-                        <ScoreRing
-                          value={pctOfGraded(s.warning)}
-                          centerLabel={String(s.warning)}
-                          color={T.warning}
-                          caption="Warning"
-                          sizeVariant="sm"
-                        />
-                        <ScoreRing
-                          value={pctOfGraded(s.fail)}
-                          centerLabel={String(s.fail)}
-                          color={T.danger}
-                          caption="Fail"
-                          sizeVariant="sm"
-                        />
-                      </Box>
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 1,
-                          pl: { sm: 0.5 },
-                          minWidth: 100,
-                        }}
-                      >
-                        {(
-                          [
-                            ['Info', s.info, T.accent],
-                            ['Manual', s.manual, textTertiary(theme)],
-                          ] as const
-                        ).map(([label, n, color]) => (
-                          <Box key={label} sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
-                            <Typography sx={{ fontFamily: T.font, fontSize: '1.125rem', fontWeight: 600, color, minWidth: 28 }}>
-                              {n}
-                            </Typography>
-                            <Typography
-                              sx={{
-                                fontFamily: T.font,
-                                fontSize: '0.6875rem',
-                                color: (t) => textTertiary(t),
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.06em',
-                              }}
-                            >
-                              {label}
-                            </Typography>
-                          </Box>
-                        ))}
-                      </Box>
-                    </Box>
-                    <Box>
-                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
-                        Graded checks only — info and manual excluded from the compliance score.
-                      </Typography>
-                      {ignoredCount > 0 && (
-                        <Typography
-                          sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t), mt: 0.5 }}
-                        >
-                          {ignoredCount} waived — client-accepted risk, excluded from this score.{' '}
-                          <Box
-                            component="button"
-                            type="button"
-                            onClick={() => setAuditTab(3)}
-                            sx={{
-                              p: 0,
-                              border: 'none',
-                              background: 'none',
-                              cursor: 'pointer',
-                              font: 'inherit',
-                              color: T.accent,
-                              textDecoration: 'underline',
-                              '&:hover': { opacity: 0.9 },
-                            }}
-                          >
-                            View waived
-                          </Box>
-                        </Typography>
-                      )}
-                    </Box>
-                  </Box>
-                );
-              })()}
+            <Box sx={(th) => ({ ...dialogTabRowSx(th), mb: 2.5 })}>
+              {AUDIT_TABS.map((label, idx) => (
+                <Button
+                  key={label}
+                  size="small"
+                  disableRipple
+                  onClick={() => setAuditTab(idx)}
+                  sx={(th) => dialogTabButtonSx(th, auditTab === idx)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </Box>
 
             {auditTab === 0 &&
               orderedHardeningCategories(hardeningData.checks.map((c) => c.category)).map((category) => {
@@ -1239,7 +1252,7 @@ export function SecurityAudit() {
                         fontSize: '1rem',
                         letterSpacing: '-0.02em',
                         color: (th) => pick(th, T.text, '#fafafa'),
-                        mt: 1.5,
+                        mt: 0.5,
                         mb: 1,
                       }}
                     >

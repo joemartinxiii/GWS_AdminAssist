@@ -39,7 +39,7 @@ import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { ActionTooltip } from '../components/ActionTooltip';
-import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx, dialogDangerButtonSx, dialogActionsSx, dialogCancelButtonSx, dialogSecondaryButtonSx, dialogPrimaryButtonSx, dialogFieldSx, TOOLBAR_ICON } from '../theme/designTokens';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx, dialogDangerButtonSx, dialogActionsSx, dialogCancelButtonSx, dialogSecondaryButtonSx, dialogPrimaryButtonSx, dialogFieldSx, dialogFieldLabelSx, dialogTabRowSx, dialogTabButtonSx, TOOLBAR_ICON } from '../theme/designTokens';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
@@ -87,7 +87,10 @@ interface Group {
   description?: string;
   directMembersCount?: number;
   creationTime?: string;
+  adminCreated?: boolean;
 }
+
+const GROUP_EDIT_TABS = ['Details', 'Members', 'Settings'] as const;
 
 interface GroupFilters {
   search: string;
@@ -538,6 +541,9 @@ export function Groups() {
 
   const handleOpenEditDialog = async (group: Group) => {
     setSelectedGroup(group);
+    setEditGroupName(group.name || '');
+    setEditGroupDescription(group.description || '');
+    setEditDialogTab(1);
     setEditDialogOpen(true);
     setSelectedMembers([]);
     await fetchMembers(group.email);
@@ -548,6 +554,10 @@ export function Groups() {
   const [addMemberEmail, setAddMemberEmail] = useState('');
   const [addMemberRole, setAddMemberRole] = useState<'MEMBER' | 'MANAGER' | 'OWNER'>('MEMBER');
   const [addingMember, setAddingMember] = useState(false);
+  const [editDialogTab, setEditDialogTab] = useState(1);
+  const [editGroupName, setEditGroupName] = useState('');
+  const [editGroupDescription, setEditGroupDescription] = useState('');
+  const [savingGroupDetails, setSavingGroupDetails] = useState(false);
   const directorySuggestions = useMemo(
     () =>
       users.map((user) =>
@@ -555,6 +565,14 @@ export function Groups() {
       ),
     [users]
   );
+
+  const groupDetailsDirty = useMemo(() => {
+    if (!selectedGroup) return false;
+    return (
+      editGroupName.trim() !== (selectedGroup.name || '').trim() ||
+      editGroupDescription.trim() !== (selectedGroup.description || '').trim()
+    );
+  }, [selectedGroup, editGroupName, editGroupDescription]);
 
   const handleCloseEditDialog = () => {
     setEditDialogOpen(false);
@@ -565,6 +583,43 @@ export function Groups() {
     setAddMemberInlineOpen(false);
     setAddMemberEmail('');
     setAddMemberRole('MEMBER');
+    setEditDialogTab(1);
+    setEditGroupName('');
+    setEditGroupDescription('');
+    setSavingGroupDetails(false);
+  };
+
+  const handleSaveGroupDetails = async () => {
+    if (!selectedGroup || !groupDetailsDirty) return;
+    const name = editGroupName.trim();
+    if (!name) {
+      setSnackbar({ open: true, message: 'Group name is required', severity: 'error' });
+      return;
+    }
+    try {
+      setSavingGroupDetails(true);
+      const res = await apiClient.patch(`/groups/${encodeURIComponent(selectedGroup.email)}`, {
+        name,
+        description: editGroupDescription.trim(),
+      });
+      const updated = (res.data || {}) as Partial<Group>;
+      const next: Group = {
+        ...selectedGroup,
+        name: updated.name || name,
+        description: updated.description ?? editGroupDescription.trim(),
+        adminCreated: updated.adminCreated ?? selectedGroup.adminCreated,
+        directMembersCount: updated.directMembersCount ?? selectedGroup.directMembersCount,
+      };
+      setSelectedGroup(next);
+      setEditGroupName(next.name);
+      setEditGroupDescription(next.description || '');
+      setGroups((prev) => prev.map((g) => (g.email === next.email ? { ...g, ...next } : g)));
+      setSnackbar({ open: true, message: 'Group details saved', severity: 'success' });
+    } catch (error: unknown) {
+      setSnackbar({ open: true, message: getApiErrorMessage(error, 'Failed to save group'), severity: 'error' });
+    } finally {
+      setSavingGroupDetails(false);
+    }
   };
 
 
@@ -1174,7 +1229,8 @@ export function Groups() {
             alignItems: 'flex-start',
             gap: 1.5,
             px: 2.5,
-            py: 2,
+            pt: 2,
+            pb: 1.5,
             borderBottom: `1px solid ${pick(th, T.borderSubtle, '#27272a')}`,
           })}
         >
@@ -1214,6 +1270,63 @@ export function Groups() {
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: '16px !important', px: 2.5, pb: 1, overflowX: 'hidden' }}>
+          <Box sx={(th) => ({ ...dialogTabRowSx(th), mb: 2 })}>
+            {GROUP_EDIT_TABS.map((label, idx) => (
+              <Button
+                key={label}
+                size="small"
+                disableRipple
+                onClick={() => setEditDialogTab(idx)}
+                sx={(th) => dialogTabButtonSx(th, editDialogTab === idx)}
+              >
+                {label}
+              </Button>
+            ))}
+          </Box>
+
+          {editDialogTab === 0 && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pb: 1 }}>
+              <Box>
+                <Typography sx={(th) => dialogFieldLabelSx(th)}>Name</Typography>
+                <TextField
+                  fullWidth
+                  size="small"
+                  hiddenLabel
+                  value={editGroupName}
+                  onChange={(e) => setEditGroupName(e.target.value)}
+                  sx={(th) => dialogFieldSx(th)}
+                />
+              </Box>
+              <Box>
+                <Typography sx={(th) => dialogFieldLabelSx(th)}>Email</Typography>
+                <TextField
+                  fullWidth
+                  size="small"
+                  hiddenLabel
+                  value={selectedGroup?.email || ''}
+                  InputProps={{ readOnly: true }}
+                  sx={(th) => dialogFieldSx(th)}
+                />
+              </Box>
+              <Box>
+                <Typography sx={(th) => dialogFieldLabelSx(th)}>Description</Typography>
+                <TextField
+                  fullWidth
+                  size="small"
+                  hiddenLabel
+                  multiline
+                  minRows={3}
+                  value={editGroupDescription}
+                  onChange={(e) => setEditGroupDescription(e.target.value)}
+                  placeholder="Optional description"
+                  sx={(th) => dialogFieldSx(th)}
+                />
+              </Box>
+            </Box>
+          )}
+
+          {editDialogTab === 1 && (
+            <>
           <Box display="flex" alignItems="center" gap={1} mb={1.75} flexWrap="wrap">
             <FlyoutSearch
               value={memberSearchTerm}
@@ -1448,29 +1561,99 @@ export function Groups() {
               )}
             </ListShell>
           )}
+            </>
+          )}
+
+          {editDialogTab === 2 && selectedGroup && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pb: 1 }}>
+              <Box>
+                <Typography sx={(th) => dialogFieldLabelSx(th)}>Group email</Typography>
+                <Typography sx={{ fontFamily: T.mono, fontSize: '0.8125rem', color: (t) => pick(t, T.text, '#fafafa') }}>
+                  {selectedGroup.email}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography sx={(th) => dialogFieldLabelSx(th)}>Members</Typography>
+                <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => pick(t, T.text, '#fafafa') }}>
+                  {loadingMembers ? '…' : `${members.length} direct member${members.length === 1 ? '' : 's'}`}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography sx={(th) => dialogFieldLabelSx(th)}>Created by admin</Typography>
+                <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => pick(t, T.text, '#fafafa') }}>
+                  {selectedGroup.adminCreated === true ? 'Yes' : selectedGroup.adminCreated === false ? 'No' : '—'}
+                </Typography>
+              </Box>
+              {selectedGroup.creationTime && (
+                <Box>
+                  <Typography sx={(th) => dialogFieldLabelSx(th)}>Created</Typography>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => pick(t, T.text, '#fafafa') }}>
+                    {new Date(selectedGroup.creationTime).toLocaleString()}
+                  </Typography>
+                </Box>
+              )}
+              <Box
+                sx={(th) => ({
+                  mt: 0.5,
+                  p: 1.5,
+                  borderRadius: T.radius,
+                  border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
+                  bgcolor: pick(th, T.surfaceHover, '#27272a'),
+                })}
+              >
+                <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), mb: 1.25, lineHeight: 1.45 }}>
+                  Access policies (who can join, post, and view membership) are managed in Google Admin.
+                </Typography>
+                <Button
+                  size="small"
+                  component="a"
+                  href={`https://admin.google.com/ac/groups/${encodeURIComponent(selectedGroup.email)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  endIcon={<ExternalLink size={14} strokeWidth={1.75} />}
+                  sx={(th) => dialogSecondaryButtonSx(th)}
+                >
+                  Open access settings
+                </Button>
+              </Box>
+            </Box>
+          )}
         </DialogContent>
         <DialogActions sx={(th) => dialogActionsSx(th)}>
-          <Button
-            size="small"
-            onClick={handleRemoveSelectedMembers}
-            disabled={selectedMembers.length === 0 || removingMembers}
-            startIcon={removingMembers ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={15} strokeWidth={1.75} />}
-            sx={(th) => ({
-              ...dialogDangerButtonSx(th),
-              opacity: selectedMembers.length === 0 ? 0.5 : 1,
-              bgcolor: 'transparent',
-              color: '#fca5a5',
-              border: '1px solid rgba(220, 38, 38, 0.45)',
-              '&:hover': { bgcolor: 'rgba(220, 38, 38, 0.12)', boxShadow: 'none' },
-              '&.Mui-disabled': { bgcolor: 'transparent', color: textTertiary(th), borderColor: pick(th, T.border, '#3f3f46') },
-            })}
-          >
-            Remove selected
-          </Button>
+          {editDialogTab === 1 && (
+            <Button
+              size="small"
+              onClick={handleRemoveSelectedMembers}
+              disabled={selectedMembers.length === 0 || removingMembers}
+              startIcon={removingMembers ? <CircularProgress size={14} color="inherit" /> : <Trash2 size={15} strokeWidth={1.75} />}
+              sx={(th) => ({
+                ...dialogDangerButtonSx(th),
+                opacity: selectedMembers.length === 0 ? 0.5 : 1,
+                bgcolor: 'transparent',
+                color: '#fca5a5',
+                border: '1px solid rgba(220, 38, 38, 0.45)',
+                '&:hover': { bgcolor: 'rgba(220, 38, 38, 0.12)', boxShadow: 'none' },
+                '&.Mui-disabled': { bgcolor: 'transparent', color: textTertiary(th), borderColor: pick(th, T.border, '#3f3f46') },
+              })}
+            >
+              Remove selected
+            </Button>
+          )}
           <Box sx={{ flex: 1 }} />
           <Button onClick={handleCloseEditDialog} sx={(th) => dialogCancelButtonSx(th)}>
-            Close
+            {editDialogTab === 0 ? 'Cancel' : 'Close'}
           </Button>
+          {editDialogTab === 0 && (
+            <Button
+              variant="contained"
+              onClick={() => void handleSaveGroupDetails()}
+              disabled={!groupDetailsDirty || savingGroupDetails || !editGroupName.trim()}
+              startIcon={savingGroupDetails ? <CircularProgress size={14} color="inherit" /> : undefined}
+              sx={(th) => dialogPrimaryButtonSx(th)}
+            >
+              {savingGroupDetails ? 'Saving…' : 'Save'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
 
