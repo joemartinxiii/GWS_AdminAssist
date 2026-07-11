@@ -126,3 +126,119 @@ export const menuPaperProps: { PaperProps: { sx: SxProps<Theme> } } = {
     }),
   },
 };
+
+/**
+ * Canonical dialog paper — same surface as lists/shells (Security Audit baseline).
+ * Use via `PaperProps={{ sx: dialogPaperSx }}`.
+ */
+export function dialogPaperSx(theme: Theme): SystemStyleObject<Theme> {
+  return {
+    fontFamily: T.font,
+    bgcolor: pick(theme, T.surface, '#18181b'),
+    backgroundImage: 'none',
+    border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
+    borderRadius: T.radiusLg,
+    boxShadow: dark(theme) ? '0 8px 32px rgba(0, 0, 0, 0.45)' : T.shadowLg,
+    '& .MuiDialogTitle-root, & .MuiDialogContent-root, & .MuiDialogActions-root, & .MuiTypography-root, & .MuiInputBase-root':
+      {
+        fontFamily: T.font,
+      },
+  };
+}
+
+/** Dialog title — bold, clear hierarchy (Security Audit style). */
+export function dialogTitleSx(theme: Theme): SystemStyleObject<Theme> {
+  return {
+    fontFamily: T.font,
+    fontWeight: 700,
+    fontSize: '1.125rem',
+    letterSpacing: '-0.02em',
+    color: pick(theme, T.text, '#fafafa'),
+    pr: 6,
+    pb: 1.5,
+  };
+}
+
+/** Dialog footer actions strip. */
+export function dialogActionsSx(theme: Theme): SystemStyleObject<Theme> {
+  return {
+    px: 3,
+    py: 2,
+    gap: 1,
+    borderTop: `1px solid ${pick(theme, T.borderSubtle, '#27272a')}`,
+  };
+}
+
+/** Primary contained action (Save, Confirm, Run). */
+export function dialogPrimaryButtonSx(theme: Theme): SystemStyleObject<Theme> {
+  return {
+    fontFamily: T.font,
+    textTransform: 'none',
+    borderRadius: T.radius,
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    bgcolor: T.accent,
+    color: '#fff',
+    boxShadow: 'none',
+    '&:hover': { bgcolor: T.accentHover, boxShadow: 'none' },
+    '&.Mui-disabled': {
+      bgcolor: pick(theme, T.border, '#3f3f46'),
+      color: textTertiary(theme),
+    },
+  };
+}
+
+/**
+ * Secondary action with real surface (Waive, Open Admin console, etc.).
+ * Avoid ghost/transparent outlined buttons on dark paper — low contrast.
+ */
+export function dialogSecondaryButtonSx(theme: Theme): SystemStyleObject<Theme> {
+  return {
+    fontFamily: T.font,
+    textTransform: 'none',
+    borderRadius: T.radius,
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    border: `1px solid ${pick(theme, T.border, '#5f6368')}`,
+    color: pick(theme, T.text, '#e8eaed'),
+    bgcolor: pick(theme, T.surfaceHover, 'rgba(255,255,255,0.08)'),
+    '&:hover': {
+      borderColor: pick(theme, T.accent, '#8ab4f8'),
+      bgcolor: pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.16)'),
+      color: pick(theme, T.text, '#fafafa'),
+    },
+    '&.Mui-disabled': {
+      borderColor: pick(theme, T.border, '#3f3f46'),
+      color: textTertiary(theme),
+      bgcolor: 'transparent',
+    },
+  };
+}
+
+/** Quiet cancel / close in footer. */
+export function dialogCancelButtonSx(theme: Theme): SystemStyleObject<Theme> {
+  return {
+    fontFamily: T.font,
+    textTransform: 'none',
+    borderRadius: T.radius,
+    fontSize: '0.8125rem',
+    fontWeight: 500,
+    color: textSecondary(theme),
+    '&:hover': { bgcolor: pick(theme, '#f0f0ec', '#27272a') },
+  };
+}
+
+/** Danger contained (Delete, Remove). */
+export function dialogDangerButtonSx(_theme: Theme): SystemStyleObject<Theme> {
+  return {
+    fontFamily: T.font,
+    textTransform: 'none',
+    borderRadius: T.radius,
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    bgcolor: T.danger,
+    color: '#fff',
+    boxShadow: 'none',
+    '&:hover': { bgcolor: '#b91c1c', boxShadow: 'none' },
+  };
+}

@@ -25,7 +25,7 @@ import { useTheme } from '@mui/material/styles';
 import { apiClient } from '../services/api.client';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ActionTooltip } from './ActionTooltip';
-import { T, pick, selectMenuProps, textSecondary, textTertiary } from '../theme/designTokens';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, dialogPaperSx } from '../theme/designTokens';
 import { ColumnHeader } from './ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow } from './ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from './ui/DialogListPagination';
@@ -108,17 +108,6 @@ export function EditUserDialog({
   const [appsRowsPerPage, setAppsRowsPerPage] = useState(DIALOG_LIST_PAGE_SIZE);
 
   const theme = useTheme();
-  const dialogPaperSx = {
-    fontFamily: T.font,
-    bgcolor: pick(theme, T.surface, '#18181b'),
-    backgroundImage: 'none',
-    border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
-    borderRadius: T.radiusLg,
-    '& .MuiDialogContent-root': { pt: 0 },
-    '& .MuiTypography-root, & .MuiFormLabel-root, & .MuiInputBase-root': { fontFamily: T.font },
-    '& .MuiOutlinedInput-notchedOutline': { borderColor: pick(theme, T.border, '#3f3f46') },
-    '& .MuiInputLabel-root': { fontFamily: T.font },
-  };
   useEffect(() => {
     if (!open || !user) return;
     setEditingUser({
@@ -349,7 +338,7 @@ export function EditUserDialog({
         onClose={handleClose}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: dialogPaperSx }}
+        PaperProps={{ sx: (th) => dialogPaperSx(th) }}
       >
         {/* ---- Title bar with avatar ---- */}
         <DialogTitle

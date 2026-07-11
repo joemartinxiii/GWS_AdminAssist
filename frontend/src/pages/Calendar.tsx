@@ -47,7 +47,7 @@ import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { DateTimePicker } from '../components/DateTimePicker';
 import { ActionTooltip } from '../components/ActionTooltip';
 import { FilterToken } from '../components/ui/FilterToken';
-import { T, pick, textSecondary, textTertiary } from '../theme/designTokens';
+import { T, pick, textSecondary, textTertiary, dialogPaperSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx } from '../components/ui/ListShell';
@@ -1314,16 +1314,10 @@ export function Calendar() {
         maxWidth="md"
         fullWidth
         PaperProps={{
-          sx: {
-            fontFamily: T.font,
-            bgcolor: (t: any) => pick(t, T.surface, '#18181b'),
-            backgroundImage: 'none',
-            border: (t: any) => `1px solid ${pick(t, T.border, '#3f3f46')}`,
-            borderRadius: T.radiusLg,
+          sx: (th) => ({
+            ...dialogPaperSx(th),
             '& .MuiDialogContent-root': { pt: '20px !important' },
-            '& .MuiTypography-root, & .MuiFormLabel-root, & .MuiInputBase-root': { fontFamily: T.font },
-            '& .MuiOutlinedInput-notchedOutline': { borderColor: (t: any) => pick(t, T.border, '#3f3f46') },
-          },
+          }),
         }}
       >
         <DialogTitle sx={{ p: 0, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>

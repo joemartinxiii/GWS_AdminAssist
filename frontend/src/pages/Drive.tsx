@@ -47,7 +47,7 @@ import { getApiErrorMessage } from '../utils/apiError';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { ActionTooltip } from '../components/ActionTooltip';
-import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx, listPinEndSx } from '../components/ui/ListShell';
@@ -224,15 +224,6 @@ function publicAccessLabel(record: ScanRecord): string {
 export function Drive() {
   const muiTheme = useTheme();
   const isMdUp = useMediaQuery(muiTheme.breakpoints.up('md'));
-  const dialogPaperSx = {
-    fontFamily: T.font,
-    bgcolor: pick(muiTheme, T.surface, '#18181b'),
-    backgroundImage: 'none',
-    border: `1px solid ${pick(muiTheme, T.border, '#3f3f46')}`,
-    borderRadius: T.radiusLg,
-    '& .MuiDialogContent-root': { pt: 0 },
-    '& .MuiTypography-root, & .MuiInputBase-root': { fontFamily: T.font },
-  };
   const [tabValue, setTabValue] = useState(TAB_EXTERNAL);
   const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
   const [files, setFiles] = useState<DriveFile[]>([]);
@@ -1773,7 +1764,7 @@ export function Drive() {
         }}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: dialogPaperSx }}
+        PaperProps={{ sx: (th) => dialogPaperSx(th) }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>

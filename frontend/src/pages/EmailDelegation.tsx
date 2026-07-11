@@ -28,7 +28,7 @@ import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { ActionTooltip } from '../components/ActionTooltip';
 import { FilterToken } from '../components/ui/FilterToken';
-import { T, pick, textSecondary, textTertiary, exportToolbarButtonSx, selectMenuProps } from '../theme/designTokens';
+import { T, pick, textSecondary, textTertiary, exportToolbarButtonSx, selectMenuProps, dialogPaperSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
@@ -68,16 +68,6 @@ function delegationKey(d: AllDelegation) {
 export function EmailDelegation() {
   const muiTheme = useTheme();
   const isMdUp = useMediaQuery(muiTheme.breakpoints.up('md'));
-  const dialogPaperSx = {
-    fontFamily: T.font,
-    bgcolor: pick(muiTheme, T.surface, '#18181b'),
-    backgroundImage: 'none',
-    border: `1px solid ${pick(muiTheme, T.border, '#3f3f46')}`,
-    borderRadius: T.radiusLg,
-    '& .MuiDialogContent-root': { pt: 0 },
-    '& .MuiTypography-root, & .MuiInputBase-root, & .MuiFormLabel-root': { fontFamily: T.font },
-    '& .MuiOutlinedInput-notchedOutline': { borderColor: pick(muiTheme, T.border, '#3f3f46') },
-  };
   const { confirm, confirmDialog } = useConfirm();
   const [allDelegations, setAllDelegations] = useState<AllDelegation[]>([]);
   const [coverage, setCoverage] = useState<DelegationCoverage | null>(null);
@@ -697,7 +687,7 @@ export function EmailDelegation() {
         onClose={() => { setDialogOpen(false); setNewUserEmail(''); setNewDelegateEmail(''); }}
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: dialogPaperSx }}
+        PaperProps={{ sx: (th) => dialogPaperSx(th) }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>

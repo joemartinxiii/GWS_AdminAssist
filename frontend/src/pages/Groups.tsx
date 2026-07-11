@@ -42,7 +42,7 @@ import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { ActionTooltip } from '../components/ActionTooltip';
-import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx } from '../theme/designTokens';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
@@ -117,15 +117,6 @@ export function Groups() {
     { name: 200, email: 260, description: 240, members: 88 },
     { name: 120, email: 160, description: 120, members: 56 }
   );
-  const dialogPaperSx = {
-    fontFamily: T.font,
-    bgcolor: pick(theme, T.surface, '#18181b'),
-    backgroundImage: 'none',
-    border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
-    borderRadius: T.radiusLg,
-    '& .MuiDialogContent-root': { pt: 0 },
-    '& .MuiTypography-root, & .MuiInputBase-root': { fontFamily: T.font },
-  };
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1223,7 +1214,7 @@ export function Groups() {
       </>
       )}
 
-      <Dialog open={editDialogOpen} onClose={handleCloseEditDialog} maxWidth="md" fullWidth PaperProps={{ sx: dialogPaperSx }}>
+      <Dialog open={editDialogOpen} onClose={handleCloseEditDialog} maxWidth="md" fullWidth PaperProps={{ sx: (th) => dialogPaperSx(th) }}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>{selectedGroup?.name}</Typography>
@@ -1446,7 +1437,7 @@ export function Groups() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={addUserDialogOpen} onClose={handleCloseAddUserDialog} maxWidth="md" fullWidth PaperProps={{ sx: dialogPaperSx }}>
+      <Dialog open={addUserDialogOpen} onClose={handleCloseAddUserDialog} maxWidth="md" fullWidth PaperProps={{ sx: (th) => dialogPaperSx(th) }}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>Add user to groups</Typography>

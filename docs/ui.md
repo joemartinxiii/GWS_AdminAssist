@@ -122,14 +122,25 @@ Full-page data views use **ListShell** rows (not MUI `Table`). Pagination is usu
 
 ---
 
-## 8. Dialogs
+## 8. Dialogs (canonical = Security Audit)
 
-- **Paper**: many modals use shared **`dialogPaperSx`** (border, radius, font family).
-- **Close affordance**: Prefer **one** clear dismiss path—either a header **X** or footer **Done** / **Cancel**, not both duplicating the same action. Edit flows often use **Cancel** + primary **Save** without a header close.
-- **Content**: `DialogContent` with top padding adjusted as needed (`pt: '20px !important'` where listed).
-- **Sections**: small caps / tracked **Typography** for **GROUPS**, **THIRD-PARTY APPS**, etc.; **`Divider`** between blocks.
+One surface for every modal — tokens in **`designTokens.ts`**:
 
-**Reference:** `EditUserDialog.tsx`, `ConfirmDialog.tsx`, Drive/Groups permission dialogs.
+| Token | Use |
+|-------|-----|
+| **`dialogPaperSx`** | `PaperProps={{ sx: (t) => dialogPaperSx(t) }}` |
+| **`dialogTitleSx`** | Bold title |
+| **`dialogActionsSx`** | Footer strip |
+| **`dialogPrimaryButtonSx`** | Contained Save / Confirm |
+| **`dialogSecondaryButtonSx`** | Waive, Open Admin console, etc. — **soft fill + border**, not ghost/transparent |
+| **`dialogCancelButtonSx`** | Quiet Cancel / Close |
+| **`dialogDangerButtonSx`** | Delete / Remove |
+
+- **Close affordance**: Prefer **one** clear dismiss path—header **X** *or* footer **Close**, not both doing the same thing when possible.
+- **Content**: `DialogContent dividers` (Audit style) or light top padding for form dialogs.
+- **Sections**: small caps / tracked labels for field groups.
+
+**Reference:** `SecurityAudit.tsx` detail dialog, `ConfirmDialog.tsx`.
 
 ---
 

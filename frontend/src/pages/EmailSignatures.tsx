@@ -18,7 +18,7 @@ import {
 } from '@mui/material';
 import { Search, X, Save, Send, ChevronDown, ChevronUp, HelpCircle, FileCode } from 'lucide-react';
 import { apiClient } from '../services/api.client';
-import { T, pick, textSecondary, textTertiary } from '../theme/designTokens';
+import { T, pick, textSecondary, textTertiary, dialogPaperSx } from '../theme/designTokens';
 import { useSnackbar } from '../hooks/useSnackbar';
 import { getApiErrorMessage } from '../utils/apiError';
 
@@ -573,14 +573,7 @@ export function EmailSignatures() {
         onClose={() => !applying && setPushOpen(false)}
         maxWidth="sm"
         fullWidth
-        PaperProps={{
-          sx: (theme) => ({
-            borderRadius: T.radiusLg,
-            bgcolor: pick(theme, T.surface, '#18181b'),
-            backgroundImage: 'none',
-            border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
-          }),
-        }}
+        PaperProps={{ sx: (th) => dialogPaperSx(th) }}
       >
         <DialogTitle sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1rem', pb: 0.5 }}>
           Push signature to users

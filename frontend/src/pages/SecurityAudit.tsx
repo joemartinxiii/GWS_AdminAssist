@@ -21,7 +21,20 @@ import { Download, CloudUpload, FileText, ChevronDown, ChevronRight, Play, EyeOf
 import { apiClient } from '../services/api.client';
 import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
-import { T, pick, menuPaperProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
+import {
+  T,
+  pick,
+  menuPaperProps,
+  textSecondary,
+  textTertiary,
+  exportToolbarButtonSx,
+  dialogPaperSx,
+  dialogTitleSx,
+  dialogActionsSx,
+  dialogPrimaryButtonSx,
+  dialogSecondaryButtonSx,
+  dialogCancelButtonSx,
+} from '../theme/designTokens';
 import { ExportMenuRow } from '../components/ExportButton';
 import { ActionTooltip } from '../components/ActionTooltip';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -1448,10 +1461,16 @@ export function SecurityAudit() {
         )}
       </Box>
 
-      <Dialog open={Boolean(detailCheck)} onClose={closeDetail} maxWidth="sm" fullWidth>
+      <Dialog
+        open={Boolean(detailCheck)}
+        onClose={closeDetail}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: (th) => dialogPaperSx(th) }}
+      >
         {detailCheck && (
           <>
-            <DialogTitle sx={{ fontFamily: T.font, fontWeight: 700, pr: 6 }}>
+            <DialogTitle sx={(th) => dialogTitleSx(th)}>
               {detailCheck.name}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1, flexWrap: 'wrap' }}>
                 <DotLabel
@@ -1695,22 +1714,15 @@ export function SecurityAudit() {
                           await applyWaive(detailCheck.id, reasonDraft);
                           setReasonEditing(false);
                         }}
-                        sx={{
-                          fontFamily: T.font,
-                          textTransform: 'none',
-                          borderRadius: T.radius,
-                          bgcolor: T.accent,
-                          '&:hover': { bgcolor: T.accentHover },
-                        }}
+                        sx={(th) => dialogPrimaryButtonSx(th)}
                       >
                         Save waiver
                       </Button>
                       <Button
                         size="small"
-                        variant="outlined"
                         disabled={waiveBusy}
                         onClick={() => setReasonEditing(false)}
-                        sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius }}
+                        sx={(th) => dialogCancelButtonSx(th)}
                       >
                         Cancel
                       </Button>
@@ -1720,26 +1732,24 @@ export function SecurityAudit() {
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                     <Button
                       size="small"
-                      variant="outlined"
                       disabled={!canTakeAction || waiveBusy}
                       startIcon={<EyeOff size={15} strokeWidth={1.75} />}
                       onClick={() => {
                         setReasonDraft('');
                         setReasonEditing(true);
                       }}
-                      sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius }}
+                      sx={(th) => dialogSecondaryButtonSx(th)}
                     >
                       Waive
                     </Button>
                     {detailCheck.adminConsoleUrl && (
                       <Button
                         size="small"
-                        variant="outlined"
                         startIcon={<ExternalLink size={15} strokeWidth={1.75} />}
                         href={detailCheck.adminConsoleUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius }}
+                        sx={(th) => dialogSecondaryButtonSx(th)}
                       >
                         Open Admin console
                       </Button>
@@ -1748,8 +1758,8 @@ export function SecurityAudit() {
                 )}
               </Box>
             </DialogContent>
-            <DialogActions>
-              <Button onClick={closeDetail} sx={{ fontFamily: T.font, textTransform: 'none' }}>
+            <DialogActions sx={(th) => dialogActionsSx(th)}>
+              <Button onClick={closeDetail} sx={(th) => dialogCancelButtonSx(th)}>
                 Close
               </Button>
             </DialogActions>

@@ -7,8 +7,15 @@ import {
   Button,
   CircularProgress,
 } from '@mui/material';
-import { useTheme } from '@mui/material/styles';
-import { T, pick, textSecondary } from '../theme/designTokens';
+import {
+  pick,
+  dialogPaperSx,
+  dialogTitleSx,
+  dialogActionsSx,
+  dialogPrimaryButtonSx,
+  dialogCancelButtonSx,
+  dialogDangerButtonSx,
+} from '../theme/designTokens';
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -32,7 +39,6 @@ export function ConfirmDialog({
   danger = false,
 }: ConfirmDialogProps) {
   const [loading, setLoading] = useState(false);
-  const theme = useTheme();
 
   const handleConfirm = async () => {
     setLoading(true);
@@ -52,51 +58,32 @@ export function ConfirmDialog({
       onClose={loading ? undefined : onClose}
       maxWidth="sm"
       fullWidth
-      PaperProps={{
-        sx: {
-          fontFamily: T.font,
-          bgcolor: pick(theme, T.surface, '#18181b'),
-          backgroundImage: 'none',
-          border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
-          borderRadius: T.radiusLg,
-          '& .MuiDialogTitle-root, & .MuiDialogContent-root, & .MuiDialogActions-root': {
-            fontFamily: T.font,
-          },
-        },
-      }}
+      PaperProps={{ sx: (th) => dialogPaperSx(th) }}
     >
-      <DialogTitle sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: pick(theme, T.text, '#fafafa'), pb: 1.5, borderBottom: `1px solid ${pick(theme, T.borderSubtle, '#27272a')}` }}>
+      <DialogTitle
+        sx={(th) => ({
+          ...dialogTitleSx(th),
+          borderBottom: `1px solid ${pick(th, '#f0f0ec', '#27272a')}`,
+          pr: 3,
+        })}
+      >
         {title}
       </DialogTitle>
-      {children && <DialogContent sx={{ fontFamily: T.font, fontSize: '0.875rem', pt: '16px !important' }}>{children}</DialogContent>}
-      <DialogActions sx={{ px: 3, py: 2, borderTop: `1px solid ${pick(theme, T.borderSubtle, '#27272a')}`, gap: 1 }}>
-        <Button
-          onClick={onClose}
-          disabled={loading}
-          sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, color: textSecondary(theme), '&:hover': { bgcolor: pick(theme, '#f0f0ec', '#27272a') } }}
-        >
+      {children && (
+        <DialogContent sx={{ fontFamily: 'inherit', fontSize: '0.875rem', pt: '16px !important' }}>
+          {children}
+        </DialogContent>
+      )}
+      <DialogActions sx={(th) => dialogActionsSx(th)}>
+        <Button onClick={onClose} disabled={loading} sx={(th) => dialogCancelButtonSx(th)}>
           {cancelLabel}
         </Button>
         <Button
           onClick={handleConfirm}
-          color={danger ? 'error' : 'primary'}
           variant="contained"
           disabled={loading}
           startIcon={loading ? <CircularProgress size={16} color="inherit" /> : undefined}
-          sx={{
-            fontFamily: T.font,
-            textTransform: 'none',
-            borderRadius: T.radius,
-            fontSize: '0.8125rem',
-            fontWeight: 500,
-            px: 2.5,
-            ...(danger
-              ? {}
-              : {
-                  bgcolor: T.accent,
-                  '&:hover': { bgcolor: T.accentHover },
-                }),
-          }}
+          sx={(th) => (danger ? dialogDangerButtonSx(th) : dialogPrimaryButtonSx(th))}
         >
           {confirmLabel}
         </Button>

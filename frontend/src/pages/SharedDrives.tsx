@@ -41,7 +41,7 @@ import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { ActionTooltip } from '../components/ActionTooltip';
-import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
@@ -100,15 +100,6 @@ interface SharedDrivePermission {
 export function SharedDrives() {
   const muiTheme = useTheme();
   const isMdUp = useMediaQuery(muiTheme.breakpoints.up('md'));
-  const dialogPaperSx = {
-    fontFamily: T.font,
-    bgcolor: pick(muiTheme, T.surface, '#18181b'),
-    backgroundImage: 'none',
-    border: `1px solid ${pick(muiTheme, T.border, '#3f3f46')}`,
-    borderRadius: T.radiusLg,
-    '& .MuiDialogContent-root': { pt: 0 },
-    '& .MuiTypography-root, & .MuiInputBase-root': { fontFamily: T.font },
-  };
   const [drives, setDrives] = useState<SharedDrive[]>([]);
   const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -978,7 +969,7 @@ export function SharedDrives() {
         onClose={handleClosePermissionsDialog}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: dialogPaperSx }}
+        PaperProps={{ sx: (th) => dialogPaperSx(th) }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
