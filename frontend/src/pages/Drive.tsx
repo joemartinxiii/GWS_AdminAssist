@@ -50,7 +50,8 @@ import { ActionTooltip } from '../components/ActionTooltip';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listGrowSx, listCheckboxSx } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
+import { useResizableColumns } from '../hooks/useResizableColumns';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
 import { DotLabel, ExternalChip } from '../components/StatusDot';
@@ -263,6 +264,22 @@ export function Drive() {
   const [externalSearchTerm, setExternalSearchTerm] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filtersVisible, setFiltersVisible] = useState(false);
+
+  const permCols = useResizableColumns(
+    'drive-file-perms',
+    { type: 72, name: 140, email: 200, access: 100, role: 88 },
+    { type: 56, name: 80, email: 120, access: 72, role: 64 }
+  );
+  const searchCols = useResizableColumns(
+    'drive-search',
+    { name: 200, owner: 160, created: 104, modified: 104, size: 80, location: 140 },
+    { name: 120, owner: 100, created: 80, modified: 80, size: 56, location: 90 }
+  );
+  const auditCols = useResizableColumns(
+    'drive-external',
+    { name: 200, owner: 160, sharedWith: 200, modified: 104, location: 140 },
+    { name: 120, owner: 100, sharedWith: 120, modified: 80, location: 90 }
+  );
 
   // Drive Search tab (org-wide, on-demand — no auto-load).
   const [searchDriveId, setSearchDriveId] = useState('');
@@ -1499,30 +1516,24 @@ export function Drive() {
                     onChange={handleSelectAll}
                     sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }}
                   />
-                  <Box sx={{ width: { xs: 200, sm: 180, md: '18%' }, minWidth: { xs: 200, sm: 180 } }}>
-                    <ColumnHeader label="File Name" columnId="fn" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                  <ColumnHeader label="File Name" columnId="fn" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...searchCols.headerProps('name')} />
+                  <Box sx={{ display: { xs: 'none', sm: 'flex' }, minWidth: 0 }}>
+                    <ColumnHeader label="Owner" columnId="ow" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...searchCols.headerProps('owner')} />
                   </Box>
-                  <Box sx={{ flex: 1, display: { xs: 'none', sm: 'block' } }}>
-                    <ColumnHeader label="Owner" columnId="ow" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                  <Box sx={{ display: { xs: 'none', md: 'flex' }, minWidth: 0 }}>
+                    <ColumnHeader label="Created" columnId="cr" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...searchCols.headerProps('created')} />
                   </Box>
-                  <Box sx={{ width: { xs: 100, sm: 104 }, display: { xs: 'none', md: 'block' } }}>
-                    <ColumnHeader label="Created" columnId="cr" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                  <Box sx={{ display: { xs: 'none', lg: 'flex' }, minWidth: 0 }}>
+                    <ColumnHeader label="Modified" columnId="mo" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...searchCols.headerProps('modified')} />
                   </Box>
-                  <Box sx={{ width: { xs: 100, sm: 104 }, display: { xs: 'none', lg: 'block' } }}>
-                    <ColumnHeader label="Modified" columnId="mo" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                  <Box sx={{ display: { xs: 'none', sm: 'flex' }, minWidth: 0 }}>
+                    <ColumnHeader label="Size" columnId="sz" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...searchCols.headerProps('size')} />
                   </Box>
-                  <Box sx={{ width: { xs: 80, sm: 80 }, display: { xs: 'none', sm: 'block' } }}>
-                    <ColumnHeader label="Size" columnId="sz" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                  <Box sx={{ display: { xs: 'none', sm: 'flex' }, minWidth: 0 }}>
+                    <ColumnHeader label="Location" columnId="loc" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...searchCols.headerProps('location')} />
                   </Box>
-                  <Box sx={{ width: { xs: 120, sm: 140, md: '14%' }, display: { xs: 'none', sm: 'block' } }}>
-                    <ColumnHeader label="Location" columnId="loc" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
-                  </Box>
-                  <Box sx={{ width: 48, flexShrink: 0 }}>
-                    <ColumnHeader label="Open" columnId="op" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} align="center" />
-                  </Box>
-                  <Box sx={{ width: 52, flexShrink: 0 }}>
-                    <ColumnHeader label="Perm" columnId="pm" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} align="center" />
-                  </Box>
+                  <ColumnHeader label="Open" columnId="op" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={48} align="center" />
+                  <ColumnHeader label="Perm" columnId="pm" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={52} align="center" />
                 </ListHeaderRow>
               {files.length === 0 ? (
                 <Box sx={{ py: 6, textAlign: 'center', px: 2 }}>
@@ -1545,36 +1556,36 @@ export function Drive() {
                   return (
                     <ListDataRow key={file.id} last={fIdx === arr.length - 1} selected={isSelected}>
                       <Checkbox size="small" checked={isSelected} onChange={() => handleSelectFile(file.id)} sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }} />
-                      <Box sx={{ width: { xs: 200, sm: 180, md: '18%' }, minWidth: { xs: 200, sm: 180 }, overflow: 'hidden' }}>
+                      <Box sx={searchCols.cellSx('name')}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (th) => pick(th, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</Typography>
                       </Box>
-                      <Box sx={{ flex: 1, minWidth: 0, display: { xs: 'none', sm: 'block' } }}>
+                      <Box sx={{ ...searchCols.cellSx('owner'), display: { xs: 'none', sm: 'block' } }}>
                         {file.owners.map((owner) => (
-                          <Typography key={owner.emailAddress} sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), display: 'block' }}>
+                          <Typography key={owner.emailAddress} sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {owner.displayName || owner.emailAddress}
                           </Typography>
                         ))}
                       </Box>
-                      <Box sx={{ width: { xs: 100, sm: 104 }, flexShrink: 0, display: { xs: 'none', md: 'block' } }}>
+                      <Box sx={{ ...searchCols.cellSx('created'), display: { xs: 'none', md: 'block' } }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{file.createdTime ? new Date(file.createdTime).toLocaleDateString() : '—'}</Typography>
                       </Box>
-                      <Box sx={{ width: { xs: 100, sm: 104 }, flexShrink: 0, display: { xs: 'none', lg: 'block' } }}>
+                      <Box sx={{ ...searchCols.cellSx('modified'), display: { xs: 'none', lg: 'block' } }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{new Date(file.modifiedTime).toLocaleDateString()}</Typography>
                       </Box>
-                      <Box sx={{ width: { xs: 80, sm: 80 }, flexShrink: 0, display: { xs: 'none', sm: 'block' } }}>
+                      <Box sx={{ ...searchCols.cellSx('size'), display: { xs: 'none', sm: 'block' } }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{formatFileSize(file.size)}</Typography>
                       </Box>
-                      <Box sx={{ width: { xs: 120, sm: 140, md: '14%' }, minWidth: { xs: 120, sm: 140 }, display: { xs: 'none', sm: 'block' } }}>
+                      <Box sx={{ ...searchCols.cellSx('location'), display: { xs: 'none', sm: 'block' } }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{getFileLocationLabel(file)}</Typography>
                       </Box>
-                      <Box sx={{ width: 48, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                      <Box sx={{ width: 48, flex: '0 0 48px', display: 'flex', justifyContent: 'center' }}>
                         <ActionTooltip title="Open in Google Drive">
                           <Link href={file.webViewLink} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
                             <ExternalLink size={16} strokeWidth={1.75} />
                           </Link>
                         </ActionTooltip>
                       </Box>
-                      <Box sx={{ width: 52, flexShrink: 0, display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
+                      <Box sx={{ width: 52, flex: '0 0 52px', display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
                         <ActionTooltip title="Manage permissions">
                           <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); handleOpenPermissionDialog(file); }} aria-label="Manage permissions" sx={{ p: 0.5 }}>
                             <Users size={16} strokeWidth={1.75} />
@@ -1646,27 +1657,21 @@ export function Drive() {
                   onChange={handleSelectAllReport}
                   sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }}
                 />
-                <Box sx={{ width: { xs: 200, sm: 180, md: '18%' }, minWidth: { xs: 200, sm: 180 } }}>
-                  <ColumnHeader label="File Name" columnId="efn" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                <ColumnHeader label="File Name" columnId="efn" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...auditCols.headerProps('name')} />
+                <Box sx={{ display: { xs: 'none', sm: 'flex' }, minWidth: 0 }}>
+                  <ColumnHeader label="Owner" columnId="eow" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...auditCols.headerProps('owner')} />
                 </Box>
-                <Box sx={{ width: { xs: 160, sm: 160, md: '16%' }, display: { xs: 'none', sm: 'block' } }}>
-                  <ColumnHeader label="Owner" columnId="eow" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                <Box sx={{ display: { xs: 'none', md: 'flex' }, minWidth: 0 }}>
+                  <ColumnHeader label={auditCategory === 'public' ? 'Access' : 'Shared With'} columnId="esw" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...auditCols.headerProps('sharedWith')} />
                 </Box>
-                <Box sx={{ flex: 1, minWidth: 160, display: { xs: 'none', md: 'block' } }}>
-                  <ColumnHeader label={auditCategory === 'public' ? 'Access' : 'Shared With'} columnId="esw" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                <Box sx={{ display: { xs: 'none', lg: 'flex' }, minWidth: 0 }}>
+                  <ColumnHeader label="Modified" columnId="emo" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...auditCols.headerProps('modified')} />
                 </Box>
-                <Box sx={{ width: { xs: 100, sm: 104 }, display: { xs: 'none', lg: 'block' } }}>
-                  <ColumnHeader label="Modified" columnId="emo" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
+                <Box sx={{ display: { xs: 'none', sm: 'flex' }, minWidth: 0 }}>
+                  <ColumnHeader label="Location" columnId="eloc" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} {...auditCols.headerProps('location')} />
                 </Box>
-                <Box sx={{ width: { xs: 120, sm: 140, md: '14%' }, display: { xs: 'none', sm: 'block' } }}>
-                  <ColumnHeader label="Location" columnId="eloc" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} />
-                </Box>
-                <Box sx={{ width: 48, flexShrink: 0 }}>
-                  <ColumnHeader label="Open" columnId="eop" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} align="center" />
-                </Box>
-                <Box sx={{ width: 52, flexShrink: 0 }}>
-                  <ColumnHeader label="Perm" columnId="epm" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} align="center" />
-                </Box>
+                <ColumnHeader label="Open" columnId="eop" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={48} align="center" />
+                <ColumnHeader label="Perm" columnId="epm" sortConfig={DRIVE_STATIC_SORT} onSort={driveNoopSort} sortable={false} width={52} align="center" />
               </ListHeaderRow>
               {reportRecords.length === 0 ? (
                 <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -1688,15 +1693,15 @@ export function Drive() {
                   return (
                     <ListDataRow key={id || f.name} last={idx === reportRecords.length - 1} selected={isSelected}>
                       <Checkbox size="small" checked={isSelected} onChange={() => handleSelectFile(id)} sx={{ p: 0.25, mr: 0.5, flexShrink: 0 }} />
-                      <Box sx={{ width: { xs: 200, sm: 180, md: '18%' }, minWidth: { xs: 200, sm: 180 }, overflow: 'hidden' }}>
+                      <Box sx={auditCols.cellSx('name')}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (th) => pick(th, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name ?? '—'}</Typography>
                       </Box>
-                      <Box sx={{ width: { xs: 160, sm: 160, md: '16%' }, minWidth: { xs: 160, sm: 160 }, display: { xs: 'none', sm: 'block' }, overflow: 'hidden' }}>
+                      <Box sx={{ ...auditCols.cellSx('owner'), display: { xs: 'none', sm: 'block' } }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {f.ownerName || f.owner || '—'}
                         </Typography>
                       </Box>
-                      <Box sx={{ flex: 1, minWidth: 160, display: { xs: 'none', md: 'block' }, overflow: 'hidden' }}>
+                      <Box sx={{ ...auditCols.cellSx('sharedWith'), display: { xs: 'none', md: 'block' } }}>
                         {auditCategory === 'public' ? (
                           <DotLabel dotColor="#ef4444">{publicAccessLabel(record)}</DotLabel>
                         ) : (
@@ -1707,17 +1712,17 @@ export function Drive() {
                           </Tooltip>
                         )}
                       </Box>
-                      <Box sx={{ width: { xs: 100, sm: 104 }, flexShrink: 0, display: { xs: 'none', lg: 'block' } }}>
+                      <Box sx={{ ...auditCols.cellSx('modified'), display: { xs: 'none', lg: 'block' } }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{f.modifiedTime ? new Date(f.modifiedTime).toLocaleDateString() : '—'}</Typography>
                       </Box>
-                      <Box sx={{ width: { xs: 120, sm: 140, md: '14%' }, minWidth: { xs: 120, sm: 140 }, display: { xs: 'none', sm: 'block' } }}>
+                      <Box sx={{ ...auditCols.cellSx('location'), display: { xs: 'none', sm: 'block' } }}>
                         <Tooltip title={f.path || ''} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {getFileLocationLabel(f)}
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ width: 48, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                      <Box sx={{ width: 48, flex: '0 0 48px', display: 'flex', justifyContent: 'center' }}>
                         {f.webViewLink ? (
                           <ActionTooltip title="Open in Google Drive">
                             <Link href={f.webViewLink} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', color: T.accent }}>
@@ -1728,7 +1733,7 @@ export function Drive() {
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textTertiary(t) }}>—</Typography>
                         )}
                       </Box>
-                      <Box sx={{ width: 52, flexShrink: 0, display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
+                      <Box sx={{ width: 52, flex: '0 0 52px', display: 'flex', justifyContent: 'center', '& .MuiIconButton-root': { color: T.accent } }}>
                         <ActionTooltip title="Manage permissions">
                           <IconButton size="small" color="primary" onClick={(e) => { e.stopPropagation(); handleOpenPermissionDialogForRecord(record); }} aria-label="Manage permissions" sx={{ p: 0.5 }}>
                             <Users size={16} strokeWidth={1.75} />
@@ -1837,11 +1842,11 @@ export function Drive() {
                       />
                     ) : null}
                   </Box>
-                  <ColumnHeader label="Type" columnId="dt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={56} />
-                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} grow={1} minWidth={100} />
-                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} grow={1.35} minWidth={140} />
-                  <ColumnHeader label="Access" columnId="dx" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={92} />
-                  <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} />
+                  <ColumnHeader label="Type" columnId="dt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('type')} />
+                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('name')} />
+                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('email')} />
+                  <ColumnHeader label="Access" columnId="dx" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('access')} />
+                  <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...permCols.headerProps('role')} />
                   <ColumnHeader label="Actions" columnId="da" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} align="right" />
                 </ListHeaderRow>
                 {(selectedFile.permissions ?? []).length === 0 && !addPermissionDialogOpen && (
@@ -1864,10 +1869,10 @@ export function Drive() {
                           <Checkbox size="small" checked={isSelected} onChange={() => togglePermissionSelected(permission.id, isOwner)} sx={{ p: 0.25 }} />
                         ) : null}
                       </Box>
-                      <Box sx={{ width: 56, flex: '0 0 56px' }}>
+                      <Box sx={permCols.cellSx('type')}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{permission.type}</Typography>
                       </Box>
-                      <Box sx={listGrowSx(1, 100)}>
+                      <Box sx={permCols.cellSx('name')}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.displayName || '')} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
@@ -1876,7 +1881,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={listGrowSx(1.35, 140)}>
+                      <Box sx={permCols.cellSx('email')}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.emailAddress || permission.domain || '')} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
@@ -1885,7 +1890,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ width: 92, flex: '0 0 92px' }}>
+                      <Box sx={permCols.cellSx('access')}>
                         {isPermissionExternal(permission, allowedDomains) ? (
                           <ExternalChip />
                         ) : (
@@ -1894,7 +1899,7 @@ export function Drive() {
                           </Typography>
                         )}
                       </Box>
-                      <Box sx={{ width: 80, flex: '0 0 80px' }}>
+                      <Box sx={permCols.cellSx('role')}>
                         {isEditing ? (
                           <Select
                             size="small"

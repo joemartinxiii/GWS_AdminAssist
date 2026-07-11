@@ -7,7 +7,7 @@ Canonical guide for visuals and interaction: Plus Jakarta Sans, Workspace-style 
 ## List & actions contract (do not break)
 
 1. **`ListShell` → `ListHeaderRow` → `ListDataRow`** for every data table.
-2. **Even width distribution:** growing columns use `grow={n}` / `listGrowSx(n)` so content spreads across the full row. Fixed columns use numeric `width` (px). **Never** use `marginLeft: auto` on Actions (creates a dead mid-row gap).
+2. **Resizable columns:** data columns use **`useResizableColumns(tableId, defaults, minWidths)`** (`frontend/src/hooks/useResizableColumns.ts`). Spread **`cols.headerProps('id')`** on each **`ColumnHeader`** and **`cols.cellSx('id')`** on matching cells. Widths persist in `localStorage` under `gws-col-widths:v1:{tableId}`. Drag the right edge of a header to resize. **Actions** / icon-only columns stay fixed (not resizable).
 3. **Checkboxes:** always wrap in **`listCheckboxSx`** (40px) in **both** header and every data row (empty box when no checkbox) so boxes line up.
 4. **Trailing Actions:** **`listActionsSx`** (80px, flex-end icons). One **Actions** column — not separate Open/Details/Remove headers.
 5. **Icons mean one thing:**
@@ -57,9 +57,9 @@ Helpers **`textSecondary(theme)`** and **`textTertiary(theme)`** wrap `pick` for
 
 Data views use bordered flex lists (not legacy `Table`/`Paper` grids) for consistency with the Users page and toolbars.
 
-- **`ListShell`** — outer bordered container.
+- **`ListShell`** — outer bordered container (`overflow-x: auto` when columns exceed the viewport).
 - **`ListHeaderRow`** — header strip under the top border.
-- **`ColumnHeader`** — uppercase, tracked labels; optional sort. Dialogs that do not sort can use **`dialogListSort.ts`** (`DIALOG_LIST_SORT`, `dialogListNoopSort`).
+- **`ColumnHeader`** — uppercase, tracked labels; optional sort; optional resize handle when `resizable` + `onResizeStart` (from `useResizableColumns().headerProps`). Dialogs that do not sort can use **`dialogListSort.ts`** (`DIALOG_LIST_SORT`, `dialogListNoopSort`).
 - **`ListDataRow`** — row chrome, hover, optional selection wash.
 - **`DialogListPagination`** — rows-per-page + range + prev/next inside modals.
 - **`ExportButton`** — CSV/Drive export menus; pass **`triggerSx`** (e.g. `exportToolbarButtonSx()`) for toolbar styling.

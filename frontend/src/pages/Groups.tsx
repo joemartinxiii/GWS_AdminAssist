@@ -44,7 +44,7 @@ import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { ActionTooltip } from '../components/ActionTooltip';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
 import { DotLabel } from '../components/StatusDot';
@@ -52,6 +52,7 @@ import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
 import { useTheme } from '@mui/material/styles';
 import { useConfirm } from '../hooks/useConfirm';
+import { useResizableColumns } from '../hooks/useResizableColumns';
 import { getApiErrorMessage } from '../utils/apiError';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -101,6 +102,21 @@ export function Groups() {
   const theme = useTheme();
   const { confirm, confirmDialog } = useConfirm();
   const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
+  const cols = useResizableColumns(
+    'groups',
+    { name: 180, email: 220, description: 200, directMembersCount: 88, creationTime: 110 },
+    { name: 100, email: 120, description: 100, directMembersCount: 56, creationTime: 80 }
+  );
+  const memberCols = useResizableColumns(
+    'groups-members',
+    { email: 240, role: 100, type: 96, status: 88 },
+    { email: 120, role: 72, type: 64, status: 64 }
+  );
+  const pickerCols = useResizableColumns(
+    'groups-user-picker',
+    { name: 180, email: 220, description: 200, members: 88 },
+    { name: 100, email: 120, description: 100, members: 56 }
+  );
   const dialogPaperSx = {
     fontFamily: T.font,
     bgcolor: pick(theme, T.surface, '#18181b'),
@@ -1069,13 +1085,15 @@ export function Groups() {
       )}
       <ListShell>
         <ListHeaderRow>
-          <Checkbox
-            size="small"
-            indeterminate={selectedGroups.length > 0 && selectedGroups.length < filteredGroups.length}
-            checked={filteredGroups.length > 0 && selectedGroups.length === filteredGroups.length}
-            onChange={handleSelectAllGroups}
-            sx={{ p: 0.25, mr: 0.5 }}
-          />
+          <Box sx={listCheckboxSx}>
+            <Checkbox
+              size="small"
+              indeterminate={selectedGroups.length > 0 && selectedGroups.length < filteredGroups.length}
+              checked={filteredGroups.length > 0 && selectedGroups.length === filteredGroups.length}
+              onChange={handleSelectAllGroups}
+              sx={{ p: 0.25 }}
+            />
+          </Box>
           {columns.map((col) => (
             <ColumnHeader
               key={col.id}
@@ -1084,29 +1102,7 @@ export function Groups() {
               sortConfig={sortConfig}
               onSort={handleSort}
               sortable={col.sortable !== false}
-              width={
-                col.id === 'name'
-                  ? '22%'
-                  : col.id === 'email'
-                    ? undefined
-                    : col.id === 'description'
-                      ? undefined
-                      : col.id === 'directMembersCount'
-                        ? 96
-                        : col.id === 'creationTime'
-                          ? 120
-                          : undefined
-              }
-              minWidth={
-                col.id === 'name'
-                  ? 160
-                  : col.id === 'email'
-                    ? 180
-                    : col.id === 'description'
-                      ? 160
-                      : undefined
-              }
-              align={col.id === 'directMembersCount' || col.id === 'creationTime' ? 'left' : 'left'}
+              {...cols.headerProps(col.id)}
             />
           ))}
           <ColumnHeader
@@ -1135,38 +1131,40 @@ export function Groups() {
                 last={idx === pageRows.length - 1}
                 selected={selected}
               >
-                <Checkbox
-                  size="small"
-                  checked={selected}
-                  onChange={() => handleSelectGroup(group.email)}
-                  sx={{ p: 0.25, mr: 0.5 }}
-                />
-                <Box sx={{ width: '22%', minWidth: 160, overflow: 'hidden' }}>
+                <Box sx={listCheckboxSx}>
+                  <Checkbox
+                    size="small"
+                    checked={selected}
+                    onChange={() => handleSelectGroup(group.email)}
+                    sx={{ p: 0.25 }}
+                  />
+                </Box>
+                <Box sx={cols.cellSx('name')}>
                   <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (theme) => pick(theme, T.text, '#fafafa') }}>
                     {group.name}
                   </Typography>
                 </Box>
-                <Box sx={{ flex: 1, minWidth: 180, overflow: 'hidden' }}>
+                <Box sx={cols.cellSx('email')}>
                   <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {group.email}
                   </Typography>
                 </Box>
-                <Box sx={{ flex: 1.2, minWidth: 160, overflow: 'hidden' }}>
+                <Box sx={cols.cellSx('description')}>
                   <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {group.description || '—'}
                   </Typography>
                 </Box>
-                <Box sx={{ width: 96, flexShrink: 0 }}>
+                <Box sx={cols.cellSx('directMembersCount')}>
                   <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
                     {group.directMembersCount ?? 0}
                   </Typography>
                 </Box>
-                <Box sx={{ width: 120, flexShrink: 0 }}>
+                <Box sx={cols.cellSx('creationTime')}>
                   <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
                     {formatDate(group.creationTime)}
                   </Typography>
                 </Box>
-                <Box sx={{ width: 96, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.5, '& .MuiIconButton-root': { color: T.accent } }}>
+                <Box sx={{ ...listActionsSx, width: 96, flex: '0 0 96px', '& .MuiIconButton-root': { color: T.accent } }}>
                   <ActionTooltip title="Edit Group">
                     <IconButton size="small" onClick={() => handleOpenEditDialog(group)} sx={{ p: 0.5 }} className="edit-action">
                       <Pencil size={16} strokeWidth={1.75} />
@@ -1297,10 +1295,10 @@ export function Groups() {
                 ) : (
                   <Box sx={{ width: 34, mr: 0.5, flexShrink: 0 }} />
                 )}
-                <ColumnHeader label="Email" columnId="em" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={180} />
-                <ColumnHeader label="Role" columnId="rl" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={100} />
-                <ColumnHeader label="Type" columnId="ty" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={96} />
-                <ColumnHeader label="Status" columnId="st" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
+                <ColumnHeader label="Email" columnId="em" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('email')} />
+                <ColumnHeader label="Role" columnId="rl" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('role')} />
+                <ColumnHeader label="Type" columnId="ty" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('type')} />
+                <ColumnHeader label="Status" columnId="st" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('status')} />
                 <ColumnHeader label="Remove" columnId="rm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="right" />
               </ListHeaderRow>
               {members.length === 0 && !addMemberInlineOpen && (
@@ -1318,10 +1316,10 @@ export function Groups() {
                 return (
                 <ListDataRow key={member.id} last={globalMidx === filteredMembersForDialog.length - 1 && addMemberInlineOpen}>
                   <Checkbox size="small" checked={selectedMembers.includes(member.email)} onChange={() => handleSelectMember(member.email)} sx={{ p: 0.25, mr: 0.5 }} />
-                  <Box sx={{ flex: 1, minWidth: 180, overflow: 'hidden' }}>
+                  <Box sx={memberCols.cellSx('email')}>
                     <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{member.email}</Typography>
                   </Box>
-                  <Box sx={{ width: 100, flexShrink: 0 }}>
+                  <Box sx={memberCols.cellSx('role')}>
                     <DotLabel
                       dotColor={
                         member.role === 'OWNER' ? T.danger : member.role === 'MANAGER' ? T.warning : textTertiary(theme)
@@ -1330,10 +1328,10 @@ export function Groups() {
                       {member.role}
                     </DotLabel>
                   </Box>
-                  <Box sx={{ width: 96, flexShrink: 0 }}>
+                  <Box sx={memberCols.cellSx('type')}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{member.type}</Typography>
                   </Box>
-                  <Box sx={{ width: 88, flexShrink: 0 }}>
+                  <Box sx={memberCols.cellSx('status')}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{member.status}</Typography>
                   </Box>
                   <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
@@ -1369,7 +1367,7 @@ export function Groups() {
                   })}
                 >
                   <Box sx={{ width: 34, flexShrink: 0 }} />
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Box sx={{ ...memberCols.cellSx('email'), overflow: 'visible' }}>
                     <Autocomplete
                       freeSolo
                       options={directorySuggestions}
@@ -1395,7 +1393,7 @@ export function Groups() {
                       fullWidth
                     />
                   </Box>
-                  <Box sx={{ width: 100, flexShrink: 0 }}>
+                  <Box sx={memberCols.cellSx('role')}>
                     <FormControl size="small" fullWidth sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.8125rem', '& .MuiSelect-select': { py: 0.5 } } }}>
                       <Select value={addMemberRole} onChange={(e) => setAddMemberRole(e.target.value as 'MEMBER' | 'MANAGER' | 'OWNER')}>
                         <MenuItem value="MEMBER">Member</MenuItem>
@@ -1404,10 +1402,10 @@ export function Groups() {
                       </Select>
                     </FormControl>
                   </Box>
-                  <Box sx={{ width: 96, flexShrink: 0 }}>
+                  <Box sx={memberCols.cellSx('type')}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>—</Typography>
                   </Box>
-                  <Box sx={{ width: 88, flexShrink: 0 }}>
+                  <Box sx={memberCols.cellSx('status')}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>—</Typography>
                   </Box>
                   <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
@@ -1582,26 +1580,26 @@ export function Groups() {
                     onChange={handleSelectAllGroupsForUser}
                     sx={{ p: 0.25, mr: 0.5 }}
                   />
-                  <ColumnHeader label="Name" columnId="gn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="22%" minWidth={160} />
-                  <ColumnHeader label="Email" columnId="ge" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={180} />
-                  <ColumnHeader label="Description" columnId="gd" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={160} />
-                  <ColumnHeader label="Members" columnId="gm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
+                  <ColumnHeader label="Name" columnId="gn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...pickerCols.headerProps('name')} />
+                  <ColumnHeader label="Email" columnId="ge" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...pickerCols.headerProps('email')} />
+                  <ColumnHeader label="Description" columnId="gd" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...pickerCols.headerProps('description')} />
+                  <ColumnHeader label="Members" columnId="gm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...pickerCols.headerProps('members')} />
                 </ListHeaderRow>
                 {pagedGroupsForPicker.map((group, gidx) => {
                   const globalGidx = agPageSafe * addUserGroupsRowsPerPage + gidx;
                   return (
                   <ListDataRow key={group.id} last={globalGidx === groups.length - 1} selected={selectedGroupsForUser.includes(group.email)}>
                     <Checkbox size="small" checked={selectedGroupsForUser.includes(group.email)} onChange={() => handleSelectGroupForUser(group.email)} sx={{ p: 0.25, mr: 0.5 }} />
-                    <Box sx={{ width: '22%', minWidth: 160, overflow: 'hidden' }}>
+                    <Box sx={pickerCols.cellSx('name')}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (t) => pick(t, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.name}</Typography>
                     </Box>
-                    <Box sx={{ flex: 1, minWidth: 180, overflow: 'hidden' }}>
+                    <Box sx={pickerCols.cellSx('email')}>
                       <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.email}</Typography>
                     </Box>
-                    <Box sx={{ flex: 1.2, minWidth: 160, overflow: 'hidden' }}>
+                    <Box sx={pickerCols.cellSx('description')}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.description || '—'}</Typography>
                     </Box>
-                    <Box sx={{ width: 88, flexShrink: 0 }}>
+                    <Box sx={pickerCols.cellSx('members')}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{group.directMembersCount ?? 0}</Typography>
                     </Box>
                   </ListDataRow>

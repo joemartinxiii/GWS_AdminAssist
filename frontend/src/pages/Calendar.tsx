@@ -50,8 +50,9 @@ import { FilterToken } from '../components/ui/FilterToken';
 import { T, pick, textSecondary, textTertiary } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx } from '../components/ui/ListShell';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { useResizableColumns } from '../hooks/useResizableColumns';
 
 const CAL_STATIC_SORT = { key: '_', direction: 'asc' as const };
 const calNoopSort = () => {};
@@ -108,6 +109,11 @@ function extractEmailCandidate(raw: string): string {
 
 export function Calendar() {
   const theme = useTheme();
+  const cols = useResizableColumns(
+    'calendar-events',
+    { event: 220, start: 140, end: 140, location: 140, attendees: 220 },
+    { event: 120, start: 100, end: 100, location: 80, attendees: 120 }
+  );
   const [viewType, setViewType] = useState<'table' | 'calendar'>('calendar');
   const [calendarView, setCalendarView] = useState<View>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -1210,39 +1216,39 @@ export function Calendar() {
             <>
             <ListShell>
               <ListHeaderRow>
-                <ColumnHeader label="Event" columnId="ev" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width="22%" minWidth={160} />
-                <ColumnHeader label="Start" columnId="st" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width={140} />
-                <ColumnHeader label="End" columnId="en" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width={140} />
-                <ColumnHeader label="Location" columnId="loc" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width="14%" minWidth={110} />
-                <ColumnHeader label="Attendees" columnId="att" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} minWidth={160} />
+                <ColumnHeader label="Event" columnId="ev" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} {...cols.headerProps('event')} />
+                <ColumnHeader label="Start" columnId="st" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} {...cols.headerProps('start')} />
+                <ColumnHeader label="End" columnId="en" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} {...cols.headerProps('end')} />
+                <ColumnHeader label="Location" columnId="loc" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} {...cols.headerProps('location')} />
+                <ColumnHeader label="Attendees" columnId="att" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} {...cols.headerProps('attendees')} />
                 <ColumnHeader label="Actions" columnId="act" sortConfig={CAL_STATIC_SORT} onSort={calNoopSort} sortable={false} width={100} align="right" />
               </ListHeaderRow>
               {pagedTableEvents.map((event, idx) => (
                 <ListDataRow key={event.id} last={idx === pagedTableEvents.length - 1}>
-                  <Box sx={{ width: '22%', minWidth: 160 }}>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (th) => pick(th, T.text, '#fafafa') }}>
+                  <Box sx={cols.cellSx('event')}>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (th) => pick(th, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {event.summary || 'No Title'}
                     </Typography>
                     {event.description && (
-                      <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (th) => textSecondary(th), display: 'block', mt: 0.25 }}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (th) => textSecondary(th), display: 'block', mt: 0.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {event.description.substring(0, 50)}
                         {event.description.length > 50 ? '…' : ''}
                       </Typography>
                     )}
                   </Box>
-                  <Box sx={{ width: 140, flexShrink: 0 }}>
+                  <Box sx={cols.cellSx('start')}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (th) => textSecondary(th) }}>{formatDateTime(event.start?.dateTime, event.start?.date)}</Typography>
                   </Box>
-                  <Box sx={{ width: 140, flexShrink: 0 }}>
+                  <Box sx={cols.cellSx('end')}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (th) => textSecondary(th) }}>{formatDateTime(event.end?.dateTime, event.end?.date)}</Typography>
                   </Box>
-                  <Box sx={{ width: '14%', minWidth: 110 }}>
+                  <Box sx={cols.cellSx('location')}>
                     <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (th) => textSecondary(th), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {event.location || '—'}
                     </Typography>
                   </Box>
-                  <Box sx={{ flex: 1, minWidth: 160 }}>
-                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (th) => textSecondary(th), lineHeight: 1.45 }}>
+                  <Box sx={cols.cellSx('attendees')}>
+                    <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (th) => textSecondary(th), lineHeight: 1.45, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {event.attendees?.length
                         ? [
                             ...event.attendees.slice(0, 3).map((a) => a.displayName || a.email),
@@ -1251,7 +1257,7 @@ export function Calendar() {
                         : '—'}
                     </Typography>
                   </Box>
-                  <Box sx={{ width: 100, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.5 }}>
+                  <Box sx={{ ...listActionsSx, width: 100, flex: '0 0 100px' }}>
                     <ActionTooltip title="View / Edit">
                       <IconButton size="small" color="primary" onClick={() => handleOpenEventDialog(event, 'view')} aria-label="View or edit" sx={{ p: 0.5 }}>
                         <Pencil size={16} strokeWidth={1.75} />

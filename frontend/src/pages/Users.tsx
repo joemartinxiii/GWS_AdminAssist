@@ -30,8 +30,6 @@ import {
   Search,
   Calendar,
   ListFilter,
-  ArrowUp,
-  ArrowDown,
   Trash2,
 } from 'lucide-react';
 import type { AxiosError } from 'axios';
@@ -50,8 +48,9 @@ import { shortcut } from '../utils/keyboard';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listGrowSx, listCheckboxSx } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
 import { getApiErrorMessage } from '../utils/apiError';
+import { useResizableColumns } from '../hooks/useResizableColumns';
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -260,6 +259,20 @@ export function Users() {
   const theme = useTheme();
   const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
   const isAdminsTab = tab === 1;
+
+  const cols = useResizableColumns(
+    'users-people',
+    {
+      name: 160,
+      email: 200,
+      status: 110,
+      twofa: 72,
+      role: 100,
+      ou: 110,
+      lastLogin: 100,
+    },
+    { name: 100, email: 120, status: 80, twofa: 56, role: 64, ou: 72, lastLogin: 72 }
+  );
 
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: AlertColor; action?: React.ReactNode }>({
     open: false, message: '', severity: 'info',
@@ -705,47 +718,6 @@ export function Users() {
   const pct2FA = stats2FA?.total ? Math.round((enrolled2FA / stats2FA.total) * 100) : 0;
 
   // -------------------------------------------------------------------------
-  // Column header helper
-  // -------------------------------------------------------------------------
-
-  const ColHeader = ({ label, sortId, width, minWidth, align, grow }: { label: string; sortId: SortKey; width?: string | number; minWidth?: string | number; align?: string; grow?: number | boolean }) => {
-    const growN = grow === true ? 1 : typeof grow === 'number' ? grow : undefined;
-    const flex =
-      growN != null
-        ? `${growN} 1 0px`
-        : width != null
-          ? `0 0 ${typeof width === 'number' ? `${width}px` : width}`
-          : '1 1 0px';
-    return (
-    <Box
-      onClick={() => handleSort(sortId)}
-      sx={(theme) => ({
-        width: growN != null ? undefined : width,
-        minWidth: minWidth ?? (typeof width === 'number' ? width : growN != null ? 80 : 0),
-        flex,
-        overflow: 'hidden',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 0.25,
-        cursor: 'pointer',
-        userSelect: 'none',
-        fontSize: '0.6875rem',
-        fontWeight: 600,
-        fontFamily: T.font,
-        textTransform: 'uppercase' as const,
-        letterSpacing: '0.06em',
-        color: effectiveSortKey === sortId ? pick(theme, T.accent, '#8ab4f8') : textTertiary(theme),
-        justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
-        '&:hover': { color: pick(theme, T.text, '#e4e4e7') },
-      })}
-    >
-      {label}
-      {effectiveSortKey === sortId && (sortDir === 'asc' ? <ArrowUp size={14} strokeWidth={2} /> : <ArrowDown size={14} strokeWidth={2} />)}
-    </Box>
-    );
-  };
-
-  // -------------------------------------------------------------------------
   // Loading state
   // -------------------------------------------------------------------------
 
@@ -1009,17 +981,57 @@ export function Users() {
                   />
                 </Box>
                 <Box sx={{ width: 34, flex: '0 0 34px' }} />
-                <ColHeader label="Name" sortId="name" grow={1.2} minWidth={120} />
-                <ColHeader label="Email" sortId="email" grow={1.3} minWidth={140} />
-                <ColHeader label="Status" sortId="status" width={100} />
-                <ColHeader label="2FA" sortId="2fa" width={64} />
-                {isAdminsTab ? (
-                  <ColHeader label="Admin type" sortId="adminType" width={100} />
-                ) : (
-                  <ColHeader label="Role" sortId="role" width={64} />
+                <ColumnHeader
+                  label="Name"
+                  columnId="name"
+                  sortConfig={{ key: effectiveSortKey, direction: sortDir }}
+                  onSort={(id) => handleSort(id as SortKey)}
+                  {...cols.headerProps('name')}
+                />
+                <ColumnHeader
+                  label="Email"
+                  columnId="email"
+                  sortConfig={{ key: effectiveSortKey, direction: sortDir }}
+                  onSort={(id) => handleSort(id as SortKey)}
+                  {...cols.headerProps('email')}
+                />
+                <ColumnHeader
+                  label="Status"
+                  columnId="status"
+                  sortConfig={{ key: effectiveSortKey, direction: sortDir }}
+                  onSort={(id) => handleSort(id as SortKey)}
+                  {...cols.headerProps('status')}
+                />
+                <ColumnHeader
+                  label="2FA"
+                  columnId="2fa"
+                  sortConfig={{ key: effectiveSortKey, direction: sortDir }}
+                  onSort={(id) => handleSort(id as SortKey)}
+                  {...cols.headerProps('twofa')}
+                />
+                <ColumnHeader
+                  label={isAdminsTab ? 'Admin type' : 'Role'}
+                  columnId={isAdminsTab ? 'adminType' : 'role'}
+                  sortConfig={{ key: effectiveSortKey, direction: sortDir }}
+                  onSort={(id) => handleSort(id as SortKey)}
+                  {...cols.headerProps('role')}
+                />
+                <ColumnHeader
+                  label="OU"
+                  columnId="ou"
+                  sortConfig={{ key: effectiveSortKey, direction: sortDir }}
+                  onSort={(id) => handleSort(id as SortKey)}
+                  {...cols.headerProps('ou')}
+                />
+                {isMdUp && (
+                  <ColumnHeader
+                    label="Last sign-in"
+                    columnId="lastLogin"
+                    sortConfig={{ key: effectiveSortKey, direction: sortDir }}
+                    onSort={(id) => handleSort(id as SortKey)}
+                    {...cols.headerProps('lastLogin')}
+                  />
                 )}
-                <ColHeader label="OU" sortId="ou" width={100} minWidth={80} />
-                {isMdUp && <ColHeader label="Last sign-in" sortId="lastLogin" width={88} />}
                 <ColumnHeader
                   label="Actions"
                   columnId="__actions"
@@ -1068,17 +1080,17 @@ export function Users() {
                         <Checkbox size="small" checked={isSelected} sx={{ p: 0.25 }} onChange={() => toggleUser(user.primaryEmail)} />
                       </Box>
                       <Initials name={user.name.fullName} suspended={user.suspended} />
-                      <Box sx={listGrowSx(1.2, 120)}>
+                      <Box sx={cols.cellSx('name')}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (theme) => pick(theme, T.text, '#fafafa'), textDecoration: user.suspended ? 'line-through' : 'none', opacity: user.suspended ? 0.5 : 1 }}>
                           {user.name.fullName}
                         </Typography>
                       </Box>
-                      <Box sx={listGrowSx(1.3, 140)}>
+                      <Box sx={cols.cellSx('email')}>
                         <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {user.primaryEmail}
                         </Typography>
                       </Box>
-                      <Box sx={{ width: 100, flex: '0 0 100px' }}>
+                      <Box sx={cols.cellSx('status')}>
                         <DotLabel
                           dotColor={user.suspended ? T.danger : T.success}
                           dotTooltip={user.suspended ? 'Suspended' : 'Active'}
@@ -1086,7 +1098,7 @@ export function Users() {
                           {user.suspended ? 'Suspended' : 'Active'}
                         </DotLabel>
                       </Box>
-                      <Box sx={{ width: 64, flex: '0 0 64px' }}>
+                      <Box sx={cols.cellSx('twofa')}>
                         <DotLabel
                           dotColor={user.isEnrolledIn2Sv ? T.success : user.isEnforcedIn2Sv ? T.warning : textTertiary(theme)}
                           dotTooltip={user.isEnrolledIn2Sv ? 'Enrolled' : user.isEnforcedIn2Sv ? 'Enforced' : 'None'}
@@ -1095,7 +1107,7 @@ export function Users() {
                         </DotLabel>
                       </Box>
                       {isAdminsTab ? (
-                        <Box sx={{ width: 100, flex: '0 0 100px', overflow: 'hidden' }}>
+                        <Box sx={cols.cellSx('role')}>
                           <Tooltip title={describeAdminType(user)} placement="top">
                             <Typography
                               sx={{
@@ -1113,13 +1125,13 @@ export function Users() {
                           </Tooltip>
                         </Box>
                       ) : (
-                        <Box sx={{ width: 64, flex: '0 0 64px' }}>
+                        <Box sx={cols.cellSx('role')}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', fontWeight: user.isAdmin ? 600 : 400, color: (t) => (user.isAdmin ? T.accent : textSecondary(t)) }}>
                             {isWorkspaceAdmin(user) ? 'Admin' : 'User'}
                           </Typography>
                         </Box>
                       )}
-                      <Box sx={{ width: 100, flex: '0 0 100px', overflow: 'hidden' }}>
+                      <Box sx={cols.cellSx('ou')}>
                         <Tooltip title={user.orgUnitPath || '/'} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {orgUnitLeaf(user.orgUnitPath)}
@@ -1127,7 +1139,7 @@ export function Users() {
                         </Tooltip>
                       </Box>
                       {isMdUp && (
-                        <Box sx={{ width: 88, flex: '0 0 88px' }}>
+                        <Box sx={cols.cellSx('lastLogin')}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
                             {formatRelative(user.lastLoginTime)}
                           </Typography>

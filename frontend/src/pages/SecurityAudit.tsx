@@ -26,10 +26,11 @@ import { ExportMenuRow } from '../components/ExportButton';
 import { ActionTooltip } from '../components/ActionTooltip';
 import { getApiErrorMessage } from '../utils/apiError';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow, listGrowSx } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
 import { DotLabel } from '../components/StatusDot';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { usePermissions } from '../hooks/usePermissions';
+import { useResizableColumns } from '../hooks/useResizableColumns';
 
 const STATIC_SORT = { key: '_', direction: 'asc' as const };
 const noopSort = () => {};
@@ -439,6 +440,22 @@ export function SecurityAudit() {
   const isMdUp = useMediaQuery(theme.breakpoints.up('md'));
   const { isSuperAdmin, canTakeAction } = usePermissions();
 
+  const auditCols = useResizableColumns(
+    'security-audit-overview',
+    { check: 220, severity: 100, status: 110, current: 180, recommended: 200 },
+    { check: 120, severity: 72, status: 80, current: 100, recommended: 110 }
+  );
+  const auditListCols = useResizableColumns(
+    'security-audit-list',
+    { check: 180, category: 140, severity: 100, status: 110, current: 160, recommended: 180 },
+    { check: 110, category: 90, severity: 72, status: 80, current: 100, recommended: 110 }
+  );
+  const waivedCols = useResizableColumns(
+    'security-audit-waived',
+    { check: 180, category: 140, severity: 100, reason: 220 },
+    { check: 110, category: 90, severity: 72, reason: 120 }
+  );
+
   const [bootLoading, setBootLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -771,7 +788,7 @@ export function SecurityAudit() {
   const statusCell = (check: HardeningCheck, showWaivedBadge: boolean) => {
     const waived = ignoredIds.has(check.id);
     return (
-      <Box sx={{ width: 100, flex: '0 0 100px', display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+      <Box sx={{ ...auditCols.cellSx('status'), display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
         <DotLabel
           dotColor={
             check.status === 'pass'
@@ -800,7 +817,41 @@ export function SecurityAudit() {
   const severityCell = (check: HardeningCheck) => {
     const sev = check.severity || 'medium';
     return (
-      <Box sx={{ width: 88, flex: '0 0 88px' }}>
+      <Box sx={auditCols.cellSx('severity')}>
+        <DotLabel dotColor={severityColor(sev)} dotTooltip={`Severity: ${sev}`}>
+          {sev.toUpperCase()}
+        </DotLabel>
+      </Box>
+    );
+  };
+
+  const listStatusCell = (check: HardeningCheck) => {
+    return (
+      <Box sx={{ ...auditListCols.cellSx('status'), display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <DotLabel
+          dotColor={
+            check.status === 'pass'
+              ? T.success
+              : check.status === 'warning'
+                ? T.warning
+                : check.status === 'fail'
+                  ? T.danger
+                  : check.status === 'info'
+                    ? T.accent
+                    : textTertiary(theme)
+          }
+          dotTooltip={check.status.toUpperCase()}
+        >
+          {check.status.toUpperCase()}
+        </DotLabel>
+      </Box>
+    );
+  };
+
+  const listSeverityCell = (check: HardeningCheck) => {
+    const sev = check.severity || 'medium';
+    return (
+      <Box sx={auditListCols.cellSx('severity')}>
         <DotLabel dotColor={severityColor(sev)} dotTooltip={`Severity: ${sev}`}>
           {sev.toUpperCase()}
         </DotLabel>
@@ -1158,58 +1209,12 @@ export function SecurityAudit() {
                     </Typography>
                     <ListShell>
                       <ListHeaderRow>
-                        <ColumnHeader
-                          label="Check"
-                          columnId="check"
-                          sortConfig={STATIC_SORT}
-                          onSort={noopSort}
-                          sortable={false}
-                          grow={1.4}
-                          minWidth={160}
-                        />
-                        <ColumnHeader
-                          label="Severity"
-                          columnId="sev"
-                          sortConfig={STATIC_SORT}
-                          onSort={noopSort}
-                          sortable={false}
-                          width={88}
-                        />
-                        <ColumnHeader
-                          label="Status"
-                          columnId="st"
-                          sortConfig={STATIC_SORT}
-                          onSort={noopSort}
-                          sortable={false}
-                          width={100}
-                        />
-                        <ColumnHeader
-                          label="Current"
-                          columnId="cv"
-                          sortConfig={STATIC_SORT}
-                          onSort={noopSort}
-                          sortable={false}
-                          grow={1.15}
-                          minWidth={120}
-                        />
-                        <ColumnHeader
-                          label="Recommended"
-                          columnId="rec"
-                          sortConfig={STATIC_SORT}
-                          onSort={noopSort}
-                          sortable={false}
-                          grow={1.25}
-                          minWidth={140}
-                        />
-                        <ColumnHeader
-                          label=""
-                          columnId="act"
-                          sortConfig={STATIC_SORT}
-                          onSort={noopSort}
-                          sortable={false}
-                          width={36}
-                          align="right"
-                        />
+                        <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditCols.headerProps('check')} />
+                        <ColumnHeader label="Severity" columnId="sev" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditCols.headerProps('severity')} />
+                        <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditCols.headerProps('status')} />
+                        <ColumnHeader label="Current" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditCols.headerProps('current')} />
+                        <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditCols.headerProps('recommended')} />
+                        <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={36} align="right" />
                       </ListHeaderRow>
                       {categoryChecks.map((check, idx) => {
                         const waived = ignoredIds.has(check.id);
@@ -1219,10 +1224,10 @@ export function SecurityAudit() {
                               last={idx === categoryChecks.length - 1}
                               onClick={() => openDetail(check.id)}
                             >
-                              <Box sx={listGrowSx(1.4, 160)}>{checkNameBlock(check)}</Box>
+                              <Box sx={auditCols.cellSx('check')}>{checkNameBlock(check)}</Box>
                               {severityCell(check)}
                               {statusCell(check, true)}
-                              <Box sx={listGrowSx(1.15, 120)}>
+                              <Box sx={auditCols.cellSx('current')}>
                                 <Typography
                                   sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}
                                   noWrap
@@ -1230,7 +1235,7 @@ export function SecurityAudit() {
                                   {String(check.currentValue ?? 'N/A')}
                                 </Typography>
                               </Box>
-                              <Box sx={listGrowSx(1.25, 140)}>{recommendedTargetInline(check)}</Box>
+                              <Box sx={auditCols.cellSx('recommended')}>{recommendedTargetInline(check)}</Box>
                               {chevronCell()}
                             </ListDataRow>
                           </Box>
@@ -1252,30 +1257,30 @@ export function SecurityAudit() {
                 ) : (
                   <ListShell>
                     <ListHeaderRow>
-                      <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} grow={1.3} minWidth={140} />
-                      <ColumnHeader label="Category" columnId="cat" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} grow={0.9} minWidth={100} />
-                      <ColumnHeader label="Severity" columnId="sev" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={88} />
-                      <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
-                      <ColumnHeader label="Current" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} grow={1.1} minWidth={110} />
-                      <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} grow={1.2} minWidth={120} />
+                      <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditListCols.headerProps('check')} />
+                      <ColumnHeader label="Category" columnId="cat" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditListCols.headerProps('category')} />
+                      <ColumnHeader label="Severity" columnId="sev" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditListCols.headerProps('severity')} />
+                      <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditListCols.headerProps('status')} />
+                      <ColumnHeader label="Current" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditListCols.headerProps('current')} />
+                      <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditListCols.headerProps('recommended')} />
                       <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={36} align="right" />
                     </ListHeaderRow>
                     {passingChecks.map((check, idx) => (
                       <ListDataRow key={check.id} last={idx === passingChecks.length - 1} onClick={() => openDetail(check.id)}>
-                        <Box sx={listGrowSx(1.3, 140)}>{checkNameBlock(check)}</Box>
-                        <Box sx={listGrowSx(0.9, 100)}>
+                        <Box sx={auditListCols.cellSx('check')}>{checkNameBlock(check)}</Box>
+                        <Box sx={auditListCols.cellSx('category')}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>
                             {check.category}
                           </Typography>
                         </Box>
-                        {severityCell(check)}
-                        {statusCell(check, false)}
-                        <Box sx={listGrowSx(1.1, 110)}>
+                        {listSeverityCell(check)}
+                        {listStatusCell(check)}
+                        <Box sx={auditListCols.cellSx('current')}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>
                             {String(check.currentValue ?? 'N/A')}
                           </Typography>
                         </Box>
-                        <Box sx={listGrowSx(1.2, 120)}>{recommendedTargetInline(check)}</Box>
+                        <Box sx={auditListCols.cellSx('recommended')}>{recommendedTargetInline(check)}</Box>
                         {chevronCell()}
                       </ListDataRow>
                     ))}
@@ -1295,30 +1300,30 @@ export function SecurityAudit() {
                 ) : (
                   <ListShell>
                     <ListHeaderRow>
-                      <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} grow={1.3} minWidth={140} />
-                      <ColumnHeader label="Category" columnId="cat" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} grow={0.9} minWidth={100} />
-                      <ColumnHeader label="Severity" columnId="sev" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={88} />
-                      <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={100} />
-                      <ColumnHeader label="Current" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} grow={1.1} minWidth={110} />
-                      <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} grow={1.2} minWidth={120} />
+                      <ColumnHeader label="Check" columnId="check" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditListCols.headerProps('check')} />
+                      <ColumnHeader label="Category" columnId="cat" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditListCols.headerProps('category')} />
+                      <ColumnHeader label="Severity" columnId="sev" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditListCols.headerProps('severity')} />
+                      <ColumnHeader label="Status" columnId="st" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditListCols.headerProps('status')} />
+                      <ColumnHeader label="Current" columnId="cv" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditListCols.headerProps('current')} />
+                      <ColumnHeader label="Recommended" columnId="rec" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} {...auditListCols.headerProps('recommended')} />
                       <ColumnHeader label="" columnId="act" sortConfig={STATIC_SORT} onSort={noopSort} sortable={false} width={36} align="right" />
                     </ListHeaderRow>
                     {failingChecks.map((check, idx) => (
                       <ListDataRow key={check.id} last={idx === failingChecks.length - 1} onClick={() => openDetail(check.id)}>
-                        <Box sx={listGrowSx(1.3, 140)}>{checkNameBlock(check)}</Box>
-                        <Box sx={listGrowSx(0.9, 100)}>
+                        <Box sx={auditListCols.cellSx('check')}>{checkNameBlock(check)}</Box>
+                        <Box sx={auditListCols.cellSx('category')}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>
                             {check.category}
                           </Typography>
                         </Box>
-                        {severityCell(check)}
-                        {statusCell(check, false)}
-                        <Box sx={listGrowSx(1.1, 110)}>
+                        {listSeverityCell(check)}
+                        {listStatusCell(check)}
+                        <Box sx={auditListCols.cellSx('current')}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>
                             {String(check.currentValue ?? 'N/A')}
                           </Typography>
                         </Box>
-                        <Box sx={listGrowSx(1.2, 120)}>{recommendedTargetInline(check)}</Box>
+                        <Box sx={auditListCols.cellSx('recommended')}>{recommendedTargetInline(check)}</Box>
                         {chevronCell()}
                       </ListDataRow>
                     ))}
@@ -1345,8 +1350,7 @@ export function SecurityAudit() {
                         sortConfig={STATIC_SORT}
                         onSort={noopSort}
                         sortable={false}
-                        width="20%"
-                        minWidth={140}
+                        {...waivedCols.headerProps('check')}
                       />
                       <ColumnHeader
                         label="Category"
@@ -1354,7 +1358,7 @@ export function SecurityAudit() {
                         sortConfig={STATIC_SORT}
                         onSort={noopSort}
                         sortable={false}
-                        width={140}
+                        {...waivedCols.headerProps('category')}
                       />
                       <ColumnHeader
                         label="Severity"
@@ -1362,7 +1366,7 @@ export function SecurityAudit() {
                         sortConfig={STATIC_SORT}
                         onSort={noopSort}
                         sortable={false}
-                        width={88}
+                        {...waivedCols.headerProps('severity')}
                       />
                       <ColumnHeader
                         label="Reason"
@@ -1370,7 +1374,7 @@ export function SecurityAudit() {
                         sortConfig={STATIC_SORT}
                         onSort={noopSort}
                         sortable={false}
-                        minWidth={160}
+                        {...waivedCols.headerProps('reason')}
                       />
                       <ColumnHeader
                         label=""
@@ -1382,10 +1386,12 @@ export function SecurityAudit() {
                         align="right"
                       />
                     </ListHeaderRow>
-                    {ignoredChecks.map((check, idx) => (
+                    {ignoredChecks.map((check, idx) => {
+                      const sev = check.severity || 'medium';
+                      return (
                       <ListDataRow key={check.id} last={idx === ignoredChecks.length - 1} onClick={() => openDetail(check.id)}>
-                        <Box sx={{ width: '20%', minWidth: 140 }}>{checkNameBlock(check)}</Box>
-                        <Box sx={{ width: 140, flexShrink: 0 }}>
+                        <Box sx={waivedCols.cellSx('check')}>{checkNameBlock(check)}</Box>
+                        <Box sx={waivedCols.cellSx('category')}>
                           <Typography
                             sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}
                             noWrap
@@ -1393,8 +1399,12 @@ export function SecurityAudit() {
                             {check.category}
                           </Typography>
                         </Box>
-                        {severityCell(check)}
-                        <Box sx={{ flex: 1, minWidth: 160 }}>
+                        <Box sx={waivedCols.cellSx('severity')}>
+                          <DotLabel dotColor={severityColor(sev)} dotTooltip={`Severity: ${sev}`}>
+                            {sev.toUpperCase()}
+                          </DotLabel>
+                        </Box>
+                        <Box sx={waivedCols.cellSx('reason')}>
                           <Typography
                             sx={{
                               fontFamily: T.font,
@@ -1409,7 +1419,8 @@ export function SecurityAudit() {
                         </Box>
                         {chevronCell()}
                       </ListDataRow>
-                    ))}
+                      );
+                    })}
                   </ListShell>
                 )}
               </Box>

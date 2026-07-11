@@ -31,7 +31,8 @@ import { FilterToken } from '../components/ui/FilterToken';
 import { T, pick, textSecondary, textTertiary, exportToolbarButtonSx, selectMenuProps } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listGrowSx, listCheckboxSx } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
+import { useResizableColumns } from '../hooks/useResizableColumns';
 import { useTheme } from '@mui/material/styles';
 import { DotLabel } from '../components/StatusDot';
 import { useConfirm } from '../hooks/useConfirm';
@@ -110,6 +111,12 @@ export function EmailDelegation() {
   const exportSelectedCSVRef = useRef<() => void>(() => {});
   const normalizedNewUserEmail = useMemo(() => normalizeEmailInput(newUserEmail), [newUserEmail]);
   const normalizedNewDelegateEmail = useMemo(() => normalizeEmailInput(newDelegateEmail), [newDelegateEmail]);
+
+  const cols = useResizableColumns(
+    'email-delegation',
+    { userEmail: 220, delegateEmail: 220, verificationStatus: 120 },
+    { userEmail: 120, delegateEmail: 120, verificationStatus: 80 }
+  );
 
   const handleFilterChange = (key: keyof DelegationFiltersType, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -625,9 +632,9 @@ export function EmailDelegation() {
                   sx={{ p: 0.25 }}
                 />
               </Box>
-              <ColumnHeader label="Mailbox owner" columnId="userEmail" sortConfig={sortConfig} onSort={handleSort} grow={1} minWidth={160} />
-              <ColumnHeader label="Delegate" columnId="delegateEmail" sortConfig={sortConfig} onSort={handleSort} grow={1} minWidth={160} />
-              <ColumnHeader label="Status" columnId="verificationStatus" sortConfig={sortConfig} onSort={handleSort} width={110} />
+              <ColumnHeader label="Mailbox owner" columnId="userEmail" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('userEmail')} />
+              <ColumnHeader label="Delegate" columnId="delegateEmail" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('delegateEmail')} />
+              <ColumnHeader label="Status" columnId="verificationStatus" sortConfig={sortConfig} onSort={handleSort} {...cols.headerProps('verificationStatus')} />
               <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={80} align="right" />
             </ListHeaderRow>
             {data.length === 0 ? (
@@ -640,17 +647,17 @@ export function EmailDelegation() {
                   <Box sx={listCheckboxSx}>
                     <Checkbox size="small" checked={isSelected(delegation)} onChange={() => handleSelectOne(delegation)} sx={{ p: 0.25 }} />
                   </Box>
-                  <Box sx={listGrowSx(1, 160)}>
+                  <Box sx={cols.cellSx('userEmail')}>
                     <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {delegation.userEmail}
                     </Typography>
                   </Box>
-                  <Box sx={listGrowSx(1, 160)}>
+                  <Box sx={cols.cellSx('delegateEmail')}>
                     <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {delegation.delegateEmail}
                     </Typography>
                   </Box>
-                  <Box sx={{ width: 110, flex: '0 0 110px' }}>
+                  <Box sx={cols.cellSx('verificationStatus')}>
                     <DotLabel dotColor={delegation.verificationStatus === 'accepted' ? T.success : T.warning}>
                       {delegation.verificationStatus}
                     </DotLabel>
