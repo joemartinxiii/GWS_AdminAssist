@@ -38,9 +38,11 @@ export function ColumnHeader({
       onClick={() => (sortable ? onSort(columnId) : undefined)}
       sx={(theme: Theme) => ({
         width,
-        minWidth: minWidth ?? width,
+        minWidth: minWidth ?? width ?? 0,
+        // Fixed-width cols don't grow; omit width → absorb leftover space (primary col).
         flexShrink: width ? 0 : 1,
-        flex: width ? undefined : 1,
+        flex: width ? '0 0 auto' : '1 1 0',
+        overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
         gap: 0.25,
@@ -53,6 +55,8 @@ export function ColumnHeader({
         letterSpacing: '0.06em',
         color: active ? pick(theme, T.accent, '#8ab4f8') : textTertiary(theme),
         justifyContent: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start',
+        // Flush actions column to the trailing edge of the row.
+        ...(align === 'right' && width ? { ml: 'auto' } : {}),
         '&:hover': sortable ? { color: pick(theme, T.text, '#e4e4e7') } : {},
       })}
     >

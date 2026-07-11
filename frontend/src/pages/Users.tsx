@@ -50,7 +50,7 @@ import { shortcut } from '../utils/keyboard';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listPrimaryColSx } from '../components/ui/ListShell';
 import { getApiErrorMessage } from '../utils/apiError';
 // ---------------------------------------------------------------------------
 // Types
@@ -708,14 +708,15 @@ export function Users() {
   // Column header helper
   // -------------------------------------------------------------------------
 
-  const ColHeader = ({ label, sortId, width, minWidth, align }: { label: string; sortId: SortKey; width?: string | number; minWidth?: string | number; align?: string }) => (
+  const ColHeader = ({ label, sortId, width, minWidth, align, grow }: { label: string; sortId: SortKey; width?: string | number; minWidth?: string | number; align?: string; grow?: boolean }) => (
     <Box
       onClick={() => handleSort(sortId)}
       sx={(theme) => ({
-        width,
-        minWidth: minWidth ?? width,
-        flexShrink: width ? 0 : 1,
-        flex: width ? undefined : 1,
+        width: grow ? undefined : width,
+        minWidth: minWidth ?? width ?? 0,
+        flexShrink: grow || !width ? 1 : 0,
+        flex: grow || !width ? '1 1 0' : '0 0 auto',
+        overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
         gap: 0.25,
@@ -728,6 +729,7 @@ export function Users() {
         letterSpacing: '0.06em',
         color: effectiveSortKey === sortId ? pick(theme, T.accent, '#8ab4f8') : textTertiary(theme),
         justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+        ...(align === 'right' && width ? { ml: 'auto' } : {}),
         '&:hover': { color: pick(theme, T.text, '#e4e4e7') },
       })}
     >
@@ -998,23 +1000,23 @@ export function Users() {
                   sx={{ p: 0.25, mr: 0.5 }}
                 />
                 <Box sx={{ width: 34, flexShrink: 0 }} />
-                <ColHeader label="Name" sortId="name" width="16%" minWidth={120} />
-                <ColHeader label="Email" sortId="email" width="18%" minWidth={150} />
+                <ColHeader label="Name" sortId="name" grow minWidth={120} />
+                <ColHeader label="Email" sortId="email" grow minWidth={140} />
                 <ColHeader label="Status" sortId="status" width={100} />
-                <ColHeader label="2FA" sortId="2fa" width={72} />
+                <ColHeader label="2FA" sortId="2fa" width={64} />
                 {isAdminsTab ? (
-                  <ColHeader label="Admin type" sortId="adminType" width={110} />
+                  <ColHeader label="Admin type" sortId="adminType" width={100} />
                 ) : (
-                  <ColHeader label="Role" sortId="role" width={72} />
+                  <ColHeader label="Role" sortId="role" width={64} />
                 )}
-                <ColHeader label="OU" sortId="ou" width={120} minWidth={100} />
-                {isMdUp && <ColHeader label="Last sign-in" sortId="lastLogin" width={96} align="right" />}
+                <ColHeader label="OU" sortId="ou" width={100} minWidth={80} />
+                {isMdUp && <ColHeader label="Last sign-in" sortId="lastLogin" width={88} />}
                 <ColumnHeader
                   label="Actions"
                   columnId="__actions"
                   sortConfig={{ key: effectiveSortKey, direction: sortDir }}
                   onSort={() => {}}
-                  width={88}
+                  width={80}
                   align="right"
                   sortable={false}
                 />
@@ -1053,19 +1055,19 @@ export function Users() {
                       selected={isSelected}
                       onClick={() => toggleUser(user.primaryEmail)}
                     >
-                      <Checkbox size="small" checked={isSelected} sx={{ p: 0.25, mr: 0.5 }} onClick={(e) => e.stopPropagation()} onChange={() => toggleUser(user.primaryEmail)} />
+                      <Checkbox size="small" checked={isSelected} sx={{ p: 0.25, flexShrink: 0 }} onClick={(e) => e.stopPropagation()} onChange={() => toggleUser(user.primaryEmail)} />
                       <Initials name={user.name.fullName} suspended={user.suspended} />
-                      <Box sx={{ width: '16%', minWidth: 120, flexShrink: 0, overflow: 'hidden' }}>
+                      <Box sx={listPrimaryColSx}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (theme) => pick(theme, T.text, '#fafafa'), textDecoration: user.suspended ? 'line-through' : 'none', opacity: user.suspended ? 0.5 : 1 }}>
                           {user.name.fullName}
                         </Typography>
                       </Box>
-                      <Box sx={{ width: '18%', minWidth: 150, flexShrink: 0, overflow: 'hidden' }}>
+                      <Box sx={{ ...listPrimaryColSx, minWidth: 140 }}>
                         <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {user.primaryEmail}
                         </Typography>
                       </Box>
-                      <Box sx={{ width: 100, minWidth: 100, flexShrink: 0 }}>
+                      <Box sx={{ width: 100, flexShrink: 0 }}>
                         <DotLabel
                           dotColor={user.suspended ? T.danger : T.success}
                           dotTooltip={user.suspended ? 'Suspended' : 'Active'}
@@ -1073,7 +1075,7 @@ export function Users() {
                           {user.suspended ? 'Suspended' : 'Active'}
                         </DotLabel>
                       </Box>
-                      <Box sx={{ width: 72, minWidth: 72, flexShrink: 0 }}>
+                      <Box sx={{ width: 64, flexShrink: 0 }}>
                         <DotLabel
                           dotColor={user.isEnrolledIn2Sv ? T.success : user.isEnforcedIn2Sv ? T.warning : textTertiary(theme)}
                           dotTooltip={user.isEnrolledIn2Sv ? 'Enrolled' : user.isEnforcedIn2Sv ? 'Enforced' : 'None'}
@@ -1082,7 +1084,7 @@ export function Users() {
                         </DotLabel>
                       </Box>
                       {isAdminsTab ? (
-                        <Box sx={{ width: 110, minWidth: 110, flexShrink: 0, overflow: 'hidden' }}>
+                        <Box sx={{ width: 100, flexShrink: 0, overflow: 'hidden' }}>
                           <Tooltip title={describeAdminType(user)} placement="top">
                             <Typography
                               sx={{
@@ -1100,13 +1102,13 @@ export function Users() {
                           </Tooltip>
                         </Box>
                       ) : (
-                        <Box sx={{ width: 72, minWidth: 72, flexShrink: 0 }}>
+                        <Box sx={{ width: 64, flexShrink: 0 }}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', fontWeight: user.isAdmin ? 600 : 400, color: (t) => (user.isAdmin ? T.accent : textSecondary(t)) }}>
                             {isWorkspaceAdmin(user) ? 'Admin' : 'User'}
                           </Typography>
                         </Box>
                       )}
-                      <Box sx={{ width: 120, minWidth: 100, flexShrink: 0, overflow: 'hidden' }}>
+                      <Box sx={{ width: 100, flexShrink: 0, overflow: 'hidden' }}>
                         <Tooltip title={user.orgUnitPath || '/'} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {orgUnitLeaf(user.orgUnitPath)}
@@ -1114,14 +1116,14 @@ export function Users() {
                         </Tooltip>
                       </Box>
                       {isMdUp && (
-                        <Box sx={{ width: 96, minWidth: 96, flexShrink: 0, textAlign: 'right' }}>
+                        <Box sx={{ width: 88, flexShrink: 0 }}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
                             {formatRelative(user.lastLoginTime)}
                           </Typography>
                         </Box>
                       )}
                       <Box
-                        sx={{ width: 88, minWidth: 88, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.25 }}
+                        sx={listActionsSx}
                         onClick={(e) => e.stopPropagation()}
                       >
                         {canTakeAction && hasPermission('users.update') && (
@@ -1131,18 +1133,15 @@ export function Users() {
                             </IconButton>
                           </ActionTooltip>
                         )}
-                        {canTakeAction && hasPermission('users.delete') && (
-                          <ActionTooltip title={protectedAcct ? 'Protected account — cannot delete' : 'Delete user'}>
-                            <span>
-                              <IconButton
-                                size="small"
-                                disabled={protectedAcct}
-                                onClick={() => handleDeleteUser(user)}
-                                sx={{ p: 0.5, color: protectedAcct ? textTertiary(theme) : T.danger, '&:hover': { color: T.danger } }}
-                              >
-                                <Trash2 size={16} strokeWidth={1.75} />
-                              </IconButton>
-                            </span>
+                        {canTakeAction && hasPermission('users.delete') && !protectedAcct && (
+                          <ActionTooltip title="Delete user">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleDeleteUser(user)}
+                              sx={{ p: 0.5, color: T.danger }}
+                            >
+                              <Trash2 size={16} strokeWidth={1.75} />
+                            </IconButton>
                           </ActionTooltip>
                         )}
                       </Box>

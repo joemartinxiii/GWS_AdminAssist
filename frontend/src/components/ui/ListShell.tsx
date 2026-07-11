@@ -28,10 +28,13 @@ export function ListHeaderRow({ children }: { children: React.ReactNode }) {
       sx={(theme: Theme) => ({
         display: 'flex',
         alignItems: 'center',
-        gap: 1.5,
+        gap: 1,
         px: 2,
-        py: 1.25,
+        py: 1,
         borderBottom: `1px solid ${pick(theme, T.borderSubtle, '#27272a')}`,
+        width: '100%',
+        boxSizing: 'border-box',
+        minWidth: 0,
       })}
     >
       {children}
@@ -57,11 +60,14 @@ export function ListDataRow({
       sx={(theme: Theme) => ({
         display: 'flex',
         alignItems: 'center',
-        gap: 1.5,
+        gap: 1,
         px: 2,
-        py: 1,
+        py: 0.875,
         borderBottom: last ? 'none' : `1px solid ${pick(theme, T.borderSubtle, '#27272a')}`,
         cursor: onClick ? 'pointer' : 'default',
+        width: '100%',
+        boxSizing: 'border-box',
+        minWidth: 0,
         bgcolor: selected ? pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.16)') : 'transparent',
         '&:hover': {
           bgcolor: selected
@@ -74,3 +80,25 @@ export function ListDataRow({
     </Box>
   );
 }
+
+/**
+ * Trailing actions cell — always sits on the far right of a flex list row.
+ * Use the same width on the matching ColumnHeader (align="right").
+ */
+export const listActionsSx = {
+  width: 80,
+  minWidth: 80,
+  flexShrink: 0,
+  ml: 'auto',
+  display: 'flex',
+  justifyContent: 'flex-end',
+  alignItems: 'center',
+  gap: 0.25,
+} as const;
+
+/** Primary text column that absorbs leftover row width. */
+export const listPrimaryColSx = {
+  flex: '1 1 0',
+  minWidth: 120,
+  overflow: 'hidden',
+} as const;

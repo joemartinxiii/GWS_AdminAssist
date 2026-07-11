@@ -16,7 +16,6 @@ import {
   IconButton,
   Button,
   Tooltip,
-  Grid,
   Popover,
   Checkbox,
   FormControlLabel,
@@ -51,7 +50,7 @@ import { ActionTooltip } from '../components/ActionTooltip';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listPrimaryColSx } from '../components/ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
 import { DotLabel, ExternalChip } from '../components/StatusDot';
@@ -1780,26 +1779,19 @@ export function Drive() {
         <DialogContent sx={{ pt: '20px !important' }}>
           {selectedFile && (
             <Box>
-              <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1 }}>File details</Typography>
-              <Grid container spacing={1.5} sx={{ mb: 2 }}>
-                <Grid item xs={12}>
-                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">File ID</Typography>
-                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8125rem', wordBreak: 'break-all' }}>
-                    {selectedFile.id}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Type</Typography>
-                  <Typography variant="body2" sx={{ fontSize: '0.8125rem' }}>{selectedFile.mimeType}</Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" fontWeight={600} color="text.secondary" display="block">Path</Typography>
-                  <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8125rem', wordBreak: 'break-all' }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 1.5, rowGap: 0.75 }}>
+                <Box sx={{ minWidth: 0, flex: '1 1 140px' }}>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>Type</Typography>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }} noWrap>{selectedFile.mimeType}</Typography>
+                </Box>
+                <Box sx={{ minWidth: 0, flex: '2 1 200px' }}>
+                  <Typography sx={{ fontFamily: T.font, fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t) }}>Path</Typography>
+                  <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={selectedFile.path || '/My Drive'}>
                     {selectedFile.path || '/My Drive'}
                   </Typography>
-                </Grid>
-              </Grid>
-              <Divider sx={{ my: 2 }} />
+                </Box>
+              </Box>
+              <Divider sx={{ my: 1.5 }} />
               <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1 }}>Permissions</Typography>
               {selectedPermissionIds.size > 0 && (
                 <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mb: 1.5 }}>
@@ -1813,7 +1805,7 @@ export function Drive() {
               <ListShell>
                 <ListHeaderRow>
                   {(selectedFile.permissions ?? []).filter((p) => p.role !== 'owner').length > 0 ? (
-                    <Box sx={{ width: 42, flexShrink: 0, display: 'flex', alignItems: 'center', mr: 0.5 }}>
+                    <Box sx={{ width: 36, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                       <Checkbox
                         size="small"
                         indeterminate={
@@ -1829,14 +1821,14 @@ export function Drive() {
                       />
                     </Box>
                   ) : (
-                    <Box sx={{ width: 42, mr: 0.5, flexShrink: 0 }} />
+                    <Box sx={{ width: 36, flexShrink: 0 }} />
                   )}
-                  <ColumnHeader label="Type" columnId="dt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} />
-                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="16%" minWidth={100} />
-                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="28%" minWidth={150} />
-                  <ColumnHeader label="Access" columnId="dx" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={100} />
-                  <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={100} />
-                  <ColumnHeader label="Actions" columnId="da" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} align="right" />
+                  <ColumnHeader label="Type" columnId="dt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={56} />
+                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={88} />
+                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={120} />
+                  <ColumnHeader label="Access" columnId="dx" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
+                  <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} />
+                  <ColumnHeader label="Actions" columnId="da" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} align="right" />
                 </ListHeaderRow>
                 {(selectedFile.permissions ?? []).length === 0 && !addPermissionDialogOpen && (
                   <Box sx={{ py: 4, textAlign: 'center' }}>
@@ -1853,15 +1845,15 @@ export function Drive() {
                   const isLastDataRow = globalIdx === allPerms.length - 1;
                   return (
                     <ListDataRow key={permission.id} last={isLastDataRow && addPermissionDialogOpen} selected={canSelect && isSelected}>
-                      <Box sx={{ width: 42, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', mr: 0.5 }}>
+                      <Box sx={{ width: 36, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {canSelect ? (
                           <Checkbox size="small" checked={isSelected} onChange={() => togglePermissionSelected(permission.id, isOwner)} sx={{ p: 0.25 }} />
                         ) : null}
                       </Box>
-                      <Box sx={{ width: 72, flexShrink: 0 }}>
+                      <Box sx={{ width: 56, flexShrink: 0 }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{permission.type}</Typography>
                       </Box>
-                      <Box sx={{ width: '16%', minWidth: 100, overflow: 'hidden' }}>
+                      <Box sx={{ ...listPrimaryColSx, minWidth: 88 }}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.displayName || '')} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
@@ -1870,7 +1862,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ width: '28%', minWidth: 150, overflow: 'hidden' }}>
+                      <Box sx={{ ...listPrimaryColSx, minWidth: 120, flex: '1.2 1 0' }}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.emailAddress || permission.domain || '')} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
@@ -1879,7 +1871,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ width: 100, flexShrink: 0 }}>
+                      <Box sx={{ width: 88, flexShrink: 0 }}>
                         {isPermissionExternal(permission, allowedDomains) ? (
                           <ExternalChip />
                         ) : (
@@ -1888,7 +1880,7 @@ export function Drive() {
                           </Typography>
                         )}
                       </Box>
-                      <Box sx={{ width: 100, flexShrink: 0 }}>
+                      <Box sx={{ width: 72, flexShrink: 0 }}>
                         {isEditing ? (
                           <Select
                             size="small"
@@ -1896,8 +1888,8 @@ export function Drive() {
                             onChange={(e) => setNewRole(e.target.value)}
                             autoFocus
                             sx={{
-                              minWidth: 96,
-                              height: 32,
+                              width: '100%',
+                              height: 30,
                               fontSize: '0.8125rem',
                               fontFamily: T.font,
                               '& .MuiSelect-select': { py: 0.5, minHeight: 'auto' },
@@ -1915,7 +1907,7 @@ export function Drive() {
                           </Typography>
                         )}
                       </Box>
-                      <Box sx={{ width: 88, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.25 }}>
+                      <Box sx={listActionsSx}>
                         {isEditing ? (
                           <>
                             <ActionTooltip title="Save role">

@@ -26,7 +26,7 @@ import { ExportMenuRow } from '../components/ExportButton';
 import { ActionTooltip } from '../components/ActionTooltip';
 import { getApiErrorMessage } from '../utils/apiError';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listPrimaryColSx } from '../components/ui/ListShell';
 import { DotLabel } from '../components/StatusDot';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { usePermissions } from '../hooks/usePermissions';
@@ -771,7 +771,7 @@ export function SecurityAudit() {
   const statusCell = (check: HardeningCheck, showWaivedBadge: boolean) => {
     const waived = ignoredIds.has(check.id);
     return (
-      <Box sx={{ width: 100, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+      <Box sx={{ width: 92, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
         <DotLabel
           dotColor={
             check.status === 'pass'
@@ -800,7 +800,7 @@ export function SecurityAudit() {
   const severityCell = (check: HardeningCheck) => {
     const sev = check.severity || 'medium';
     return (
-      <Box sx={{ width: 88, flexShrink: 0 }}>
+      <Box sx={{ width: 80, flexShrink: 0 }}>
         <DotLabel dotColor={severityColor(sev)} dotTooltip={`Severity: ${sev}`}>
           {sev.toUpperCase()}
         </DotLabel>
@@ -818,7 +818,7 @@ export function SecurityAudit() {
   };
 
   const chevronCell = () => (
-    <Box sx={{ width: 40, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', color: (t) => textTertiary(t) }}>
+    <Box sx={{ width: 36, flexShrink: 0, ml: 'auto', display: 'flex', justifyContent: 'flex-end', color: (t) => textTertiary(t), lineHeight: 0 }}>
       <ChevronRight size={18} strokeWidth={1.75} />
     </Box>
   );
@@ -1031,8 +1031,8 @@ export function SecurityAudit() {
                     sx={(th) => ({
                       border: `1px solid ${pick(th, T.border, '#3f3f46')}`,
                       borderRadius: T.radiusLg,
-                      p: 2.5,
-                      mb: 3,
+                      p: 2,
+                      mb: 2,
                       bgcolor: pick(th, T.surface, '#18181b'),
                     })}
                   >
@@ -1041,9 +1041,9 @@ export function SecurityAudit() {
                         display: 'flex',
                         alignItems: 'baseline',
                         justifyContent: 'space-between',
-                        mb: 2,
+                        mb: 1.25,
                         flexWrap: 'wrap',
-                        gap: 2,
+                        gap: 1.5,
                       }}
                     >
                       <Box>
@@ -1142,16 +1142,16 @@ export function SecurityAudit() {
                 if (categoryChecks.length === 0) return null;
 
                 return (
-                  <Box key={category} sx={{ mb: 4 }}>
+                  <Box key={category} sx={{ mb: 2.5 }}>
                     <Typography
                       sx={{
                         fontFamily: T.font,
                         fontWeight: 700,
-                        fontSize: '1.125rem',
+                        fontSize: '1rem',
                         letterSpacing: '-0.02em',
                         color: (th) => pick(th, T.text, '#fafafa'),
-                        mt: 3,
-                        mb: 2,
+                        mt: 1.5,
+                        mb: 1,
                       }}
                     >
                       {category}
@@ -1164,8 +1164,7 @@ export function SecurityAudit() {
                           sortConfig={STATIC_SORT}
                           onSort={noopSort}
                           sortable={false}
-                          width="22%"
-                          minWidth={160}
+                          minWidth={140}
                         />
                         <ColumnHeader
                           label="Severity"
@@ -1173,7 +1172,7 @@ export function SecurityAudit() {
                           sortConfig={STATIC_SORT}
                           onSort={noopSort}
                           sortable={false}
-                          width={88}
+                          width={80}
                         />
                         <ColumnHeader
                           label="Status"
@@ -1181,15 +1180,15 @@ export function SecurityAudit() {
                           sortConfig={STATIC_SORT}
                           onSort={noopSort}
                           sortable={false}
-                          width={100}
+                          width={92}
                         />
                         <ColumnHeader
-                          label="Current Value"
+                          label="Current"
                           columnId="cv"
                           sortConfig={STATIC_SORT}
                           onSort={noopSort}
                           sortable={false}
-                          width="14%"
+                          width={140}
                           minWidth={100}
                         />
                         <ColumnHeader
@@ -1198,7 +1197,7 @@ export function SecurityAudit() {
                           sortConfig={STATIC_SORT}
                           onSort={noopSort}
                           sortable={false}
-                          minWidth={140}
+                          minWidth={120}
                         />
                         <ColumnHeader
                           label=""
@@ -1206,7 +1205,7 @@ export function SecurityAudit() {
                           sortConfig={STATIC_SORT}
                           onSort={noopSort}
                           sortable={false}
-                          width={40}
+                          width={36}
                           align="right"
                         />
                       </ListHeaderRow>
@@ -1218,10 +1217,10 @@ export function SecurityAudit() {
                               last={idx === categoryChecks.length - 1}
                               onClick={() => openDetail(check.id)}
                             >
-                              <Box sx={{ width: '22%', minWidth: 160 }}>{checkNameBlock(check)}</Box>
+                              <Box sx={listPrimaryColSx}>{checkNameBlock(check)}</Box>
                               {severityCell(check)}
                               {statusCell(check, true)}
-                              <Box sx={{ width: '14%', minWidth: 100 }}>
+                              <Box sx={{ width: 140, minWidth: 100, flexShrink: 0, overflow: 'hidden' }}>
                                 <Typography
                                   sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}
                                   noWrap
@@ -1229,7 +1228,7 @@ export function SecurityAudit() {
                                   {String(check.currentValue ?? 'N/A')}
                                 </Typography>
                               </Box>
-                              <Box sx={{ flex: 1, minWidth: 140 }}>{recommendedTargetInline(check)}</Box>
+                              <Box sx={{ ...listPrimaryColSx, minWidth: 120 }}>{recommendedTargetInline(check)}</Box>
                               {chevronCell()}
                             </ListDataRow>
                           </Box>

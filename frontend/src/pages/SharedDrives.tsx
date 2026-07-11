@@ -45,7 +45,7 @@ import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarBut
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
-import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listPrimaryColSx } from '../components/ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
 import { DotLabel, ExternalChip } from '../components/StatusDot';
@@ -858,12 +858,12 @@ export function SharedDrives() {
                 onChange={handleSelectAllDrives}
                 sx={{ p: 0.25, mr: 0.5 }}
               />
-              <ColumnHeader label="Name" columnId="name" sortConfig={sortConfig} onSort={handleSort} width="28%" minWidth={160} />
-              <ColumnHeader label="Visibility" columnId="hidden" sortConfig={sortConfig} onSort={handleSort} width={96} />
-              <ColumnHeader label="Created" columnId="createdTime" sortConfig={sortConfig} onSort={handleSort} width={100} />
-              <ColumnHeader label="Sharing" columnId="sharing" sortConfig={sortConfig} onSort={handleSort} width={100} />
-              <ColumnHeader label="Members" columnId="members" sortConfig={sortConfig} onSort={handleSort} width={80} align="right" />
-              <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={88} align="right" />
+              <ColumnHeader label="Name" columnId="name" sortConfig={sortConfig} onSort={handleSort} minWidth={160} />
+              <ColumnHeader label="Visibility" columnId="hidden" sortConfig={sortConfig} onSort={handleSort} width={88} />
+              <ColumnHeader label="Created" columnId="createdTime" sortConfig={sortConfig} onSort={handleSort} width={96} />
+              <ColumnHeader label="Sharing" columnId="sharing" sortConfig={sortConfig} onSort={handleSort} width={96} />
+              <ColumnHeader label="Members" columnId="members" sortConfig={sortConfig} onSort={handleSort} width={72} align="right" />
+              <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={80} align="right" />
             </ListHeaderRow>
             {tableData.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -886,34 +886,34 @@ export function SharedDrives() {
                     selected={isDriveSelected(drive)}
                     onClick={() => handleViewPermissions(drive)}
                   >
-                    <Checkbox size="small" checked={isDriveSelected(drive)} onChange={(e) => { e.stopPropagation(); handleSelectDrive(drive); }} sx={{ p: 0.25, mr: 0.5 }} onClick={(e) => e.stopPropagation()} />
-                    <Box sx={{ width: '28%', minWidth: 160, overflow: 'hidden' }}>
+                    <Checkbox size="small" checked={isDriveSelected(drive)} onChange={(e) => { e.stopPropagation(); handleSelectDrive(drive); }} sx={{ p: 0.25, flexShrink: 0 }} onClick={(e) => e.stopPropagation()} />
+                    <Box sx={listPrimaryColSx}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (theme) => pick(theme, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {drive.name}
                       </Typography>
                     </Box>
-                    <Box sx={{ width: 96, flexShrink: 0 }}>
+                    <Box sx={{ width: 88, flexShrink: 0 }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => (drive.hidden ? textTertiary(t) : textSecondary(t)) }}>
                         {drive.hidden ? 'Hidden' : 'Active'}
                       </Typography>
                     </Box>
-                    <Box sx={{ width: 100, flexShrink: 0 }}>
+                    <Box sx={{ width: 96, flexShrink: 0 }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
                         {drive.createdTime ? new Date(drive.createdTime).toLocaleDateString() : '—'}
                       </Typography>
                     </Box>
-                    <Box sx={{ width: 100, flexShrink: 0 }}>
+                    <Box sx={{ width: 96, flexShrink: 0 }}>
                       <DotLabel dotColor={external ? T.warning : T.success}>
                         {external ? 'External' : 'Internal'}
                       </DotLabel>
                     </Box>
-                    <Box sx={{ width: 80, flexShrink: 0, textAlign: 'right' }}>
+                    <Box sx={{ width: 72, flexShrink: 0, textAlign: 'right' }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
                         {typeof count === 'number' ? count : countsLoading ? '…' : '—'}
                       </Typography>
                     </Box>
                     <Box
-                      sx={{ width: 88, flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 0.25 }}
+                      sx={listActionsSx}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <ActionTooltip title="Open in Google Drive">
@@ -1037,12 +1037,12 @@ export function SharedDrives() {
                   ) : (
                     <Box sx={{ width: 34, mr: 0.5, flexShrink: 0 }} />
                   )}
-                  <ColumnHeader label="Type" columnId="pt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
-                  <ColumnHeader label="Name" columnId="pn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="20%" minWidth={100} />
-                  <ColumnHeader label="Email" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width="26%" minWidth={140} />
-                  <ColumnHeader label="Access" columnId="px" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={100} />
-                  <ColumnHeader label="Role" columnId="pr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={100} />
-                  <ColumnHeader label="Actions" columnId="pa" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} align="right" />
+                  <ColumnHeader label="Type" columnId="pt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={56} />
+                  <ColumnHeader label="Name" columnId="pn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={88} />
+                  <ColumnHeader label="Email" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={120} />
+                  <ColumnHeader label="Access" columnId="px" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
+                  <ColumnHeader label="Role" columnId="pr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
+                  <ColumnHeader label="Actions" columnId="pa" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} align="right" />
                 </ListHeaderRow>
                 {permissions.length === 0 && !addPermissionDialogOpen && (
                   <Box sx={{ py: 4, textAlign: 'center' }}>
@@ -1059,34 +1059,34 @@ export function SharedDrives() {
                       onChange={() => togglePermissionSelected(permission.id)}
                       sx={{ p: 0.25, mr: 0.5 }}
                     />
-                    <Box sx={{ width: 88, flexShrink: 0 }}>
+                    <Box sx={{ width: 56, flexShrink: 0 }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
                         {getTypeLabel(permission.type)}
                       </Typography>
                     </Box>
-                    <Box sx={{ width: '20%', minWidth: 100, overflow: 'hidden' }}>
+                    <Box sx={listPrimaryColSx}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {permission.type === 'anyone' ? 'Anyone with link' : permission.displayName || '—'}
                       </Typography>
                     </Box>
-                    <Box sx={{ width: '26%', minWidth: 140, overflow: 'hidden' }}>
+                    <Box sx={{ ...listPrimaryColSx, minWidth: 120, flex: '1.2 1 0' }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {permission.type === 'anyone'
                           ? 'Anyone with link'
                           : permission.emailAddress || permission.domain || permission.id || '—'}
                       </Typography>
                     </Box>
-                    <Box sx={{ width: 100, flexShrink: 0 }}>
+                    <Box sx={{ width: 88, flexShrink: 0 }}>
                       {isPermissionExternal(permission) ? (
                         <ExternalChip />
                       ) : (
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>Internal</Typography>
                       )}
                     </Box>
-                    <Box sx={{ width: 100, flexShrink: 0 }}>
+                    <Box sx={{ width: 88, flexShrink: 0 }}>
                       <DotLabel dotColor={getRoleDotColor(permission.role)}>{permission.role}</DotLabel>
                     </Box>
-                    <Box sx={{ width: 72, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
+                    <Box sx={listActionsSx}>
                       <ActionTooltip title="Remove">
                         <IconButton size="small" color="error" onClick={() => handleRemovePermission(permission.id)} sx={{ p: 0.5 }}>
                           <Trash2 size={16} strokeWidth={1.75} />
