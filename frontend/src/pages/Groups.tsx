@@ -125,11 +125,11 @@ export function Groups() {
     { name: 200, email: 260, description: 240, directMembersCount: 88, creationTime: 120 },
     { name: 120, email: 160, description: 120, directMembersCount: 56, creationTime: 88 }
   );
-  // v2: member stack (email as primary) + role + type; no status / per-row trash.
+  // Member takes remaining width; role/type stay compact (mock ~90 / ~70). minWidth 0 → no H-scroll in narrow modal.
   const memberCols = useResizableColumns(
-    'groups-members-v2',
-    { member: 320, role: 100, type: 110 },
-    { member: 180, role: 72, type: 80 }
+    'groups-members-v3',
+    { member: 400, role: 90, type: 70 },
+    { member: 0, role: 0, type: 0 }
   );
   const pickerCols = useResizableColumns(
     'groups-user-picker',
@@ -1156,7 +1156,13 @@ export function Groups() {
       </>
       )}
 
-      <Dialog open={editDialogOpen} onClose={handleCloseEditDialog} maxWidth="md" fullWidth PaperProps={{ sx: (th) => dialogPaperSx(th) }}>
+      <Dialog
+        open={editDialogOpen}
+        onClose={handleCloseEditDialog}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: (th) => ({ ...dialogPaperSx(th), maxWidth: 640, overflowX: 'hidden' }) }}
+      >
         <DialogTitle
           sx={(th) => ({
             display: 'flex',
@@ -1202,7 +1208,7 @@ export function Groups() {
             <X size={16} strokeWidth={1.75} />
           </IconButton>
         </DialogTitle>
-        <DialogContent sx={{ pt: '16px !important', px: 2.5, pb: 1 }}>
+        <DialogContent sx={{ pt: '16px !important', px: 2.5, pb: 1, overflowX: 'hidden' }}>
           <Box display="flex" alignItems="center" gap={1} mb={1.75} flexWrap="wrap">
             <FlyoutSearch
               value={memberSearchTerm}
@@ -1229,32 +1235,32 @@ export function Groups() {
           ) : (
             <ListShell>
               <ListHeaderRow>
-                {members.length > 0 ? (
-                  <Checkbox
-                    size="small"
-                    indeterminate={
-                      filteredMembersForDialog.length > 0 &&
-                      selectedMembers.some(e => filteredMembersForDialog.some(m => m.email === e)) &&
-                      !filteredMembersForDialog.every(m => selectedMembers.includes(m.email))
-                    }
-                    checked={
-                      filteredMembersForDialog.length > 0 &&
-                      filteredMembersForDialog.every(m => selectedMembers.includes(m.email))
-                    }
-                    onChange={() => {
-                      const filteredEmails = filteredMembersForDialog.map(m => m.email);
-                      const allFilteredSelected = filteredEmails.every(e => selectedMembers.includes(e));
-                      if (allFilteredSelected) {
-                        setSelectedMembers(prev => prev.filter(e => !filteredEmails.includes(e)));
-                      } else {
-                        setSelectedMembers(prev => [...new Set([...prev, ...filteredEmails])]);
+                <Box sx={listCheckboxSx}>
+                  {members.length > 0 ? (
+                    <Checkbox
+                      size="small"
+                      indeterminate={
+                        filteredMembersForDialog.length > 0 &&
+                        selectedMembers.some(e => filteredMembersForDialog.some(m => m.email === e)) &&
+                        !filteredMembersForDialog.every(m => selectedMembers.includes(m.email))
                       }
-                    }}
-                    sx={{ p: 0.25, mr: 0.5 }}
-                  />
-                ) : (
-                  <Box sx={{ width: 34, mr: 0.5, flexShrink: 0 }} />
-                )}
+                      checked={
+                        filteredMembersForDialog.length > 0 &&
+                        filteredMembersForDialog.every(m => selectedMembers.includes(m.email))
+                      }
+                      onChange={() => {
+                        const filteredEmails = filteredMembersForDialog.map(m => m.email);
+                        const allFilteredSelected = filteredEmails.every(e => selectedMembers.includes(e));
+                        if (allFilteredSelected) {
+                          setSelectedMembers(prev => prev.filter(e => !filteredEmails.includes(e)));
+                        } else {
+                          setSelectedMembers(prev => [...new Set([...prev, ...filteredEmails])]);
+                        }
+                      }}
+                      sx={{ p: 0.25 }}
+                    />
+                  ) : null}
+                </Box>
                 <ColumnHeader label="Member" columnId="mb" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('member')} />
                 <ColumnHeader label="Role" columnId="rl" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('role')} />
                 <ColumnHeader label="Type" columnId="ty" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...memberCols.headerProps('type')} />
@@ -1283,7 +1289,9 @@ export function Groups() {
                 const secondaryLine = hasName ? member.email : external ? 'External' : null;
                 return (
                 <ListDataRow key={member.id} last={globalMidx === filteredMembersForDialog.length - 1 && !addMemberInlineOpen}>
-                  <Checkbox size="small" checked={selectedMembers.includes(member.email)} onChange={() => handleSelectMember(member.email)} sx={{ p: 0.25, mr: 0.5 }} />
+                  <Box sx={listCheckboxSx}>
+                    <Checkbox size="small" checked={selectedMembers.includes(member.email)} onChange={() => handleSelectMember(member.email)} sx={{ p: 0.25 }} />
+                  </Box>
                   <Box sx={memberCols.cellSx('member')}>
                     <Typography
                       sx={{
@@ -1351,12 +1359,15 @@ export function Groups() {
                     gap: 1.5,
                     px: 2,
                     py: 1.25,
+                    minWidth: 0,
+                    width: '100%',
+                    boxSizing: 'border-box',
                     borderTop: `1px solid ${pick(t, T.borderSubtle, '#27272a')}`,
                     bgcolor: pick(t, T.surfaceHover, '#27272a'),
                   })}
                 >
-                  <Box sx={{ width: 34, flexShrink: 0 }} />
-                  <Box sx={{ ...memberCols.cellSx('member'), overflow: 'visible' }}>
+                  <Box sx={listCheckboxSx} />
+                  <Box sx={memberCols.cellSx('member')}>
                     <Autocomplete
                       freeSolo
                       options={directorySuggestions}

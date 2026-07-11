@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 /** Bump when default widths or resize policy change so stale local sizes are dropped. */
-const STORAGE_PREFIX = 'gws-col-widths:v3:';
-const DEFAULT_MIN = 64;
+const STORAGE_PREFIX = 'gws-col-widths:v4:';
+const DEFAULT_MIN = 48;
 
 function loadStored(tableId: string): Record<string, number> | null {
   try {
@@ -30,26 +30,28 @@ function saveStored(tableId: string, widths: Record<string, number>) {
 
 export type FixedColumnsOptions = {
   /**
-   * Column ids that may be drag-resized. Default: none (all widths fixed).
-   * Drive file lists pass `['name']` so the file name can grow.
+   * Column ids that may be drag-resized (adjusts flex weight / preferred basis).
+   * Default: none. Drive file lists pass `['name']`.
+   * Tables never grow past the container — columns share remaining width.
    */
   resizableIds?: readonly string[];
 };
 
 export type ResizableColumnsApi = {
-  /** Current pixel width for a column id (falls back to defaults). */
+  /** Preferred width / flex weight for a column id. */
   widthOf: (columnId: string) => number;
-  /** sx for a data cell matching the header width. */
+  /** sx for a data cell — flexes to fit; never forces horizontal scroll. */
   cellSx: (columnId: string) => {
-    width: number;
-    minWidth: number;
     flex: string;
+    minWidth: number;
     overflow: 'hidden';
     boxSizing: 'border-box';
+    width?: number;
   };
-  /** Props to spread onto ColumnHeader (fixed unless id is in resizableIds). */
+  /** Props to spread onto ColumnHeader. */
   headerProps: (columnId: string) => {
-    width: number;
+    grow?: number;
+    width?: number;
     minWidth: number;
     resizable: boolean;
     onResizeStart?: (e: React.MouseEvent) => void;
@@ -59,9 +61,9 @@ export type ResizableColumnsApi = {
 };
 
 /**
- * Per-table column widths. Columns are fixed by default.
- * Pass `options.resizableIds` for the rare columns that should drag-resize
- * (persisted under `gws-col-widths:v3:{tableId}`).
+ * Per-table column layout. Columns share the row width (no horizontal scroll).
+ * Defaults are flex *weights* (and preferred basis for resizable cols).
+ * Pass `options.resizableIds` to allow drag-adjusting a column’s share.
  */
 export function useResizableColumns(
   tableId: string,
@@ -80,7 +82,6 @@ export function useResizableColumns(
   const [widths, setWidths] = useState<Record<string, number>>(() => {
     if (!canResizeAny) return { ...defaults };
     const stored = loadStored(tableId);
-    // Only restore widths for columns that are still resizable; others stay at defaults.
     const merged = { ...defaults };
     if (stored) {
       for (const id of resizableIds) {
@@ -90,7 +91,6 @@ export function useResizableColumns(
     return merged;
   });
 
-  // Keep newly added default keys available without wiping user sizes.
   useEffect(() => {
     setWidths((prev) => {
       let changed = false;
@@ -101,7 +101,6 @@ export function useResizableColumns(
           changed = true;
         }
       }
-      // Non-resizable columns always snap back to defaults (ignore stale sizes).
       for (const [k, v] of Object.entries(defaults)) {
         if (!resizableSet.has(k) && next[k] !== v) {
           next[k] = v;
@@ -172,26 +171,46 @@ export function useResizableColumns(
 
   const cellSx = useCallback(
     (columnId: string) => {
-      const w = widthOf(columnId);
+      const preferred = widthOf(columnId);
+      const minW = minOf(columnId);
+      const resizable = resizableSet.has(columnId);
+      // Share the row: grow by preferred weight, always allow shrink (ellipsis).
+      if (resizable) {
+        return {
+          flex: `1 1 ${preferred}px`,
+          width: preferred,
+          minWidth: Math.min(minW, preferred),
+          overflow: 'hidden' as const,
+          boxSizing: 'border-box' as const,
+        };
+      }
       return {
-        width: w,
-        minWidth: w,
-        flex: `0 0 ${w}px`,
+        flex: `${preferred} 1 0px`,
+        minWidth: 0,
         overflow: 'hidden' as const,
         boxSizing: 'border-box' as const,
       };
     },
-    [widthOf]
+    [widthOf, minOf, resizableSet]
   );
 
   const headerProps = useCallback(
     (columnId: string) => {
+      const preferred = widthOf(columnId);
+      const minW = minOf(columnId);
       const resizable = resizableSet.has(columnId);
+      if (resizable) {
+        return {
+          width: preferred,
+          minWidth: Math.min(minW, preferred),
+          resizable: true,
+          onResizeStart: (e: React.MouseEvent) => startResize(columnId, e),
+        };
+      }
       return {
-        width: widthOf(columnId),
-        minWidth: minOf(columnId),
-        resizable,
-        ...(resizable ? { onResizeStart: (e: React.MouseEvent) => startResize(columnId, e) } : {}),
+        grow: preferred,
+        minWidth: 0,
+        resizable: false,
       };
     },
     [widthOf, minOf, startResize, resizableSet]

@@ -8,7 +8,7 @@ Canonical guide for visuals and interaction: Plus Jakarta Sans, Workspace-style 
 
 1. **`ListShell` → `ListHeaderRow` → `ListDataRow`** for every data table.
 2. **Row opens detail:** whole-row click opens the page’s modal/detail (not the checkbox). Trailing **`ListChevron`** matches Security Audit.
-3. **Fixed column widths:** **`useResizableColumns`** + `headerProps` / `cellSx` with static px defaults. Drag-resize is **off by default**. Opt in per column via `options.resizableIds` (Drive file lists: `name` only). Persist under `gws-col-widths:v3:{tableId}` only for resizable columns. Trailing chevron columns are fixed and **`pinEnd`**.
+3. **Column widths:** **`useResizableColumns`** + `headerProps` / `cellSx`. Columns **share the row** (flex weights from defaults) and **never force horizontal scroll** — text ellipsizes. Drag-resize is **off by default**; opt in via `options.resizableIds` (Drive file name). Persist under `gws-col-widths:v4:{tableId}` only for resizable columns. Trailing chevron is fixed **`pinEnd`** / `listActionsSx` (36px).
 4. **Checkboxes:** **`listCheckboxSx`**; `stopPropagation` so select ≠ open.
 5. **Destructive = bulk:** no per-row trash. Toolbar **Delete** when ≥1 selected. **Do not delete Workspace admins** from this app.
 6. **Open in Google** may stay on the row (quiet icon) *and* in the modal.
@@ -53,7 +53,7 @@ Helpers **`textSecondary(theme)`** and **`textTertiary(theme)`** wrap `pick` for
 
 Data views use bordered flex lists (not legacy `Table`/`Paper` grids) for consistency with the Users page and toolbars.
 
-- **`ListShell`** — outer bordered container (`overflow-x: auto` when columns exceed the viewport).
+- **`ListShell`** — outer bordered container (`overflow-x: hidden`; columns flex to fit — no horizontal scroll).
 - **`ListHeaderRow`** — header strip under the top border.
 - **`ColumnHeader`** — uppercase, tracked labels; optional sort; optional resize handle when `resizable` + `onResizeStart` (from `useResizableColumns().headerProps`). Dialogs that do not sort can use **`dialogListSort.ts`** (`DIALOG_LIST_SORT`, `dialogListNoopSort`).
 - **`ListDataRow`** — row chrome, hover, optional selection wash.
@@ -160,7 +160,7 @@ Use shared **`FlyoutSearch`** (`frontend/src/components/ui/FlyoutSearch.tsx`) on
 
 Full-page data views use **ListShell** rows (not MUI `Table`). Pagination is usually **`TablePagination`** under the list. Sorting goes through **`ColumnHeader`** + page-level sort state (or `useTable` for data only).
 
-- Prefer **`useResizableColumns`** for column widths (see contract above). Columns are **fixed** unless `resizableIds` opts a column into drag-resize (Drive file name).
+- Prefer **`useResizableColumns`** for column widths (see contract above). Columns flex to fit the frame (no horizontal scroll); `resizableIds` only adjusts share (Drive file name).
 - Keep checkbox + actions columns fixed width.
 
 **Reference:** `Users.tsx`, `Groups.tsx`, `EmailDelegation.tsx`, `frontend/src/hooks/useTable.tsx` (data helpers).

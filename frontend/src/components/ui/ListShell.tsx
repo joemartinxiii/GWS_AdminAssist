@@ -7,7 +7,7 @@ export function listShellSx(theme: Theme) {
   return {
     border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
     borderRadius: T.radiusLg,
-    overflowX: 'auto' as const,
+    overflowX: 'hidden' as const,
     overflowY: 'hidden' as const,
     bgcolor: pick(theme, T.surface, '#18181b'),
   };
@@ -103,11 +103,12 @@ export const listPinEndSx = {
 
 /**
  * Trailing actions — fixed width, always flush right of the row.
+ * Keep in sync with header `__open` / chevron ColumnHeader (36px).
  */
 export const listActionsSx = {
-  width: 80,
-  minWidth: 80,
-  flex: '0 0 80px',
+  width: 36,
+  minWidth: 36,
+  flex: '0 0 36px',
   marginLeft: 'auto',
   display: 'flex',
   justifyContent: 'flex-end',

@@ -50,21 +50,24 @@ export function ColumnHeader({
   pinEnd = false,
 }: ColumnHeaderProps) {
   const active = sortConfig.key === columnId;
-  // Resizable columns always use fixed pixel widths so drag feedback is predictable.
-  const useFixed = resizable || (grow == null && width != null);
-  const flex = useFixed
-    ? `0 0 ${typeof width === 'number' ? `${width}px` : width ?? 'auto'}`
+  // Prefer flex-share layout so rows never force horizontal scroll.
+  // Resizable cols use width as flex-basis but still shrink/grow with the row.
+  const useFixedBasis = resizable && width != null;
+  const flex = useFixedBasis
+    ? `1 1 ${typeof width === 'number' ? `${width}px` : width}`
     : grow != null
       ? `${grow} 1 0px`
-      : '1 1 0px';
+      : width != null
+        ? `1 1 ${typeof width === 'number' ? `${width}px` : width}`
+        : '1 1 0px';
 
   return (
     <Box
       onClick={() => (sortable && !resizable ? onSort(columnId) : undefined)}
       sx={(theme: Theme) => ({
         position: 'relative',
-        width: useFixed ? width : grow != null ? undefined : width,
-        minWidth: minWidth ?? (typeof width === 'number' ? width : grow != null ? 80 : 0),
+        width: useFixedBasis ? width : undefined,
+        minWidth: minWidth ?? (grow != null || !width ? 0 : typeof width === 'number' ? Math.min(width, 64) : 0),
         flex,
         overflow: 'hidden',
         display: 'flex',
@@ -80,7 +83,7 @@ export function ColumnHeader({
         color: active ? pick(theme, T.accent, '#8ab4f8') : textTertiary(theme),
         justifyContent: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start',
         pr: resizable ? 1 : 0,
-        ...(pinEnd ? { marginLeft: 'auto' } : {}),
+        ...(pinEnd ? { marginLeft: 'auto', flex: '0 0 auto', width: width ?? 36, minWidth: width ?? 36 } : {}),
         '&:hover': sortable ? { color: pick(theme, T.text, '#e4e4e7') } : {},
         '&:hover .col-resize-handle': { opacity: 1 },
       })}
