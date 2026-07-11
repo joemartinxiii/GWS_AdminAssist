@@ -7,8 +7,6 @@ export function listShellSx(theme: Theme) {
   return {
     border: `1px solid ${pick(theme, T.border, '#3f3f46')}`,
     borderRadius: T.radiusLg,
-    // Horizontal scroll (rather than squeezing columns unreadably) when the
-    // viewport is too narrow to fit every column at its minimum width.
     overflowX: 'auto' as const,
     overflowY: 'hidden' as const,
     bgcolor: pick(theme, T.surface, '#18181b'),
@@ -21,20 +19,24 @@ export function ListShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+const rowBase = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 1.25,
+  px: 2,
+  width: '100%',
+  boxSizing: 'border-box' as const,
+  minWidth: 0,
+};
+
 /** Header strip under the top border */
 export function ListHeaderRow({ children }: { children: React.ReactNode }) {
   return (
     <Box
       sx={(theme: Theme) => ({
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1,
-        px: 2,
+        ...rowBase,
         py: 1,
         borderBottom: `1px solid ${pick(theme, T.borderSubtle, '#27272a')}`,
-        width: '100%',
-        boxSizing: 'border-box',
-        minWidth: 0,
       })}
     >
       {children}
@@ -58,16 +60,10 @@ export function ListDataRow({
     <Box
       onClick={onClick}
       sx={(theme: Theme) => ({
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1,
-        px: 2,
+        ...rowBase,
         py: 0.875,
         borderBottom: last ? 'none' : `1px solid ${pick(theme, T.borderSubtle, '#27272a')}`,
         cursor: onClick ? 'pointer' : 'default',
-        width: '100%',
-        boxSizing: 'border-box',
-        minWidth: 0,
         bgcolor: selected ? pick(theme, T.accentSoft, 'rgba(26, 115, 232, 0.16)') : 'transparent',
         '&:hover': {
           bgcolor: selected
@@ -82,23 +78,45 @@ export function ListDataRow({
 }
 
 /**
- * Trailing actions cell — always sits on the far right of a flex list row.
- * Use the same width on the matching ColumnHeader (align="right").
+ * Leading checkbox column — identical structure in header and every data row
+ * (including empty spacer for non-selectable rows) so cells stay aligned.
+ */
+export const listCheckboxSx = {
+  width: 40,
+  minWidth: 40,
+  flex: '0 0 40px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'flex-start',
+} as const;
+
+/**
+ * Trailing actions — fixed width, end of row.
+ * Do NOT use marginLeft:auto (that leaves a dead gap before the icons).
+ * Growing middle columns push these to the right edge naturally.
  */
 export const listActionsSx = {
   width: 80,
   minWidth: 80,
-  flexShrink: 0,
-  ml: 'auto',
+  flex: '0 0 80px',
   display: 'flex',
   justifyContent: 'flex-end',
   alignItems: 'center',
   gap: 0.25,
 } as const;
 
-/** Primary text column that absorbs leftover row width. */
-export const listPrimaryColSx = {
-  flex: '1 1 0',
-  minWidth: 120,
-  overflow: 'hidden',
-} as const;
+/** Flexible text column. Use grow weights so columns share width evenly. */
+export function listGrowSx(grow = 1, minWidth = 120): {
+  flex: string;
+  minWidth: number;
+  overflow: 'hidden';
+} {
+  return {
+    flex: `${grow} 1 0px`,
+    minWidth,
+    overflow: 'hidden',
+  };
+}
+
+/** @deprecated prefer listGrowSx(1) — kept for imports */
+export const listPrimaryColSx = listGrowSx(1, 120);

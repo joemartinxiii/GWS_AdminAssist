@@ -13,8 +13,11 @@ interface ColumnHeaderProps {
   columnId: string;
   sortConfig: SortConfigLite;
   onSort: (columnId: string) => void;
+  /** Rigid column width (px preferred). Ignored when `grow` is set. */
   width?: string | number;
   minWidth?: string | number;
+  /** Flex grow weight — columns with grow share remaining width proportionally. */
+  grow?: number;
   align?: 'left' | 'right' | 'center';
   sortable?: boolean;
 }
@@ -29,19 +32,24 @@ export function ColumnHeader({
   onSort,
   width,
   minWidth,
+  grow,
   align = 'left',
   sortable = true,
 }: ColumnHeaderProps) {
   const active = sortConfig.key === columnId;
+  const flex =
+    grow != null
+      ? `${grow} 1 0px`
+      : width != null
+        ? `0 0 ${typeof width === 'number' ? `${width}px` : width}`
+        : '1 1 0px';
   return (
     <Box
       onClick={() => (sortable ? onSort(columnId) : undefined)}
       sx={(theme: Theme) => ({
-        width,
-        minWidth: minWidth ?? width ?? 0,
-        // Fixed-width cols don't grow; omit width → absorb leftover space (primary col).
-        flexShrink: width ? 0 : 1,
-        flex: width ? '0 0 auto' : '1 1 0',
+        width: grow != null ? undefined : width,
+        minWidth: minWidth ?? (typeof width === 'number' ? width : grow != null ? 80 : 0),
+        flex,
         overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
@@ -55,8 +63,6 @@ export function ColumnHeader({
         letterSpacing: '0.06em',
         color: active ? pick(theme, T.accent, '#8ab4f8') : textTertiary(theme),
         justifyContent: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start',
-        // Flush actions column to the trailing edge of the row.
-        ...(align === 'right' && width ? { ml: 'auto' } : {}),
         '&:hover': sortable ? { color: pick(theme, T.text, '#e4e4e7') } : {},
       })}
     >

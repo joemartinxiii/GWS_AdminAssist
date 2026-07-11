@@ -7,16 +7,17 @@ Canonical guide for visuals and interaction: Plus Jakarta Sans, Workspace-style 
 ## List & actions contract (do not break)
 
 1. **`ListShell` → `ListHeaderRow` → `ListDataRow`** for every data table.
-2. **Matching widths** on header cells and row cells (fixed px for status/actions; % only for name/email). Never put a short chip in `flex: 1`.
-3. **Trailing Actions** (right-aligned icons, one column labeled **Actions** or unlabeled). Do **not** invent separate “Open” / “Details” / “Remove” icon columns.
-4. **Icons mean one thing:**
-   - `Pencil` — edit settings / change role (in the actions strip only)
+2. **Even width distribution:** growing columns use `grow={n}` / `listGrowSx(n)` so content spreads across the full row. Fixed columns use numeric `width` (px). **Never** use `marginLeft: auto` on Actions (creates a dead mid-row gap).
+3. **Checkboxes:** always wrap in **`listCheckboxSx`** (40px) in **both** header and every data row (empty box when no checkbox) so boxes line up.
+4. **Trailing Actions:** **`listActionsSx`** (80px, flex-end icons). One **Actions** column — not separate Open/Details/Remove headers.
+5. **Icons mean one thing:**
+   - `Pencil` — edit settings / change role (actions strip only)
    - `Users` — manage members or permissions
    - `ExternalLink` — open in Google
    - `Trash2` — remove/delete (danger color)
-5. **Risk chips** (`ExternalChip`, External/Internal) live in their **own fixed-width column** (Access / Sharing), not inside Role.
-6. **Account status** uses Google language: **Active** / **Suspended** (not “Off”).
-7. Prefer **`useConfirm`** and **`useSnackbar`** over `window.confirm` / `alert`.
+6. **Risk chips** live in their **own fixed-width column** (Access / Sharing), not inside Role.
+7. **Account status:** **Active** / **Suspended** (not “Off”).
+8. Prefer **`useConfirm`** and **`useSnackbar`** over `window.confirm` / `alert`.
 
 **Related code:**
 

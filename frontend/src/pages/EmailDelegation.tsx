@@ -31,7 +31,7 @@ import { FilterToken } from '../components/ui/FilterToken';
 import { T, pick, textSecondary, textTertiary, exportToolbarButtonSx, selectMenuProps } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listGrowSx, listCheckboxSx } from '../components/ui/ListShell';
 import { useTheme } from '@mui/material/styles';
 import { DotLabel } from '../components/StatusDot';
 import { useConfirm } from '../hooks/useConfirm';
@@ -616,17 +616,19 @@ export function EmailDelegation() {
 
           <ListShell>
             <ListHeaderRow>
-              <Checkbox
-                size="small"
-                indeterminate={selectedDelegations.size > 0 && selectedDelegations.size < data.length}
-                checked={data.length > 0 && selectedDelegations.size === data.length}
-                onChange={handleSelectAll}
-                sx={{ p: 0.25, mr: 0.5 }}
-              />
-              <ColumnHeader label="Mailbox owner" columnId="userEmail" sortConfig={sortConfig} onSort={handleSort} width="32%" minWidth={170} />
-              <ColumnHeader label="Delegate" columnId="delegateEmail" sortConfig={sortConfig} onSort={handleSort} width="32%" minWidth={170} />
-              <ColumnHeader label="Status" columnId="verificationStatus" sortConfig={sortConfig} onSort={handleSort} width={120} />
-              <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={88} align="right" />
+              <Box sx={listCheckboxSx}>
+                <Checkbox
+                  size="small"
+                  indeterminate={selectedDelegations.size > 0 && selectedDelegations.size < data.length}
+                  checked={data.length > 0 && selectedDelegations.size === data.length}
+                  onChange={handleSelectAll}
+                  sx={{ p: 0.25 }}
+                />
+              </Box>
+              <ColumnHeader label="Mailbox owner" columnId="userEmail" sortConfig={sortConfig} onSort={handleSort} grow={1} minWidth={160} />
+              <ColumnHeader label="Delegate" columnId="delegateEmail" sortConfig={sortConfig} onSort={handleSort} grow={1} minWidth={160} />
+              <ColumnHeader label="Status" columnId="verificationStatus" sortConfig={sortConfig} onSort={handleSort} width={110} />
+              <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={80} align="right" />
             </ListHeaderRow>
             {data.length === 0 ? (
               <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -635,23 +637,25 @@ export function EmailDelegation() {
             ) : (
               data.map((delegation, index) => (
                 <ListDataRow key={`${delegation.userEmail}-${delegation.delegateEmail}-${index}`} last={index === data.length - 1} selected={isSelected(delegation)}>
-                  <Checkbox size="small" checked={isSelected(delegation)} onChange={() => handleSelectOne(delegation)} sx={{ p: 0.25, mr: 0.5 }} />
-                  <Box sx={{ width: '32%', minWidth: 170, overflow: 'hidden' }}>
+                  <Box sx={listCheckboxSx}>
+                    <Checkbox size="small" checked={isSelected(delegation)} onChange={() => handleSelectOne(delegation)} sx={{ p: 0.25 }} />
+                  </Box>
+                  <Box sx={listGrowSx(1, 160)}>
                     <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {delegation.userEmail}
                     </Typography>
                   </Box>
-                  <Box sx={{ width: '32%', minWidth: 170, overflow: 'hidden' }}>
+                  <Box sx={listGrowSx(1, 160)}>
                     <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {delegation.delegateEmail}
                     </Typography>
                   </Box>
-                  <Box sx={{ width: 120, flexShrink: 0 }}>
+                  <Box sx={{ width: 110, flex: '0 0 110px' }}>
                     <DotLabel dotColor={delegation.verificationStatus === 'accepted' ? T.success : T.warning}>
                       {delegation.verificationStatus}
                     </DotLabel>
                   </Box>
-                  <Box sx={{ width: 88, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Box sx={listActionsSx}>
                     <ActionTooltip title="Remove delegation">
                       <IconButton size="small" onClick={() => handleRemoveOne(delegation)} sx={{ p: 0.5, color: T.danger }}>
                         <Trash2 size={16} strokeWidth={1.75} />

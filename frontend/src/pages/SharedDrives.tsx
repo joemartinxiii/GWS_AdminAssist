@@ -45,7 +45,7 @@ import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarBut
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
-import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listPrimaryColSx } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listGrowSx, listCheckboxSx } from '../components/ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
 import { DotLabel, ExternalChip } from '../components/StatusDot';
@@ -851,18 +851,20 @@ export function SharedDrives() {
           )}
           <ListShell>
             <ListHeaderRow>
-              <Checkbox
-                size="small"
-                indeterminate={selectedDriveIds.size > 0 && selectedDriveIds.size < tableData.length}
-                checked={tableData.length > 0 && selectedDriveIds.size === tableData.length}
-                onChange={handleSelectAllDrives}
-                sx={{ p: 0.25, mr: 0.5 }}
-              />
-              <ColumnHeader label="Name" columnId="name" sortConfig={sortConfig} onSort={handleSort} minWidth={160} />
+              <Box sx={listCheckboxSx}>
+                <Checkbox
+                  size="small"
+                  indeterminate={selectedDriveIds.size > 0 && selectedDriveIds.size < tableData.length}
+                  checked={tableData.length > 0 && selectedDriveIds.size === tableData.length}
+                  onChange={handleSelectAllDrives}
+                  sx={{ p: 0.25 }}
+                />
+              </Box>
+              <ColumnHeader label="Name" columnId="name" sortConfig={sortConfig} onSort={handleSort} grow={1.4} minWidth={160} />
               <ColumnHeader label="Visibility" columnId="hidden" sortConfig={sortConfig} onSort={handleSort} width={88} />
-              <ColumnHeader label="Created" columnId="createdTime" sortConfig={sortConfig} onSort={handleSort} width={96} />
+              <ColumnHeader label="Created" columnId="createdTime" sortConfig={sortConfig} onSort={handleSort} width={100} />
               <ColumnHeader label="Sharing" columnId="sharing" sortConfig={sortConfig} onSort={handleSort} width={96} />
-              <ColumnHeader label="Members" columnId="members" sortConfig={sortConfig} onSort={handleSort} width={72} align="right" />
+              <ColumnHeader label="Members" columnId="members" sortConfig={sortConfig} onSort={handleSort} width={80} align="right" />
               <ColumnHeader label="Actions" columnId="__a" sortConfig={sortConfig} onSort={() => {}} sortable={false} width={80} align="right" />
             </ListHeaderRow>
             {tableData.length === 0 ? (
@@ -886,28 +888,30 @@ export function SharedDrives() {
                     selected={isDriveSelected(drive)}
                     onClick={() => handleViewPermissions(drive)}
                   >
-                    <Checkbox size="small" checked={isDriveSelected(drive)} onChange={(e) => { e.stopPropagation(); handleSelectDrive(drive); }} sx={{ p: 0.25, flexShrink: 0 }} onClick={(e) => e.stopPropagation()} />
-                    <Box sx={listPrimaryColSx}>
+                    <Box sx={listCheckboxSx} onClick={(e) => e.stopPropagation()}>
+                      <Checkbox size="small" checked={isDriveSelected(drive)} onChange={() => handleSelectDrive(drive)} sx={{ p: 0.25 }} />
+                    </Box>
+                    <Box sx={listGrowSx(1.4, 160)}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (theme) => pick(theme, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {drive.name}
                       </Typography>
                     </Box>
-                    <Box sx={{ width: 88, flexShrink: 0 }}>
+                    <Box sx={{ width: 88, flex: '0 0 88px' }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => (drive.hidden ? textTertiary(t) : textSecondary(t)) }}>
                         {drive.hidden ? 'Hidden' : 'Active'}
                       </Typography>
                     </Box>
-                    <Box sx={{ width: 96, flexShrink: 0 }}>
+                    <Box sx={{ width: 100, flex: '0 0 100px' }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
                         {drive.createdTime ? new Date(drive.createdTime).toLocaleDateString() : '—'}
                       </Typography>
                     </Box>
-                    <Box sx={{ width: 96, flexShrink: 0 }}>
+                    <Box sx={{ width: 96, flex: '0 0 96px' }}>
                       <DotLabel dotColor={external ? T.warning : T.success}>
                         {external ? 'External' : 'Internal'}
                       </DotLabel>
                     </Box>
-                    <Box sx={{ width: 72, flexShrink: 0, textAlign: 'right' }}>
+                    <Box sx={{ width: 80, flex: '0 0 80px', textAlign: 'right' }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
                         {typeof count === 'number' ? count : countsLoading ? '…' : '—'}
                       </Typography>
@@ -1026,21 +1030,21 @@ export function SharedDrives() {
 
               <ListShell>
                 <ListHeaderRow>
-                  {permissions.length > 0 ? (
-                    <Checkbox
-                      size="small"
-                      indeterminate={selectedPermissionIds.size > 0 && selectedPermissionIds.size < permissions.length}
-                      checked={selectedPermissionIds.size === permissions.length}
-                      onChange={(_, checked) => selectAllPermissions(checked)}
-                      sx={{ p: 0.25, mr: 0.5 }}
-                    />
-                  ) : (
-                    <Box sx={{ width: 34, mr: 0.5, flexShrink: 0 }} />
-                  )}
+                  <Box sx={listCheckboxSx}>
+                    {permissions.length > 0 ? (
+                      <Checkbox
+                        size="small"
+                        indeterminate={selectedPermissionIds.size > 0 && selectedPermissionIds.size < permissions.length}
+                        checked={selectedPermissionIds.size === permissions.length}
+                        onChange={(_, checked) => selectAllPermissions(checked)}
+                        sx={{ p: 0.25 }}
+                      />
+                    ) : null}
+                  </Box>
                   <ColumnHeader label="Type" columnId="pt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={56} />
-                  <ColumnHeader label="Name" columnId="pn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={88} />
-                  <ColumnHeader label="Email" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={120} />
-                  <ColumnHeader label="Access" columnId="px" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
+                  <ColumnHeader label="Name" columnId="pn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} grow={1} minWidth={100} />
+                  <ColumnHeader label="Email" columnId="pe" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} grow={1.35} minWidth={140} />
+                  <ColumnHeader label="Access" columnId="px" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={92} />
                   <ColumnHeader label="Role" columnId="pr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
                   <ColumnHeader label="Actions" columnId="pa" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} align="right" />
                 </ListHeaderRow>
@@ -1053,37 +1057,39 @@ export function SharedDrives() {
                   const globalPidx = sdPermPageSafe * sdPermissionsRowsPerPage + pidx;
                   return (
                   <ListDataRow key={permission.id} last={globalPidx === permissions.length - 1 && addPermissionDialogOpen} selected={selectedPermissionIds.has(permission.id)}>
-                    <Checkbox
-                      size="small"
-                      checked={selectedPermissionIds.has(permission.id)}
-                      onChange={() => togglePermissionSelected(permission.id)}
-                      sx={{ p: 0.25, mr: 0.5 }}
-                    />
-                    <Box sx={{ width: 56, flexShrink: 0 }}>
+                    <Box sx={listCheckboxSx}>
+                      <Checkbox
+                        size="small"
+                        checked={selectedPermissionIds.has(permission.id)}
+                        onChange={() => togglePermissionSelected(permission.id)}
+                        sx={{ p: 0.25 }}
+                      />
+                    </Box>
+                    <Box sx={{ width: 56, flex: '0 0 56px' }}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>
                         {getTypeLabel(permission.type)}
                       </Typography>
                     </Box>
-                    <Box sx={listPrimaryColSx}>
+                    <Box sx={listGrowSx(1, 100)}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {permission.type === 'anyone' ? 'Anyone with link' : permission.displayName || '—'}
                       </Typography>
                     </Box>
-                    <Box sx={{ ...listPrimaryColSx, minWidth: 120, flex: '1.2 1 0' }}>
+                    <Box sx={listGrowSx(1.35, 140)}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {permission.type === 'anyone'
                           ? 'Anyone with link'
                           : permission.emailAddress || permission.domain || permission.id || '—'}
                       </Typography>
                     </Box>
-                    <Box sx={{ width: 88, flexShrink: 0 }}>
+                    <Box sx={{ width: 92, flex: '0 0 92px' }}>
                       {isPermissionExternal(permission) ? (
                         <ExternalChip />
                       ) : (
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>Internal</Typography>
                       )}
                     </Box>
-                    <Box sx={{ width: 88, flexShrink: 0 }}>
+                    <Box sx={{ width: 88, flex: '0 0 88px' }}>
                       <DotLabel dotColor={getRoleDotColor(permission.role)}>{permission.role}</DotLabel>
                     </Box>
                     <Box sx={listActionsSx}>

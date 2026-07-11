@@ -50,7 +50,7 @@ import { ActionTooltip } from '../components/ActionTooltip';
 import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx } from '../theme/designTokens';
 import { tablePaginationProps } from '../components/ui/tablePaginationProps';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listPrimaryColSx } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listGrowSx, listCheckboxSx } from '../components/ui/ListShell';
 import { DialogListPagination, DIALOG_LIST_PAGE_SIZE } from '../components/ui/DialogListPagination';
 import { DIALOG_LIST_SORT, dialogListNoopSort } from '../components/ui/dialogListSort';
 import { DotLabel, ExternalChip } from '../components/StatusDot';
@@ -1804,8 +1804,8 @@ export function Drive() {
               )}
               <ListShell>
                 <ListHeaderRow>
-                  {(selectedFile.permissions ?? []).filter((p) => p.role !== 'owner').length > 0 ? (
-                    <Box sx={{ width: 36, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                  <Box sx={listCheckboxSx}>
+                    {(selectedFile.permissions ?? []).filter((p) => p.role !== 'owner').length > 0 ? (
                       <Checkbox
                         size="small"
                         indeterminate={
@@ -1819,15 +1819,13 @@ export function Drive() {
                         onChange={(_, checked) => selectAllPermissions(checked)}
                         sx={{ p: 0.25 }}
                       />
-                    </Box>
-                  ) : (
-                    <Box sx={{ width: 36, flexShrink: 0 }} />
-                  )}
+                    ) : null}
+                  </Box>
                   <ColumnHeader label="Type" columnId="dt" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={56} />
-                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={88} />
-                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} minWidth={120} />
-                  <ColumnHeader label="Access" columnId="dx" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={88} />
-                  <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={72} />
+                  <ColumnHeader label="Name" columnId="dn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} grow={1} minWidth={100} />
+                  <ColumnHeader label="Email" columnId="de" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} grow={1.35} minWidth={140} />
+                  <ColumnHeader label="Access" columnId="dx" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={92} />
+                  <ColumnHeader label="Role" columnId="dr" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} />
                   <ColumnHeader label="Actions" columnId="da" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} width={80} align="right" />
                 </ListHeaderRow>
                 {(selectedFile.permissions ?? []).length === 0 && !addPermissionDialogOpen && (
@@ -1845,15 +1843,15 @@ export function Drive() {
                   const isLastDataRow = globalIdx === allPerms.length - 1;
                   return (
                     <ListDataRow key={permission.id} last={isLastDataRow && addPermissionDialogOpen} selected={canSelect && isSelected}>
-                      <Box sx={{ width: 36, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Box sx={listCheckboxSx}>
                         {canSelect ? (
                           <Checkbox size="small" checked={isSelected} onChange={() => togglePermissionSelected(permission.id, isOwner)} sx={{ p: 0.25 }} />
                         ) : null}
                       </Box>
-                      <Box sx={{ width: 56, flexShrink: 0 }}>
+                      <Box sx={{ width: 56, flex: '0 0 56px' }}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t) }}>{permission.type}</Typography>
                       </Box>
-                      <Box sx={{ ...listPrimaryColSx, minWidth: 88 }}>
+                      <Box sx={listGrowSx(1, 100)}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.displayName || '')} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
@@ -1862,7 +1860,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ ...listPrimaryColSx, minWidth: 120, flex: '1.2 1 0' }}>
+                      <Box sx={listGrowSx(1.35, 140)}>
                         <Tooltip title={permission.type === 'anyone' ? '' : (permission.emailAddress || permission.domain || '')} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {permission.type === 'anyone'
@@ -1871,7 +1869,7 @@ export function Drive() {
                           </Typography>
                         </Tooltip>
                       </Box>
-                      <Box sx={{ width: 88, flexShrink: 0 }}>
+                      <Box sx={{ width: 92, flex: '0 0 92px' }}>
                         {isPermissionExternal(permission, allowedDomains) ? (
                           <ExternalChip />
                         ) : (
@@ -1880,7 +1878,7 @@ export function Drive() {
                           </Typography>
                         )}
                       </Box>
-                      <Box sx={{ width: 72, flexShrink: 0 }}>
+                      <Box sx={{ width: 80, flex: '0 0 80px' }}>
                         {isEditing ? (
                           <Select
                             size="small"

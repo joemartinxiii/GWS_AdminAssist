@@ -50,7 +50,7 @@ import { shortcut } from '../utils/keyboard';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { FilterToken } from '../components/ui/FilterToken';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
-import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listPrimaryColSx } from '../components/ui/ListShell';
+import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listGrowSx, listCheckboxSx } from '../components/ui/ListShell';
 import { getApiErrorMessage } from '../utils/apiError';
 // ---------------------------------------------------------------------------
 // Types
@@ -708,14 +708,21 @@ export function Users() {
   // Column header helper
   // -------------------------------------------------------------------------
 
-  const ColHeader = ({ label, sortId, width, minWidth, align, grow }: { label: string; sortId: SortKey; width?: string | number; minWidth?: string | number; align?: string; grow?: boolean }) => (
+  const ColHeader = ({ label, sortId, width, minWidth, align, grow }: { label: string; sortId: SortKey; width?: string | number; minWidth?: string | number; align?: string; grow?: number | boolean }) => {
+    const growN = grow === true ? 1 : typeof grow === 'number' ? grow : undefined;
+    const flex =
+      growN != null
+        ? `${growN} 1 0px`
+        : width != null
+          ? `0 0 ${typeof width === 'number' ? `${width}px` : width}`
+          : '1 1 0px';
+    return (
     <Box
       onClick={() => handleSort(sortId)}
       sx={(theme) => ({
-        width: grow ? undefined : width,
-        minWidth: minWidth ?? width ?? 0,
-        flexShrink: grow || !width ? 1 : 0,
-        flex: grow || !width ? '1 1 0' : '0 0 auto',
+        width: growN != null ? undefined : width,
+        minWidth: minWidth ?? (typeof width === 'number' ? width : growN != null ? 80 : 0),
+        flex,
         overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
@@ -729,14 +736,14 @@ export function Users() {
         letterSpacing: '0.06em',
         color: effectiveSortKey === sortId ? pick(theme, T.accent, '#8ab4f8') : textTertiary(theme),
         justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
-        ...(align === 'right' && width ? { ml: 'auto' } : {}),
         '&:hover': { color: pick(theme, T.text, '#e4e4e7') },
       })}
     >
       {label}
       {effectiveSortKey === sortId && (sortDir === 'asc' ? <ArrowUp size={14} strokeWidth={2} /> : <ArrowDown size={14} strokeWidth={2} />)}
     </Box>
-  );
+    );
+  };
 
   // -------------------------------------------------------------------------
   // Loading state
@@ -992,16 +999,18 @@ export function Users() {
             {/* ======= TABLE ======= */}
             <ListShell>
               <ListHeaderRow>
-                <Checkbox
-                  size="small"
-                  checked={allSelected}
-                  indeterminate={someSelected}
-                  onChange={toggleAll}
-                  sx={{ p: 0.25, mr: 0.5 }}
-                />
-                <Box sx={{ width: 34, flexShrink: 0 }} />
-                <ColHeader label="Name" sortId="name" grow minWidth={120} />
-                <ColHeader label="Email" sortId="email" grow minWidth={140} />
+                <Box sx={listCheckboxSx}>
+                  <Checkbox
+                    size="small"
+                    checked={allSelected}
+                    indeterminate={someSelected}
+                    onChange={toggleAll}
+                    sx={{ p: 0.25 }}
+                  />
+                </Box>
+                <Box sx={{ width: 34, flex: '0 0 34px' }} />
+                <ColHeader label="Name" sortId="name" grow={1.2} minWidth={120} />
+                <ColHeader label="Email" sortId="email" grow={1.3} minWidth={140} />
                 <ColHeader label="Status" sortId="status" width={100} />
                 <ColHeader label="2FA" sortId="2fa" width={64} />
                 {isAdminsTab ? (
@@ -1055,19 +1064,21 @@ export function Users() {
                       selected={isSelected}
                       onClick={() => toggleUser(user.primaryEmail)}
                     >
-                      <Checkbox size="small" checked={isSelected} sx={{ p: 0.25, flexShrink: 0 }} onClick={(e) => e.stopPropagation()} onChange={() => toggleUser(user.primaryEmail)} />
+                      <Box sx={listCheckboxSx} onClick={(e) => e.stopPropagation()}>
+                        <Checkbox size="small" checked={isSelected} sx={{ p: 0.25 }} onChange={() => toggleUser(user.primaryEmail)} />
+                      </Box>
                       <Initials name={user.name.fullName} suspended={user.suspended} />
-                      <Box sx={listPrimaryColSx}>
+                      <Box sx={listGrowSx(1.2, 120)}>
                         <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: (theme) => pick(theme, T.text, '#fafafa'), textDecoration: user.suspended ? 'line-through' : 'none', opacity: user.suspended ? 0.5 : 1 }}>
                           {user.name.fullName}
                         </Typography>
                       </Box>
-                      <Box sx={{ ...listPrimaryColSx, minWidth: 140 }}>
+                      <Box sx={listGrowSx(1.3, 140)}>
                         <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {user.primaryEmail}
                         </Typography>
                       </Box>
-                      <Box sx={{ width: 100, flexShrink: 0 }}>
+                      <Box sx={{ width: 100, flex: '0 0 100px' }}>
                         <DotLabel
                           dotColor={user.suspended ? T.danger : T.success}
                           dotTooltip={user.suspended ? 'Suspended' : 'Active'}
@@ -1075,7 +1086,7 @@ export function Users() {
                           {user.suspended ? 'Suspended' : 'Active'}
                         </DotLabel>
                       </Box>
-                      <Box sx={{ width: 64, flexShrink: 0 }}>
+                      <Box sx={{ width: 64, flex: '0 0 64px' }}>
                         <DotLabel
                           dotColor={user.isEnrolledIn2Sv ? T.success : user.isEnforcedIn2Sv ? T.warning : textTertiary(theme)}
                           dotTooltip={user.isEnrolledIn2Sv ? 'Enrolled' : user.isEnforcedIn2Sv ? 'Enforced' : 'None'}
@@ -1084,7 +1095,7 @@ export function Users() {
                         </DotLabel>
                       </Box>
                       {isAdminsTab ? (
-                        <Box sx={{ width: 100, flexShrink: 0, overflow: 'hidden' }}>
+                        <Box sx={{ width: 100, flex: '0 0 100px', overflow: 'hidden' }}>
                           <Tooltip title={describeAdminType(user)} placement="top">
                             <Typography
                               sx={{
@@ -1102,13 +1113,13 @@ export function Users() {
                           </Tooltip>
                         </Box>
                       ) : (
-                        <Box sx={{ width: 64, flexShrink: 0 }}>
+                        <Box sx={{ width: 64, flex: '0 0 64px' }}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', fontWeight: user.isAdmin ? 600 : 400, color: (t) => (user.isAdmin ? T.accent : textSecondary(t)) }}>
                             {isWorkspaceAdmin(user) ? 'Admin' : 'User'}
                           </Typography>
                         </Box>
                       )}
-                      <Box sx={{ width: 100, flexShrink: 0, overflow: 'hidden' }}>
+                      <Box sx={{ width: 100, flex: '0 0 100px', overflow: 'hidden' }}>
                         <Tooltip title={user.orgUnitPath || '/'} placement="top">
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textSecondary(t), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {orgUnitLeaf(user.orgUnitPath)}
@@ -1116,7 +1127,7 @@ export function Users() {
                         </Tooltip>
                       </Box>
                       {isMdUp && (
-                        <Box sx={{ width: 88, flexShrink: 0 }}>
+                        <Box sx={{ width: 88, flex: '0 0 88px' }}>
                           <Typography sx={{ fontFamily: T.font, fontSize: '0.75rem', color: (t) => textTertiary(t) }}>
                             {formatRelative(user.lastLoginTime)}
                           </Typography>
