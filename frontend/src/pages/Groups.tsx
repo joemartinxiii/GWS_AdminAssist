@@ -14,7 +14,6 @@ import {
   Tooltip,
   Alert,
   Snackbar,
-  Divider,
   FormControl,
   InputLabel,
   Select,
@@ -40,7 +39,7 @@ import { useTable, TableColumn } from '../hooks/useTable.tsx';
 import { ExportButton } from '../components/ExportButton';
 import { DateRangeCalendar } from '../components/DateRangeCalendar';
 import { ActionTooltip } from '../components/ActionTooltip';
-import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx, dialogDangerButtonSx, dialogActionsSx, dialogCancelButtonSx, dialogSecondaryButtonSx, dialogPrimaryButtonSx, TOOLBAR_ICON } from '../theme/designTokens';
+import { T, pick, selectMenuProps, textSecondary, textTertiary, exportToolbarButtonSx, dialogPaperSx, dialogDangerButtonSx, dialogActionsSx, dialogCancelButtonSx, dialogSecondaryButtonSx, dialogPrimaryButtonSx, dialogFieldSx, TOOLBAR_ICON } from '../theme/designTokens';
 import { ColumnHeader } from '../components/ui/ColumnHeader';
 import { ListShell, ListHeaderRow, ListDataRow, listActionsSx, listCheckboxSx } from '../components/ui/ListShell';
 import { ListChevron } from '../components/ui/ListChevron';
@@ -131,9 +130,9 @@ export function Groups() {
     { name: 0, email: 0, role: 0 }
   );
   const pickerCols = useResizableColumns(
-    'groups-user-picker',
-    { name: 200, email: 260, description: 240, members: 88 },
-    { name: 120, email: 160, description: 120, members: 56 }
+    'groups-user-picker-v2',
+    { name: 180, email: 220, description: 160, members: 72 },
+    { name: 0, email: 0, description: 0, members: 0 }
   );
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1475,121 +1474,164 @@ export function Groups() {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={addUserDialogOpen} onClose={handleCloseAddUserDialog} maxWidth="md" fullWidth PaperProps={{ sx: (th) => dialogPaperSx(th) }}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1.5, borderBottom: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}` }}>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>Add user to groups</Typography>
-          </Box>
+      <Dialog
+        open={addUserDialogOpen}
+        onClose={handleCloseAddUserDialog}
+        maxWidth={false}
+        fullWidth
+        PaperProps={{
+          sx: (th) => ({
+            ...dialogPaperSx(th),
+            width: '100%',
+            maxWidth: 720,
+            overflowX: 'hidden',
+          }),
+        }}
+      >
+        <DialogTitle
+          sx={(th) => ({
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            px: 2.5,
+            py: 2,
+            borderBottom: `1px solid ${pick(th, T.borderSubtle, '#27272a')}`,
+          })}
+        >
+          <Typography sx={{ fontFamily: T.font, fontWeight: 700, fontSize: '1.125rem', letterSpacing: '-0.02em', color: (t) => pick(t, T.text, '#fafafa') }}>
+            Add user to groups
+          </Typography>
         </DialogTitle>
-        <DialogContent sx={{ pt: '20px !important' }}>
-          <Box mb={2}>
-            <Autocomplete
-              options={users}
-              getOptionLabel={(option) => {
-                if (typeof option === 'string') return option;
-                return `${option.name.fullName} (${option.primaryEmail})`;
-              }}
-              value={selectedUser}
-              open={autocompleteOpen}
-              onOpen={() => {
-                // Only open if there's input text
-                if (userEmailToAdd.trim().length > 0) {
-                  setAutocompleteOpen(true);
-                }
-              }}
-              onClose={() => setAutocompleteOpen(false)}
-              onChange={(_event, newValue) => {
-                if (newValue && typeof newValue === 'object' && 'primaryEmail' in newValue) {
-                  setSelectedUser(newValue);
-                  setUserEmailToAdd(newValue.primaryEmail);
-                  setAutocompleteOpen(false);
-                } else if (typeof newValue === 'string') {
-                  // Free text input - user typed a custom email
-                  setSelectedUser(null);
-                  setUserEmailToAdd(newValue);
-                } else {
-                  setSelectedUser(null);
-                  setUserEmailToAdd('');
-                }
-              }}
-              onInputChange={(_event, newInputValue, reason) => {
-                // Update email when user types, but only if not selecting from dropdown
-                if (reason === 'input' || reason === 'clear') {
-                  if (!selectedUser || newInputValue !== selectedUser.primaryEmail) {
-                    setUserEmailToAdd(newInputValue);
-                    if (reason === 'clear') {
-                      setSelectedUser(null);
-                      setAutocompleteOpen(false);
-                    } else if (newInputValue.trim().length > 0) {
-                      // Open dropdown when user starts typing
-                      setAutocompleteOpen(true);
-                    } else {
-                      // Close dropdown when input is empty
-                      setAutocompleteOpen(false);
+        <DialogContent sx={{ pt: '20px !important', px: 2.5, overflowX: 'hidden' }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 1.5,
+              mb: 2.5,
+              flexWrap: { xs: 'wrap', sm: 'nowrap' },
+            }}
+          >
+            <Box sx={{ flex: '1 1 280px', minWidth: 0 }}>
+              <Typography
+                sx={{
+                  fontFamily: T.font,
+                  fontWeight: 600,
+                  fontSize: '0.6875rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  color: (t) => textTertiary(t),
+                  mb: 0.75,
+                }}
+              >
+                User
+              </Typography>
+              <Autocomplete
+                options={users}
+                getOptionLabel={(option) => {
+                  if (typeof option === 'string') return option;
+                  return `${option.name.fullName} (${option.primaryEmail})`;
+                }}
+                value={selectedUser}
+                open={autocompleteOpen}
+                onOpen={() => {
+                  if (userEmailToAdd.trim().length > 0) setAutocompleteOpen(true);
+                }}
+                onClose={() => setAutocompleteOpen(false)}
+                onChange={(_event, newValue) => {
+                  if (newValue && typeof newValue === 'object' && 'primaryEmail' in newValue) {
+                    setSelectedUser(newValue);
+                    setUserEmailToAdd(newValue.primaryEmail);
+                    setAutocompleteOpen(false);
+                  } else if (typeof newValue === 'string') {
+                    setSelectedUser(null);
+                    setUserEmailToAdd(newValue);
+                  } else {
+                    setSelectedUser(null);
+                    setUserEmailToAdd('');
+                  }
+                }}
+                onInputChange={(_event, newInputValue, reason) => {
+                  if (reason === 'input' || reason === 'clear') {
+                    if (!selectedUser || newInputValue !== selectedUser.primaryEmail) {
+                      setUserEmailToAdd(newInputValue);
+                      if (reason === 'clear') {
+                        setSelectedUser(null);
+                        setAutocompleteOpen(false);
+                      } else if (newInputValue.trim().length > 0) {
+                        setAutocompleteOpen(true);
+                      } else {
+                        setAutocompleteOpen(false);
+                      }
                     }
                   }
-                }
-              }}
-              filterOptions={(options, params) => {
-                if (!params.inputValue) {
-                  return [];
-                }
-                
-                const searchLower = params.inputValue.toLowerCase();
-                const filtered = options.filter((option) => {
-                  return (
-                    option.primaryEmail.toLowerCase().includes(searchLower) ||
-                    option.name.fullName.toLowerCase().includes(searchLower) ||
-                    (option.name.givenName ?? '').toLowerCase().includes(searchLower) ||
-                    (option.name.familyName ?? '').toLowerCase().includes(searchLower)
-                  );
-                });
-
-                return filtered;
-              }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  autoFocus
-                  label="User Email or Name"
-                  placeholder="Search by name or email, or type an email address"
-                  helperText="Search for a user or enter an email address"
-                  required
-                />
-              )}
-              renderOption={(props, option) => (
-                <Box component="li" {...props} key={option.id}>
-                  <Box>
-                    <Typography variant="body1">{option.name.fullName}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {option.primaryEmail}
-                    </Typography>
+                }}
+                filterOptions={(options, params) => {
+                  if (!params.inputValue) return [];
+                  const searchLower = params.inputValue.toLowerCase();
+                  return options.filter((option) => {
+                    return (
+                      option.primaryEmail.toLowerCase().includes(searchLower) ||
+                      option.name.fullName.toLowerCase().includes(searchLower) ||
+                      (option.name.givenName ?? '').toLowerCase().includes(searchLower) ||
+                      (option.name.familyName ?? '').toLowerCase().includes(searchLower)
+                    );
+                  });
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    autoFocus
+                    size="small"
+                    placeholder="Name or email"
+                    required
+                    sx={(th) => dialogFieldSx(th)}
+                  />
+                )}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props} key={option.id}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500 }}>{option.name.fullName}</Typography>
+                      <Typography sx={{ fontFamily: T.mono, fontSize: '0.75rem', color: (t) => textSecondary(t) }}>
+                        {option.primaryEmail}
+                      </Typography>
+                    </Box>
                   </Box>
-                </Box>
-              )}
-              loading={loadingUsers}
-              freeSolo
-              fullWidth
-              openOnFocus={false}
-            />
-          </Box>
-
-          <Box mb={2}>
-            <FormControl fullWidth>
-              <InputLabel>Role</InputLabel>
-              <Select
-                value={userRole}
-                label="Role"
-                onChange={(e) => setUserRole(e.target.value as 'OWNER' | 'MANAGER' | 'MEMBER')}
+                )}
+                loading={loadingUsers}
+                freeSolo
+                fullWidth
+                openOnFocus={false}
+              />
+            </Box>
+            <Box sx={{ flex: '0 0 140px', width: { xs: '100%', sm: 140 } }}>
+              <Typography
+                sx={{
+                  fontFamily: T.font,
+                  fontWeight: 600,
+                  fontSize: '0.6875rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  color: (t) => textTertiary(t),
+                  mb: 0.75,
+                }}
               >
-                <MenuItem value="MEMBER">Member</MenuItem>
-                <MenuItem value="MANAGER">Manager</MenuItem>
-                <MenuItem value="OWNER">Owner</MenuItem>
-              </Select>
-            </FormControl>
+                Role
+              </Typography>
+              <FormControl size="small" fullWidth sx={(th) => dialogFieldSx(th)}>
+                <Select
+                  value={userRole}
+                  displayEmpty
+                  MenuProps={selectMenuProps}
+                  onChange={(e) => setUserRole(e.target.value as 'OWNER' | 'MANAGER' | 'MEMBER')}
+                >
+                  <MenuItem value="MEMBER">Member</MenuItem>
+                  <MenuItem value="MANAGER">Manager</MenuItem>
+                  <MenuItem value="OWNER">Owner</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
           </Box>
-
-          <Divider sx={{ my: 2 }} />
 
           <Typography sx={{ fontFamily: T.font, fontWeight: 600, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: (t) => textTertiary(t), mb: 1 }}>
             Select groups ({selectedGroupsForUser.length} of {groups.length} selected)
@@ -1600,26 +1642,29 @@ export function Groups() {
               No groups available
             </Typography>
           ) : (
-            <Box>
-              <ListShell>
-                <ListHeaderRow>
+            <ListShell>
+              <ListHeaderRow>
+                <Box sx={listCheckboxSx}>
                   <Checkbox
                     size="small"
                     indeterminate={selectedGroupsForUser.length > 0 && selectedGroupsForUser.length < groups.length}
                     checked={groups.length > 0 && selectedGroupsForUser.length === groups.length}
                     onChange={handleSelectAllGroupsForUser}
-                    sx={{ p: 0.25, mr: 0.5 }}
+                    sx={{ p: 0.25 }}
                   />
-                  <ColumnHeader label="Name" columnId="gn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...pickerCols.headerProps('name')} />
-                  <ColumnHeader label="Email" columnId="ge" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...pickerCols.headerProps('email')} />
-                  <ColumnHeader label="Description" columnId="gd" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...pickerCols.headerProps('description')} />
-                  <ColumnHeader label="Members" columnId="gm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...pickerCols.headerProps('members')} />
-                </ListHeaderRow>
-                {pagedGroupsForPicker.map((group, gidx) => {
-                  const globalGidx = agPageSafe * addUserGroupsRowsPerPage + gidx;
-                  return (
+                </Box>
+                <ColumnHeader label="Name" columnId="gn" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...pickerCols.headerProps('name')} />
+                <ColumnHeader label="Email" columnId="ge" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...pickerCols.headerProps('email')} />
+                <ColumnHeader label="Description" columnId="gd" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...pickerCols.headerProps('description')} />
+                <ColumnHeader label="Members" columnId="gm" sortConfig={DIALOG_LIST_SORT} onSort={dialogListNoopSort} sortable={false} {...pickerCols.headerProps('members')} />
+              </ListHeaderRow>
+              {pagedGroupsForPicker.map((group, gidx) => {
+                const globalGidx = agPageSafe * addUserGroupsRowsPerPage + gidx;
+                return (
                   <ListDataRow key={group.id} last={globalGidx === groups.length - 1} selected={selectedGroupsForUser.includes(group.email)}>
-                    <Checkbox size="small" checked={selectedGroupsForUser.includes(group.email)} onChange={() => handleSelectGroupForUser(group.email)} sx={{ p: 0.25, mr: 0.5 }} />
+                    <Box sx={listCheckboxSx}>
+                      <Checkbox size="small" checked={selectedGroupsForUser.includes(group.email)} onChange={() => handleSelectGroupForUser(group.email)} sx={{ p: 0.25 }} />
+                    </Box>
                     <Box sx={pickerCols.cellSx('name')}>
                       <Typography sx={{ fontFamily: T.font, fontSize: '0.8125rem', fontWeight: 500, color: (t) => pick(t, T.text, '#fafafa'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.name}</Typography>
                     </Box>
@@ -1634,32 +1679,31 @@ export function Groups() {
                     </Box>
                   </ListDataRow>
                 );
-                })}
-                <DialogListPagination
-                  page={agPageSafe}
-                  rowsPerPage={addUserGroupsRowsPerPage}
-                  total={groups.length}
-                  onPageChange={setAddUserGroupsPage}
-                  onRowsPerPageChange={(n) => {
-                    setAddUserGroupsRowsPerPage(n);
-                    setAddUserGroupsPage(0);
-                  }}
-                />
-              </ListShell>
-            </Box>
+              })}
+              <DialogListPagination
+                page={agPageSafe}
+                rowsPerPage={addUserGroupsRowsPerPage}
+                total={groups.length}
+                onPageChange={setAddUserGroupsPage}
+                onRowsPerPageChange={(n) => {
+                  setAddUserGroupsRowsPerPage(n);
+                  setAddUserGroupsPage(0);
+                }}
+              />
+            </ListShell>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2, borderTop: (t) => `1px solid ${pick(t, T.borderSubtle, '#27272a')}`, gap: 1 }}>
-          <Button onClick={handleCloseAddUserDialog} sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, color: (t) => textSecondary(t), '&:hover': { bgcolor: (t) => pick(t, '#f0f0ec', '#27272a') } }}>
+        <DialogActions sx={(th) => dialogActionsSx(th)}>
+          <Button onClick={handleCloseAddUserDialog} sx={(th) => dialogCancelButtonSx(th)}>
             Cancel
           </Button>
           <Button
             variant="contained"
             onClick={handleAddUserToGroups}
             disabled={(!selectedUser && !userEmailToAdd.trim()) || selectedGroupsForUser.length === 0 || addingUser}
-            sx={{ fontFamily: T.font, textTransform: 'none', borderRadius: T.radius, fontSize: '0.8125rem', fontWeight: 500, bgcolor: T.accent, '&:hover': { bgcolor: T.accentHover }, px: 2.5 }}
+            sx={(th) => dialogPrimaryButtonSx(th)}
           >
-            {addingUser ? 'Adding...' : `Add to ${selectedGroupsForUser.length} group${selectedGroupsForUser.length === 1 ? '' : 's'}`}
+            {addingUser ? 'Adding…' : `Add to ${selectedGroupsForUser.length} group${selectedGroupsForUser.length === 1 ? '' : 's'}`}
           </Button>
         </DialogActions>
       </Dialog>
